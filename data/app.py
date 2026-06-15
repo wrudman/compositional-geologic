@@ -23,7 +23,7 @@ GOLD_OUTLINE = (184, 134, 11, 255)
 TEAL = (0, 255, 204, 255)
 CYAN_EDGE = (0, 255, 255, 235)
 YELLOW_REGION = (255, 255, 0, 100)
-GRAY_SOLID = (190, 190, 190, 200)   # opaque highlight: replaces the old yellow film
+GRAY_SOLID = (150, 150, 150, 255)   # opaque highlight: replaces the old yellow film
 UNION_PURPLE = (147, 112, 219, 255)
 GREEN_ANGLE = (0, 150, 0, 255)
 BLUE = (0, 0, 255, 255)
@@ -431,6 +431,19 @@ def edge_options(e):
 TOOLS = ["corner", "meeting_point", "regions_at", "boundary_sequence",
          "draw line", "intersect", "neighbors", "merge", "measure", "sort"]
 
+TOOL_LABELS = {
+    "corner":            "Corner",
+    "meeting_point":     "Meeting Point",
+    "regions_at":        "Regions At",
+    "boundary_sequence": "Boundary Sequence",
+    "draw line":         "Draw Line",
+    "intersect":         "Intersect",
+    "neighbors":         "Neighbors",
+    "merge":             "Merge",
+    "measure":           "Measure",
+    "sort":              "Sort",
+}
+
 INSTRUCTIONS = {
     "corner": "Select ONE region (or the FRAME). Then pick which corner.",
     "meeting_point": "Select TWO OR MORE regions that meet at one point.",
@@ -803,7 +816,8 @@ with col2:
     tcols = st.columns(5)
     for i, t_name in enumerate(TOOLS):
         is_active = (st.session_state.active_tool == t_name)
-        label = f"✅ {t_name}" if is_active else t_name
+        display = TOOL_LABELS.get(t_name, t_name)
+        label = f"✅ {display}" if is_active else display
         if tcols[i % 5].button(label, key=f"tool_{t_name}", use_container_width=True):
             st.session_state.active_tool = t_name
             st.rerun()
@@ -812,7 +826,8 @@ with col2:
     modes = {}
 
     if tool:
-        st.markdown(f"### `{tool}`")
+        display = TOOL_LABELS.get(tool, tool)
+        st.markdown(f"### {display}")
         st.info(INSTRUCTIONS[tool])
 
         if st.session_state.selection:
