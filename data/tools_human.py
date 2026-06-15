@@ -173,33 +173,42 @@ def boundary_sequence(face, start_vertex, go_counterclockwise=True):
         boundary_sequence(A, p)                   # CCW from p
         boundary_sequence(A, p, go_counterclockwise=False)  # CW from p
     """
-    # Reject ambiguous vertices (3+ faces meet at a corner)
-    for e in face.edges:
-        if len(e.tail.outarcs) > 3:
-            return []
+    import Graph as _g
+    edges = face.edges
+    n = len(edges)
+    if n == 0:
+        return []
 
-    result = []
-    found  = False
-
-    # First pass: collect from start_vertex onward
-    for e in face.edges:
+    # Locate the boundary edge whose TAIL is the chosen start vertex.
+    # Fall back to a positional match (subdivision points can make object
+    # identity unreliable on a freshly built map).
+    start_idx = None
+    for i, e in enumerate(edges):
         if e.tail == start_vertex:
-            found = True
-        if found:
-            nb = e.reverse.leftFace
-            if not result:
-                result = [nb]
-            elif result[-1] != nb:
-                result.append(nb)
-
-    # Second pass: if we didn't lap back, continue from the top
-    if face.edges[-1].head != start_vertex:
-        for e in face.edges:
-            nb = e.reverse.leftFace
-            if result[-1] != nb:
-                result.append(nb)
-            if e.head == start_vertex:
+            start_idx = i
+            break
+    if start_idx is None:
+        for i, e in enumerate(edges):
+            if _g.vecDist(e.tail.p, start_vertex.p) < 1e-9:
+                start_idx = i
                 break
+    if start_idx is None:
+        return []
+
+    # Walk the whole boundary once, collecting the region on the far side of
+    # each edge. Consecutive edges that border the same region collapse into a
+    # single entry; a region re-entered later in the walk re-appears.
+    result = []
+    for k in range(n):
+        e = edges[(start_idx + k) % n]
+        nb = e.reverse.leftFace
+        if not result or result[-1] != nb:
+            result.append(nb)
+
+    # If the walk closed back onto the same region it started in, drop the
+    # duplicate tail so the loop isn't double-counted.
+    if len(result) > 1 and result[0] == result[-1]:
+        result.pop()
 
     if not go_counterclockwise:
         result.reverse()

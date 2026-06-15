@@ -215,6 +215,48 @@ def _faces_crossed_in_order(pa, pb, faces):
     return crossedFaces
 
 
+def _walk_samples(pa, pb, map, steps):
+    ordered = []
+    current = None
+    for i in range(steps + 1):
+        t = i / steps
+        p = Graph.Vector((1 - t) * pa.x + t * pb.x,
+                         (1 - t) * pa.y + t * pb.y)
+        f = next((face for face in map.faces
+                  if face.bounded and Graph.pointInsideFace(p, face)), None)
+        if f is not None and f is not current:
+            ordered.append(f)
+            current = f
+    return ordered
+
+
+def _sample_faces_in_order(pa, pb, map):
+    """
+    Robust ordered region walk from pa to pb. Samples points densely along the
+    segment and records each bounded region as it is entered. A region entered,
+    left, and re-entered appears more than once. Unlike the angle-classification
+    path, this never bails out on near-tangent or near-parallel geometry, so it
+    is used for finite segments and rays where that gating was returning nothing.
+    """
+    d = Graph.vecDist(pa, pb)
+    if d < epsilon:
+        return []
+    steps = max(120, int(800 * d))
+    ordered = _walk_samples(pa, pb, map, steps)
+    if ordered:
+        return ordered
+    # Fallback: the line may run almost exactly along shared boundaries, so every
+    # sample landed on an edge. Nudge a hair to one side and retry before giving up.
+    nx, ny = -(pb.y - pa.y) / d, (pb.x - pa.x) / d   # unit normal
+    for off in (0.5 * smallDist, -0.5 * smallDist):
+        qa = Graph.Vector(pa.x + nx * off, pa.y + ny * off)
+        qb = Graph.Vector(pb.x + nx * off, pb.y + ny * off)
+        ordered = _walk_samples(qa, qb, map, steps)
+        if ordered:
+            return ordered
+    return ordered
+
+
 def _ray_other_end(p, direction, bounds):
     """The point where a ray from p in the given direction meets the frame."""
     maxX, maxY = bounds
@@ -705,16 +747,14 @@ def regions_in_order(line):
     if _MAP is None:
         raise RuntimeError("Call use_map(map) before using regions_in_order().")
     if line['type'] == 'ray':
-        faces, _ = _ray_crosses_faces(line['a'], line['direction'], _MAP)
-        return faces  # already ordered
+        pa = line['a']
+        pb = _ray_other_end(pa, line['direction'], _MAP.bounds)
+        return _sample_faces_in_order(pa, pb, _MAP)
     if line['type'] == 'segment':
-        pa, pb = line['a'], line['b']
-        faces, _ = _line_crosses_faces(pa, pb, False, _MAP)
-        return _faces_crossed_in_order(pa, pb, faces)
+        return _sample_faces_in_order(line['a'], line['b'], _MAP)
     if line['type'] == 'extend':
-        faces, _ = _line_crosses_faces(line['a'], line['b'], True, _MAP)
         order_a, order_b = _line_endpoints(line)
-        return _faces_crossed_in_order(order_a, order_b, faces)
+        return _sample_faces_in_order(order_a, order_b, _MAP)
     raise ValueError("Unknown line type. Use segment(), ray(), or extend().")
 
 
