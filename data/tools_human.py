@@ -1,14 +1,14 @@
 """
 tools_human.py
 
-A point-and-click vocabulary of exactly SIX verbs for solving map-region
-problems. The six verbs below are the whole public surface — there are no
-lower-level getters to learn. Anything more specific (which corner, which
-walk direction, value-vs-ranking) is a *mode* of one of the six, chosen in
-the UI, not a separate verb.
+A point-and-click vocabulary of exactly SEVEN verbs for solving map-region
+problems. The seven verbs below are the whole public surface — there are no
+lower-level getters to learn. Anything more specific (which corner, which walk
+direction, how to order) is a *mode* of one of the seven, chosen in the UI, not
+a separate verb.
 
-THE SIX VERBS
--------------
+THE SEVEN VERBS
+---------------
     vertex      get a point
                   one region            -> a corner of it
                   two or more regions   -> the point where they meet
@@ -21,9 +21,8 @@ THE SIX VERBS
     draw        make a line             (segment, full line, or ray)
     intersect   ask a line what it hits (which regions, or another line)
     merge       join two bordering regions into one
-    measure     a property of the selection
-                  one object            -> a single number
-                  several objects       -> them ranked, smallest -> largest
+    measure     ONE thing -> ONE number (length, angle, area, or sides)
+    sort        SEVERAL things -> them, ordered smallest -> largest
 
 Everything in / everything out is a plain object (a Point, a Region, a Line, a
 list, a number, or a boolean), so verbs chain by clicking.
@@ -168,60 +167,84 @@ def merge(region_a, region_b):
 
 
 # ==============================================================================
-# VERB 6 — MEASURE     (a property of the selection)
+# VERB 6 — MEASURE     (ONE thing -> ONE number)
 # ==============================================================================
 
-def measure(*args, what, reference=None):
+def measure(*args, what):
     """
-    ONE object  -> a single number.   SEVERAL objects -> a ranking (small->large).
+    Measure a single thing and get back a single number.
 
     what:
-        "distance"  2 points   -> distance between them
-                    3+ points  -> first point is the reference; the rest are
-                                  ranked by distance from it
-        "gap"       2 regions  -> gap between them
-                    3+ regions -> first region is the reference; the rest are
-                                  ranked by gap from it
-        "angle"     1 region   -> its corners ranked by interior angle
-                    point+region -> the interior angle (degrees) at that corner
-        "area"      1 region   -> area        | 2+ regions -> ranked
-        "sides"     1 region   -> side count  | 2+ regions -> ranked
-        "x"         1 point    -> x position  | 2+ points  -> ranked left->right
-        "y"         1 point    -> y position  | 2+ points  -> ranked bottom->top
+        "length"  a drawn line -> its length
+                  (or two points -> the straight-line distance between them)
+        "angle"   a corner (its point + the region it belongs to)
+                  -> the interior angle there, in degrees
+        "area"    a region -> its area
+        "sides"   a region -> how many sides it has
 
     Examples:
+        measure(L1, what="length")
+        measure(p, q, what="length")      # distance between two points
+        measure(p, A, what="angle")       # angle at corner p inside region A
         measure(A, what="area")
-        measure(A, B, C, what="area")          # ranked
-        measure(p, u, v, w, what="distance")   # p is the reference
-        measure(X, what="angle")               # corners of X, ranked
+        measure(A, what="sides")
     """
-    import numpy as _np
     items = list(args)
 
+    if what == "length":
+        if len(items) == 1 and isinstance(items[0], dict):   # a drawn line
+            return _line_len(items[0])
+        return _engine.dist(items[0], items[1])              # two points
+
     if what == "angle":
-        if len(items) == 1 and _is_region(items[0]):
-            reg = items[0]
-            return _rank(_region_corner(reg, "all"), "angle", reg)
+        import numpy as _np
         return _engine.angle_at(items[0], items[1]) * 180.0 / _np.pi
 
-    if what in ("area", "sides", "x", "y"):
-        return _measure_one(items[0], what) if len(items) == 1 else _rank(items, what)
+    if what == "area":
+        return _engine.area(items[0])
 
-    if what == "distance":
-        if len(items) == 2 and reference is None:
-            return _engine.dist(items[0], items[1])
-        ref = reference if reference is not None else items[0]
-        rest = items if reference is not None else items[1:]
-        return _rank(rest, "distance", ref)
+    if what == "sides":
+        return _engine.side_count(items[0])
 
-    if what == "gap":
-        if len(items) == 2 and reference is None:
-            return _engine.region_dist(items[0], items[1])
-        ref = reference if reference is not None else items[0]
-        rest = items if reference is not None else items[1:]
-        return _rank(rest, "gap", ref)
+    raise ValueError('what must be one of: length, angle, area, sides.')
 
-    raise ValueError('what must be one of: distance, gap, angle, area, sides, x, y.')
+
+# ==============================================================================
+# VERB 7 — SORT     (several things -> them, ordered smallest -> largest)
+# ==============================================================================
+
+def sort(items, by, reference=None):
+    """
+    Put several objects in and get them back in order, smallest -> largest.
+    Sort only ranks things that have a numeric size.
+
+    by:
+        "angle"       the corners (`items`) of a region, by interior angle;
+                      `reference` is that region
+        "area"        regions, by area
+        "left_right"  points, left to right
+        "bottom_top"  points, bottom to top
+        "distance"    points, by distance from `reference` (a point)
+
+    Examples:
+        sort(vertex(A, which="all"), by="angle", reference=A)
+        sort([A, B, C], by="area")
+        sort([u, v, w], by="left_right")
+        sort([u, v, w], by="distance", reference=p)
+    """
+    if by == "angle":
+        key = lambda v: _engine.angle_at(v, reference)
+    elif by == "area":
+        key = _engine.area
+    elif by == "left_right":
+        key = _engine.x_of
+    elif by == "bottom_top":
+        key = _engine.y_of
+    elif by == "distance":
+        key = lambda v: _engine.dist(v, reference)
+    else:
+        raise ValueError('by must be one of: angle, area, left_right, bottom_top, distance.')
+    return sorted(items, key=key)
 
 
 # ==============================================================================
@@ -304,32 +327,20 @@ def _boundary_walk(face, start_vertex, go_counterclockwise):
     return result
 
 
-def _measure_one(obj, what):
-    if what == "area":  return _engine.area(obj)
-    if what == "sides": return _engine.side_count(obj)
-    if what == "x":     return _engine.x_of(obj)
-    if what == "y":     return _engine.y_of(obj)
+def _point_dist(a, b):
+    import Graph as _g
+    return _g.vecDist(a, b)
 
 
-def _rank(items, by, reference=None):
-    if by == "distance":
-        key = lambda it: _engine.dist(it, reference)
-    elif by == "x":
-        key = _engine.x_of
-    elif by == "y":
-        key = _engine.y_of
-    elif by == "angle":
-        key = lambda it: _engine.angle_at(it, reference)
-    elif by == "area":
-        key = _engine.area
-    elif by == "sides":
-        key = _engine.side_count
-    elif by == "gap":
-        key = lambda it: _engine.region_dist(it, reference)
+def _line_len(line):
+    """Length of a drawn line. Meaningful for segments; rays/full lines reach
+    the frame, so their 'length' is just the drawn extent."""
+    if hasattr(_engine, "_line_endpoints"):
+        a, b = _engine._line_endpoints(line)
     else:
-        raise ValueError('cannot rank by ' + repr(by))
-    return sorted(items, key=key)
+        a, b = line["a"], line["b"]
+    return _point_dist(a, b)
 
 
-# The six human verbs — the entire public vocabulary.
-VERBS = ["vertex", "neighbors", "draw", "intersect", "merge", "measure"]
+# The seven human verbs — the entire public vocabulary.
+VERBS = ["vertex", "neighbors", "draw", "intersect", "merge", "measure", "sort"]
