@@ -426,9 +426,9 @@ def edge_options(e):
     return opts
 
 # ============================================================
-# 7. TOOL DEFINITIONS  (six verbs)
+# 7. TOOL DEFINITIONS  (seven verbs)
 # ============================================================
-TOOLS = ["vertex", "neighbors", "draw line", "intersect", "merge", "measure"]
+TOOLS = ["vertex", "neighbors", "draw line", "intersect", "merge", "measure", "sort"]
 
 TOOL_LABELS = {
     "vertex":    "Vertex",
@@ -437,6 +437,7 @@ TOOL_LABELS = {
     "intersect": "Intersect",
     "merge":     "Merge",
     "measure":   "Measure",
+    "sort":      "Sort",
 }
 
 INSTRUCTIONS = {
@@ -450,10 +451,12 @@ INSTRUCTIONS = {
     "intersect": "Pick one of your drawn lines, then ask what it hits "
                  "(which regions, or whether it crosses another line).",
     "merge": "Select TWO regions sharing a border → creates a solid purple U1, U2, …",
-    "measure": "Pick a property. ONE object → a single value • SEVERAL → ranked "
-               "small→large. For distance/gap the FIRST selection is the reference. "
-               "For angle: pick a saved angle (a1, a2…) for one value, or ONE region "
-               "to rank its corners.",
+    "measure": "ONE thing → ONE number. length = a drawn segment (or the distance "
+               "between two selected points) • angle = a saved angle (a1, a2…) • "
+               "area / sides = a region.",
+    "sort": "Select SEVERAL objects, then choose how to order them (smallest → "
+            "largest). Several points → left→right, bottom→top, or distance from the "
+            "first selected • Several regions → area • ONE region → its corners by angle.",
 }
 
 def validate(tool, modes):
@@ -487,21 +490,31 @@ def validate(tool, modes):
 
     if tool == "measure":
         w = modes.get("what")
-        if not w: return (False, "Pick a property.")
+        if not w: return (False, "Pick what to measure.")
+        if w == "length":
+            if nV == 2 and s["n"] == 2:        return (True, "")   # two points
+            if modes.get("line") is not None:  return (True, "")   # a drawn segment
+            return (False, "Select two points, or pick a drawn segment.")
         if w == "angle":
-            if nA == 1 and s["n"] == 1: return (True, "")               # one value
-            if nR == 1 and s["n"] == 1: return (True, "")               # rank a region's corners
-            return (False, "Pick ONE saved angle (value) or ONE region (rank its corners).")
+            return (nA == 1 and s["n"] == 1, "Select ONE saved angle (a1, a2…).")
         if w in ("area", "sides"):
-            return (nR == s["n"] and nR >= 1, "1 region → value • 2+ regions → ranking.")
-        if w in ("x", "y"):
-            return (nV == s["n"] and nV >= 1, "1 point → value • 2+ points → ranking.")
-        if w == "distance":
-            return (nV == s["n"] and nV >= 2,
-                    "2 points → distance • 3+ → reference FIRST, then ranked.")
-        if w == "gap":
-            return (nR == s["n"] and nR >= 2,
-                    "2 regions → gap • 3+ → reference FIRST, then ranked.")
+            return (nR == 1 and s["n"] == 1, "Select ONE region.")
+        return (False, "")
+
+    if tool == "sort":
+        by = modes.get("by")
+        if not by: return (False, "Pick how to order them.")
+        if by == "angle":
+            return (nR == 1 and s["n"] == 1,
+                    "Select ONE region — its corners get ordered by angle.")
+        if by == "area":
+            return (nR >= 2 and nR == s["n"], "Select 2+ regions.")
+        if by in ("left_right", "bottom_top"):
+            return (nV >= 2 and nV == s["n"], "Select 2+ points.")
+        if by == "distance":
+            return (nV >= 3 and nV == s["n"],
+                    "Select the reference point FIRST, then 2+ more points.")
+        return (False, "")
     return (False, "")
 
 # ============================================================
@@ -569,19 +582,17 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
     st.session_state.selection = []
     st.rerun()
 
-# ---- ranking display (shared by every "several objects" measure) -------------
+# ---- ranking display (shared by the Sort tool) ------------------------------
 def _rank_value(it, by, ref):
-    if by == "distance": return map_helpers.dist(it, ref)
-    if by == "gap":      return map_helpers.region_dist(it, ref)
-    if by == "x":        return map_helpers.x_of(it)
-    if by == "y":        return map_helpers.y_of(it)
-    if by == "area":     return map_helpers.area(it)
-    if by == "sides":    return map_helpers.side_count(it)
-    if by == "angle":    return map_helpers.angle_at(it, ref) * 180.0 / math.pi
+    if by == "distance":   return map_helpers.dist(it, ref)
+    if by == "left_right": return map_helpers.x_of(it)
+    if by == "bottom_top": return map_helpers.y_of(it)
+    if by == "area":       return map_helpers.area(it)
+    if by == "angle":      return map_helpers.angle_at(it, ref) * 180.0 / math.pi
     return 0
 
 def _rank_fmt(by, v):
-    return f"{int(v)}" if by == "sides" else f"{v:.3f}"
+    return f"{v:.3f}"
 
 def ranking_finish(call_str, result, by, ref):
     add_program(call_str + "   # smallest \u2192 largest")
@@ -683,42 +694,63 @@ def run_tool(tool, modes):
             st.session_state.selection = []
             st.rerun()
 
-        # ---- MEASURE (value or ranking) ------------------------------------
+        # ---- MEASURE (one thing → one number) ------------------------------
         elif tool == "measure":
             w = modes["what"]
-            items = list(sel)
 
-            if w == "angle":
-                if s["angles"]:
-                    a = s["angles"][0]
-                    val = T.measure(a.vertex, a.face, what="angle")
-                    finish(tool, f'measure({angle_name(a)}, what="angle")', round(val, 2))
+            if w == "length":
+                if s["vertices"] and len(s["vertices"]) >= 2:
+                    p, q = s["vertices"][0], s["vertices"][1]
+                    val = T.measure(p, q, what="length")
+                    finish(tool, f'measure({code_name(p)}, {code_name(q)}, what="length")',
+                           round(val, 4))
                 else:
-                    reg = s["regions"][0]
-                    result = T.measure(reg, what="angle")
-                    ranking_finish(f'measure({reg.letter}, what="angle")  # corners',
-                                   result, "angle", reg)
+                    lname, line = modes["line"]
+                    val = T.measure(line, what="length")
+                    finish(tool, f'measure({lname}, what="length")', round(val, 4),
+                           visualize=False)
 
-            elif w in ("area", "sides", "x", "y"):
-                if len(items) == 1:
-                    result = T.measure(items[0], what=w)
-                    finish(tool, f'measure({code_name(items[0])}, what="{w}")', result)
-                else:
-                    result = T.measure(*items, what=w)
-                    args = ", ".join(code_name(o) for o in items)
-                    ranking_finish(f'measure({args}, what="{w}")', result, w, None)
+            elif w == "angle":
+                a = s["angles"][0]
+                val = T.measure(a.vertex, a.face, what="angle")
+                finish(tool, f'measure({angle_name(a)}, what="angle")', round(val, 2))
 
-            else:  # distance, gap
-                if len(items) == 2:
-                    result = T.measure(items[0], items[1], what=w)
-                    finish(tool, f'measure({code_name(items[0])}, {code_name(items[1])}, '
-                                 f'what="{w}")', result)
-                else:
-                    ref = items[0]
-                    result = T.measure(*items, what=w)     # first selection is the reference
-                    args = ", ".join(code_name(o) for o in items)
-                    ranking_finish(f'measure({args}, what="{w}")  # first = reference',
-                                   result, w, ref)
+            else:  # area, sides
+                reg = s["regions"][0]
+                val = T.measure(reg, what=w)
+                finish(tool, f'measure({reg.letter}, what="{w}")', val)
+
+        # ---- SORT (several things → ordered) --------------------------------
+        elif tool == "sort":
+            by = modes["by"]
+
+            if by == "angle":
+                reg = s["regions"][0]
+                corners = T.vertex(reg, which="all")
+                result = T.sort(corners, by="angle", reference=reg)
+                ranking_finish(
+                    f'sort(vertex({reg.letter}, which="all"), by="angle", '
+                    f'reference={reg.letter})', result, "angle", reg)
+
+            elif by == "area":
+                regs = list(s["regions"])
+                result = T.sort(regs, by="area")
+                arg = ", ".join(o.letter for o in regs)
+                ranking_finish(f'sort([{arg}], by="area")', result, "area", None)
+
+            elif by in ("left_right", "bottom_top"):
+                pts = list(s["vertices"])
+                result = T.sort(pts, by=by)
+                arg = ", ".join(code_name(o) for o in pts)
+                ranking_finish(f'sort([{arg}], by="{by}")', result, by, None)
+
+            else:  # distance from the first-selected point
+                ref, rest = s["vertices"][0], s["vertices"][1:]
+                result = T.sort(rest, by="distance", reference=ref)
+                arg = ", ".join(code_name(o) for o in rest)
+                ranking_finish(
+                    f'sort([{arg}], by="distance", reference={code_name(ref)})',
+                    result, "distance", ref)
 
     except Exception as ex:
         add_log(f"❌ **{tool}** failed: {ex}")
@@ -913,10 +945,42 @@ with col2:
 
         elif tool == "measure":
             modes["what"] = st.radio("Measure what?",
-                                     ["distance", "gap", "angle", "area", "sides", "x", "y"],
+                                     ["length", "angle", "area", "sides"],
                                      index=None, horizontal=True, key="rad_measure")
-            st.caption("One object → a value. Several → ranked small→large "
-                       "(distance/gap: the first selection is the reference).")
+            if modes["what"] == "length":
+                if len(s["vertices"]) >= 2:
+                    st.caption("Will measure the distance between the two selected points.")
+                else:
+                    segs = [(nm, ln) for nm, ln in st.session_state.lines
+                            if ln.get("type") == "segment"]
+                    if segs:
+                        idx = st.selectbox("Which drawn segment?", range(len(segs)),
+                                           format_func=lambda i: segs[i][0],
+                                           key="sel_len_line")
+                        modes["line"] = segs[idx]
+                    else:
+                        st.caption("Draw a segment first, or select two points.")
+            elif modes["what"] == "angle":
+                st.caption("Pick a saved angle (a1, a2…) from the buffer, or create one: "
+                           "click a corner → 📐 Angle here → region.")
+
+        elif tool == "sort":
+            # Offer only the orderings that fit the current selection.
+            opts = []   # list of (label, internal_value)
+            if len(s["regions"]) == 1 and s["n"] == 1:
+                opts = [("This region's corners, by angle", "angle")]
+            elif len(s["regions"]) >= 2 and len(s["regions"]) == s["n"]:
+                opts = [("By area", "area")]
+            elif len(s["vertices"]) >= 2 and len(s["vertices"]) == s["n"]:
+                opts = [("Left → right", "left_right"), ("Bottom → top", "bottom_top")]
+                if len(s["vertices"]) >= 3:
+                    opts.append(("Distance from the first point", "distance"))
+            if opts:
+                label2val = dict(opts)
+                choice = st.radio("Order how?", [o[0] for o in opts], key="rad_sort")
+                modes["by"] = label2val[choice]
+            else:
+                st.caption("Select 2+ points, 2+ regions, or one region (for its corners).")
 
         # 'merge' has no modes.
 
