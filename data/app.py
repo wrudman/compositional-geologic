@@ -23,7 +23,7 @@ GOLD_OUTLINE = (184, 134, 11, 255)
 TEAL = (0, 255, 204, 255)
 CYAN_EDGE = (0, 255, 255, 235)
 YELLOW_REGION = (255, 255, 0, 100)
-GRAY_SOLID = (180, 180, 180, 190)   # opaque highlight: replaces the old yellow film
+GRAY_SOLID = (150, 150, 150, 255)   # opaque highlight: replaces the old yellow film
 UNION_PURPLE = (147, 112, 219, 255)
 GREEN_ANGLE = (0, 150, 0, 255)
 BLUE = (0, 0, 255, 255)
@@ -426,90 +426,82 @@ def edge_options(e):
     return opts
 
 # ============================================================
-# 7. TOOL DEFINITIONS
+# 7. TOOL DEFINITIONS  (six verbs)
 # ============================================================
-TOOLS = ["corner", "meeting_point", "regions_at", "boundary_sequence",
-         "draw line", "intersect", "neighbors", "merge", "measure", "sort"]
+TOOLS = ["vertex", "neighbors", "draw line", "intersect", "merge", "measure"]
 
 TOOL_LABELS = {
-    "corner":            "Corner",
-    "meeting_point":     "Meeting Point",
-    "regions_at":        "Regions At",
-    "boundary_sequence": "Boundary Sequence",
-    "draw line":         "Draw Line",
-    "intersect":         "Intersect",
-    "neighbors":         "Neighbors",
-    "merge":             "Merge",
-    "measure":           "Measure",
-    "sort":              "Sort",
+    "vertex":    "Vertex",
+    "neighbors": "Neighbors",
+    "draw line": "Draw Line",
+    "intersect": "Intersect",
+    "merge":     "Merge",
+    "measure":   "Measure",
 }
 
 INSTRUCTIONS = {
-    "corner": "Select ONE region (or the FRAME). Then pick which corner.",
-    "meeting_point": "Select TWO OR MORE regions that meet at one point.",
-    "regions_at": "Select ONE point.",
-    "boundary_sequence": "Select ONE region, then ONE of its corner points.",
-    "draw line": "Two points → segment/full line • one point → ray • one edge → line along it. Chain segments to build paths or cycles.",
-    "intersect": "Pick one of your drawn lines, then ask what it hits.",
-    "neighbors": "Select ONE region (unions U1, U2… also work).",
+    "vertex": "ONE region → pick a corner • TWO+ regions → their meeting point • "
+              "the FRAME → a frame corner.",
+    "neighbors": "ONE point → the regions meeting there • ONE region → its bordering "
+                 "regions (share an edge / touch at a corner) • ONE region + ONE of "
+                 "its corners → the regions passed in walking order.",
+    "draw line": "Two points → segment/full line • one point → ray • one edge → line "
+                 "along it. Chain segments to build paths or cycles.",
+    "intersect": "Pick one of your drawn lines, then ask what it hits "
+                 "(which regions, or whether it crosses another line).",
     "merge": "Select TWO regions sharing a border → creates a solid purple U1, U2, …",
-    "measure": "Pick what to measure. For angles: select a saved angle (a1, a2…) from the buffer, or create one (click corner → 📐 Angle here → region).",
-    "sort": "Select several objects (all points or all regions). For distance/gap the FIRST selection is the reference. For angle: select ONE region.",
-}
-
-MEASURE_NEEDS = {
-    "distance": "Select TWO points.",
-    "gap": "Select TWO regions.",
-    "angle": "Select ONE saved angle — press 'Select a1' in the buffer (or create one: corner → 📐 → region).",
-    "area": "Select ONE region.",
-    "sides": "Select ONE region (unions work).",
-    "x": "Select ONE point.",
-    "y": "Select ONE point.",
+    "measure": "Pick a property. ONE object → a single value • SEVERAL → ranked "
+               "small→large. For distance/gap the FIRST selection is the reference. "
+               "For angle: pick a saved angle (a1, a2…) for one value, or ONE region "
+               "to rank its corners.",
 }
 
 def validate(tool, modes):
     s = sel_sig()
     nR, nV, nE, nA, nF = (len(s["regions"]), len(s["vertices"]),
                           len(s["edges"]), len(s["angles"]), len(s["frame"]))
-    if tool == "corner":
-        return (s["n"] == 1 and (nR == 1 or nF == 1), "Need 1 region or the frame.")
-    if tool == "meeting_point":
-        return (nR >= 2 and nR == s["n"], f"Need 2+ regions — have {nR}.")
-    if tool == "regions_at":
-        return (s["n"] == 1 and nV == 1, "Need exactly 1 point.")
-    if tool == "boundary_sequence":
-        return (s["n"] == 2 and nR == 1 and nV == 1, "Need 1 region + 1 point.")
+
+    if tool == "vertex":
+        if nF == 1 and s["n"] == 1:        return (True, "")
+        if nR == 1 and s["n"] == 1:        return (True, "")
+        if nR >= 2 and nR == s["n"]:       return (True, "")
+        return (False, "Select 1 region, the FRAME, or 2+ regions.")
+
+    if tool == "neighbors":
+        if s["n"] == 1 and nV == 1:                    return (True, "")  # regions at a point
+        if s["n"] == 1 and nR == 1:                    return (True, "")  # bordering a region
+        if s["n"] == 2 and nR == 1 and nV == 1:        return (True, "")  # walking order
+        return (False, "Select 1 point, 1 region, or 1 region + 1 of its corners.")
+
     if tool == "draw line":
         if modes.get("style") == "ray":
             return (s["n"] == 1 and nV == 1, "Ray needs exactly 1 point.")
         ok = (s["n"] == 2 and nV == 2) or (s["n"] == 1 and nE == 1)
         return (ok, "Need 2 points, or 1 edge, or 1 point + ray.")
+
     if tool == "intersect":
         return (len(st.session_state.lines) > 0, "Draw a line first.")
-    if tool == "neighbors":
-        return (s["n"] == 1 and nR == 1, "Need exactly 1 region.")
+
     if tool == "merge":
         return (s["n"] == 2 and nR == 2, "Need exactly 2 regions.")
+
     if tool == "measure":
         w = modes.get("what")
-        if not w: return (False, "Pick what to measure.")
+        if not w: return (False, "Pick a property.")
         if w == "angle":
-            return (s["n"] == 1 and nA == 1, MEASURE_NEEDS["angle"])
-        need = {"distance": (0, 2), "gap": (2, 0),
-                "area": (1, 0), "sides": (1, 0), "x": (0, 1), "y": (0, 1)}[w]
-        ok = (nR, nV) == need and s["n"] == sum(need)
-        return (ok, MEASURE_NEEDS[w])
-    if tool == "sort":
-        by = modes.get("by")
-        if not by: return (False, "Pick a criterion.")
-        if by in ("x", "y"): return (nV == s["n"] and nV >= 2, "Select 2+ points.")
-        if by == "distance": return (nV == s["n"] and nV >= 3,
-                                     "Select reference point FIRST, then 2+ points.")
-        if by in ("area", "sides"): return (nR == s["n"] and nR >= 2, "Select 2+ regions.")
-        if by == "gap": return (nR == s["n"] and nR >= 3,
-                                "Select reference region FIRST, then 2+ regions.")
-        if by == "angle": return (nR == 1 and s["n"] == 1,
-                                  "Select ONE region — its corners get sorted.")
+            if nA == 1 and s["n"] == 1: return (True, "")               # one value
+            if nR == 1 and s["n"] == 1: return (True, "")               # rank a region's corners
+            return (False, "Pick ONE saved angle (value) or ONE region (rank its corners).")
+        if w in ("area", "sides"):
+            return (nR == s["n"] and nR >= 1, "1 region → value • 2+ regions → ranking.")
+        if w in ("x", "y"):
+            return (nV == s["n"] and nV >= 1, "1 point → value • 2+ points → ranking.")
+        if w == "distance":
+            return (nV == s["n"] and nV >= 2,
+                    "2 points → distance • 3+ → reference FIRST, then ranked.")
+        if w == "gap":
+            return (nR == s["n"] and nR >= 2,
+                    "2 regions → gap • 3+ → reference FIRST, then ranked.")
     return (False, "")
 
 # ============================================================
@@ -577,33 +569,70 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
     st.session_state.selection = []
     st.rerun()
 
+# ---- ranking display (shared by every "several objects" measure) -------------
+def _rank_value(it, by, ref):
+    if by == "distance": return map_helpers.dist(it, ref)
+    if by == "gap":      return map_helpers.region_dist(it, ref)
+    if by == "x":        return map_helpers.x_of(it)
+    if by == "y":        return map_helpers.y_of(it)
+    if by == "area":     return map_helpers.area(it)
+    if by == "sides":    return map_helpers.side_count(it)
+    if by == "angle":    return map_helpers.angle_at(it, ref) * 180.0 / math.pi
+    return 0
+
+def _rank_fmt(by, v):
+    return f"{int(v)}" if by == "sides" else f"{v:.3f}"
+
+def ranking_finish(call_str, result, by, ref):
+    add_program(call_str + "   # smallest \u2192 largest")
+    ordered = "  \u2192  ".join(
+        f"{code_name(it)} ({_rank_fmt(by, _rank_value(it, by, ref))})" for it in result)
+    add_log(f"`{call_str}` \u2014 **smallest \u2192 largest:**  {ordered}")
+    st.session_state.selection = []
+    st.rerun()
+
 def run_tool(tool, modes):
     sel = st.session_state.selection
     s = sel_sig()
     try:
-        if tool == "corner":
-            which = modes["which"]
-            result = T.corner(sel[0], which)
-            finish(tool, f'corner({code_name(sel[0])}, "{which}")', result,
-                   "p" if not isinstance(result, list) else "r")
+        # ---- VERTEX --------------------------------------------------------
+        if tool == "vertex":
+            if s["frame"]:
+                which = modes["which"]
+                result = T.vertex("frame", which=which)
+                finish(tool, f'vertex("frame", which="{which}")', result,
+                       "p" if not isinstance(result, list) else "r")
+            elif len(s["regions"]) >= 2:
+                onf = modes["on_frame"]
+                result = T.vertex(*s["regions"], on_frame=onf)
+                args = ", ".join(o.letter for o in s["regions"])
+                finish(tool, f"vertex({args}, on_frame={onf})", result, "p")
+            else:
+                reg = s["regions"][0]
+                which = modes["which"]
+                result = T.vertex(reg, which=which)
+                finish(tool, f'vertex({reg.letter}, which="{which}")', result,
+                       "p" if not isinstance(result, list) else "r")
 
-        elif tool == "meeting_point":
-            onf = modes["on_frame"]
-            result = T.meeting_point(*sel, on_frame=onf)
-            args = ", ".join(code_name(o) for o in sel)
-            finish(tool, f"meeting_point({args}, on_frame={onf})", result, "p")
+        # ---- NEIGHBORS -----------------------------------------------------
+        elif tool == "neighbors":
+            if s["vertices"] and not s["regions"]:
+                v = s["vertices"][0]
+                result = T.neighbors(v)
+                finish(tool, f"neighbors({code_name(v)})", result)
+            elif s["regions"] and s["vertices"]:
+                reg, vtx = s["regions"][0], s["vertices"][0]
+                ccw = modes.get("ccw", True)
+                result = T.neighbors(reg, "ordered", start=vtx, go_counterclockwise=ccw)
+                finish(tool, f'neighbors({reg.letter}, "ordered", start={code_name(vtx)}, '
+                             f"go_counterclockwise={ccw})", result)
+            else:
+                reg = s["regions"][0]
+                kind = modes["kind"]
+                result = T.neighbors(reg, kind)
+                finish(tool, f'neighbors({reg.letter}, "{kind}")', result)
 
-        elif tool == "regions_at":
-            result = T.regions_at(sel[0])
-            finish(tool, f"regions_at({code_name(sel[0])})", result)
-
-        elif tool == "boundary_sequence":
-            reg, vtx = s["regions"][0], s["vertices"][0]
-            ccw = modes["ccw"]
-            result = T.boundary_sequence(reg, vtx, go_counterclockwise=ccw)
-            finish(tool, f"boundary_sequence({reg.letter}, {code_name(vtx)}, "
-                         f"go_counterclockwise={ccw})", result)
-
+        # ---- DRAW LINE -----------------------------------------------------
         elif tool == "draw line":
             style = modes["style"]
             if style == "ray":
@@ -627,6 +656,7 @@ def run_tool(tool, modes):
             st.session_state.selection = []
             st.rerun()
 
+        # ---- INTERSECT -----------------------------------------------------
         elif tool == "intersect":
             lname, line = modes["line"]
             if modes["target"] == "faces":
@@ -637,11 +667,7 @@ def run_tool(tool, modes):
                 result = T.intersect(line, tline)
                 finish(tool, f"intersect({lname}, {tname})", result, visualize=False)
 
-        elif tool == "neighbors":
-            kind = modes["kind"]
-            result = T.neighbors(sel[0], kind)
-            finish(tool, f'neighbors({code_name(sel[0])}, "{kind}")', result)
-
+        # ---- MERGE ---------------------------------------------------------
         elif tool == "merge":
             fa, fb = s["regions"][0], s["regions"][1]
             fu = T.merge(fa, fb)
@@ -657,56 +683,42 @@ def run_tool(tool, modes):
             st.session_state.selection = []
             st.rerun()
 
+        # ---- MEASURE (value or ranking) ------------------------------------
         elif tool == "measure":
             w = modes["what"]
+            items = list(sel)
+
             if w == "angle":
-                a = s["angles"][0]
-                val = Graph.angleAtFace(a.vertex, a.face) * 180.0 / math.pi
-                finish(tool, f'measure({angle_name(a)}, what="angle")', round(val, 2))
-            else:
-                result = T.measure(*sel, what=w)
-                args = ", ".join(code_name(o) for o in sel)
-                finish(tool, f'measure({args}, what="{w}")', result)
+                if s["angles"]:
+                    a = s["angles"][0]
+                    val = T.measure(a.vertex, a.face, what="angle")
+                    finish(tool, f'measure({angle_name(a)}, what="angle")', round(val, 2))
+                else:
+                    reg = s["regions"][0]
+                    result = T.measure(reg, what="angle")
+                    ranking_finish(f'measure({reg.letter}, what="angle")  # corners',
+                                   result, "angle", reg)
 
-        elif tool == "sort":
-            by = modes["by"]
+            elif w in ("area", "sides", "x", "y"):
+                if len(items) == 1:
+                    result = T.measure(items[0], what=w)
+                    finish(tool, f'measure({code_name(items[0])}, what="{w}")', result)
+                else:
+                    result = T.measure(*items, what=w)
+                    args = ", ".join(code_name(o) for o in items)
+                    ranking_finish(f'measure({args}, what="{w}")', result, w, None)
 
-            def _sort_value(it, ref):
-                if by == "distance": return map_helpers.dist(it, ref)
-                if by == "gap":      return map_helpers.region_dist(it, ref)
-                if by == "x":        return map_helpers.x_of(it)
-                if by == "y":        return map_helpers.y_of(it)
-                if by == "area":     return map_helpers.area(it)
-                if by == "sides":    return map_helpers.side_count(it)
-                if by == "angle":    return map_helpers.angle_at(it, ref) * 180.0 / math.pi
-                return 0
-
-            def _fmt(v):
-                return f"{int(v)}" if by == "sides" else f"{v:.3f}"
-
-            def _sort_log(call_str, result, ref):
-                add_program(call_str + "   # smallest \u2192 largest")
-                ordered = "  \u2192  ".join(
-                    f"{code_name(it)} ({_fmt(_sort_value(it, ref))})" for it in result)
-                add_log(f"`{call_str}` \u2014 **smallest \u2192 largest:**  {ordered}")
-                st.session_state.selection = []
-                st.rerun()
-
-            if by == "angle":
-                reg = s["regions"][0]
-                corners = T.corner(reg, "all")
-                result = T.sort(corners, by="angle", reference=reg)
-                _sort_log(f'sort(corner({reg.letter}, "all"), by="angle", reference={reg.letter})',
-                          result, reg)
-            elif by in ("distance", "gap"):
-                ref, items = sel[0], sel[1:]
-                result = T.sort(list(items), by=by, reference=ref)
-                arg = ", ".join(code_name(o) for o in items)
-                _sort_log(f'sort([{arg}], by="{by}", reference={code_name(ref)})', result, ref)
-            else:
-                result = T.sort(list(sel), by=by)
-                arg = ", ".join(code_name(o) for o in sel)
-                _sort_log(f'sort([{arg}], by="{by}")', result, None)
+            else:  # distance, gap
+                if len(items) == 2:
+                    result = T.measure(items[0], items[1], what=w)
+                    finish(tool, f'measure({code_name(items[0])}, {code_name(items[1])}, '
+                                 f'what="{w}")', result)
+                else:
+                    ref = items[0]
+                    result = T.measure(*items, what=w)     # first selection is the reference
+                    args = ", ".join(code_name(o) for o in items)
+                    ranking_finish(f'measure({args}, what="{w}")  # first = reference',
+                                   result, w, ref)
 
     except Exception as ex:
         add_log(f"❌ **{tool}** failed: {ex}")
@@ -765,7 +777,7 @@ with col1:
     pav = st.session_state.pending_angle_vertex
     if pav is not None:
         st.caption("Angle of which region?")
-        regs = T.regions_at(pav)
+        regs = T.neighbors(pav)          # regions meeting at this point
         acols = st.columns(4)
         for i, rg in enumerate(regs):
             if acols[i % 4].button(f"angle of Region {rg.letter}",
@@ -795,8 +807,8 @@ with col1:
         st.rerun()
 
     # --- SAVED OBJECTS BUFFER (angles + edges) ---
-    # Unions are NOT listed here anymore: a merged region is selected by clicking
-    # it directly on the map (it shows up as "Region U1").
+    # Unions are NOT listed here: a merged region is selected by clicking it
+    # directly on the map (it shows up as "Region U1").
     saved = []
     for aname, a_sel in st.session_state.angles:
         saved.append((f"Select {aname} (angle, Region {a_sel.face.letter})", a_sel))
@@ -813,12 +825,12 @@ with col1:
 
 with col2:
     st.subheader("Tools")
-    tcols = st.columns(5)
+    tcols = st.columns(3)
     for i, t_name in enumerate(TOOLS):
         is_active = (st.session_state.active_tool == t_name)
         display = TOOL_LABELS.get(t_name, t_name)
         label = f"✅ {display}" if is_active else display
-        if tcols[i % 5].button(label, key=f"tool_{t_name}", use_container_width=True):
+        if tcols[i % 3].button(label, key=f"tool_{t_name}", use_container_width=True):
             st.session_state.active_tool = t_name
             st.rerun()
 
@@ -833,26 +845,50 @@ with col2:
         if st.session_state.selection:
             st.write("**Selected:** " + ", ".join(describe(o) for o in st.session_state.selection))
 
-        if tool == "corner":
-            s = sel_sig()
-            opts = (["all", "top_left", "top_right", "bottom_left", "bottom_right"]
-                    if s["frame"] else
-                    ["all", "leftmost", "rightmost", "topmost", "bottommost", "sharpest", "widest"])
-            modes["which"] = st.radio("Which corner?", opts, horizontal=True, key="rad_corner")
-        elif tool == "meeting_point":
-            modes["on_frame"] = st.radio("Is the point on the frame?", [False, True],
-                                         format_func=lambda b: "Yes" if b else "No",
-                                         horizontal=True, key="rad_onframe")
-        elif tool == "boundary_sequence":
-            modes["ccw"] = st.radio("Walk direction", [True, False],
-                                    format_func=lambda b: "Counter-clockwise" if b else "Clockwise",
-                                    horizontal=True, key="rad_ccw")
+        s = sel_sig()
+
+        if tool == "vertex":
+            if s["frame"]:
+                modes["which"] = st.radio(
+                    "Which frame corner?",
+                    ["all", "top_left", "top_right", "bottom_left", "bottom_right"],
+                    horizontal=True, key="rad_vtx_frame")
+            elif len(s["regions"]) >= 2:
+                modes["on_frame"] = st.radio(
+                    "Is the meeting point on the frame?", [False, True],
+                    format_func=lambda b: "Yes" if b else "No",
+                    horizontal=True, key="rad_vtx_onframe")
+            else:
+                modes["which"] = st.radio(
+                    "Which corner?",
+                    ["all", "leftmost", "rightmost", "topmost", "bottommost",
+                     "sharpest", "widest"],
+                    horizontal=True, key="rad_vtx_corner")
+
+        elif tool == "neighbors":
+            if s["regions"] and s["vertices"]:
+                modes["kind"] = "ordered"
+                modes["ccw"] = st.radio(
+                    "Walk direction", [True, False],
+                    format_func=lambda b: "Counter-clockwise" if b else "Clockwise",
+                    horizontal=True, key="rad_nbr_ccw")
+                st.caption("Region + corner → the regions passed, in walking order.")
+            elif s["regions"]:
+                modes["kind"] = st.radio(
+                    "Neighbor type", ["edge", "vertex"],
+                    format_func=lambda k: "Share an edge" if k == "edge"
+                    else "Touch only at a corner",
+                    horizontal=True, key="rad_nbr_kind")
+            elif s["vertices"]:
+                st.caption("Point selected → every region meeting at that point.")
+
         elif tool == "draw line":
             modes["style"] = st.radio("Line style", ["segment", "full line", "ray"],
                                       horizontal=True, key="rad_style")
             if modes["style"] == "ray":
                 modes["ray_direction"] = st.radio("Direction", ["up", "down", "left", "right"],
                                                   horizontal=True, key="rad_raydir")
+
         elif tool == "intersect":
             if st.session_state.lines:
                 li = st.selectbox("Line to test", range(len(st.session_state.lines)),
@@ -874,19 +910,15 @@ with col2:
                     else:
                         st.warning("Draw a second line first.")
                         modes["target"] = None
-        elif tool == "neighbors":
-            modes["kind"] = st.radio("Neighbor type", ["edge", "vertex"],
-                                     format_func=lambda k: "Share an edge" if k == "edge"
-                                     else "Touch only at a corner",
-                                     horizontal=True, key="rad_nbr")
+
         elif tool == "measure":
             modes["what"] = st.radio("Measure what?",
                                      ["distance", "gap", "angle", "area", "sides", "x", "y"],
                                      index=None, horizontal=True, key="rad_measure")
-        elif tool == "sort":
-            modes["by"] = st.radio("Sort by",
-                                   ["distance", "x", "y", "angle", "area", "sides", "gap"],
-                                   index=None, horizontal=True, key="rad_sort")
+            st.caption("One object → a value. Several → ranked small→large "
+                       "(distance/gap: the first selection is the reference).")
+
+        # 'merge' has no modes.
 
         ready, msg = validate(tool, modes)
         if tool == "intersect" and modes.get("target") is None:
