@@ -18,6 +18,7 @@ THE SEVEN VERBS
                   a region              -> the regions bordering it
                                            (share an edge, touch at a corner,
                                             or in walking order from a corner)
+                  an edge               -> the regions on either side of it
     draw        make a line             (segment, full line, or ray)
     intersect   ask a line what it hits (which regions, or another line)
     merge       join two bordering regions into one
@@ -82,6 +83,7 @@ def neighbors(obj, kind="edge", start=None, go_counterclockwise=True):
     Returns the regions related to the selection.
 
     A POINT                  -> every region that meets at that point.
+    AN EDGE                  -> the bounded regions on either side of the edge.
     A REGION, kind="edge"    -> regions sharing a full edge (a border).
     A REGION, kind="vertex"  -> regions touching only at a corner.
     A REGION, kind="ordered" -> the bordering regions in walking order;
@@ -91,12 +93,15 @@ def neighbors(obj, kind="edge", start=None, go_counterclockwise=True):
 
     Examples:
         neighbors(p)
+        neighbors(some_edge)
         neighbors(A, "edge")
         neighbors(A, "vertex")
         neighbors(A, "ordered", start=p, go_counterclockwise=True)
     """
     if _is_point(obj):
         return _engine.regions_at(obj)
+    if _is_edge(obj):
+        return _engine.regions_along_edge(obj)
     if kind == "edge":
         return _engine.edge_neighbors(obj)
     if kind == "vertex":
@@ -256,6 +261,12 @@ def _is_point(o):
 
 def _is_region(o):
     return hasattr(o, "edges") and hasattr(o, "bounded")
+
+def _is_edge(o):
+    # A half-edge has tail/head/reverse/leftFace. A region has .edges (no .tail);
+    # a point has .outarcs. So this is unambiguous against the other selectables.
+    return (hasattr(o, "tail") and hasattr(o, "head")
+            and hasattr(o, "reverse") and hasattr(o, "leftFace"))
 
 
 _CORNER_MODES = {

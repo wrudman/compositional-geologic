@@ -14,7 +14,7 @@ from sel_types import AngleSel, EdgeSel
 st.set_page_config(layout="wide", page_title="Geo Tools")
 st.title("Geologic Region Explorer")
 
-DISPLAY_SIDE = 600
+DISPLAY_SIDE = 460          # map render size; clicks are mapped back through this
 MATH_SCALE = 800.0
 
 # Xiaohui's palette
@@ -443,16 +443,17 @@ TOOL_LABELS = {
 INSTRUCTIONS = {
     "vertex": "ONE region → pick a corner • TWO+ regions → their meeting point • "
               "the FRAME → a frame corner.",
-    "neighbors": "ONE point → the regions meeting there • ONE region → its bordering "
-                 "regions (share an edge / touch at a corner) • ONE region + ONE of "
-                 "its corners → the regions passed in walking order.",
+    "neighbors": "POINT(S) → every region meeting at any selected point • EDGE(S) → "
+                 "the regions on either side of each (dropping each edge's own region) • "
+                 "ONE region → its bordering regions (share an edge / touch at a corner) • "
+                 "ONE region + ONE of its corners → the regions passed in walking order.",
     "draw line": "Two points → segment/full line • one point → ray • one edge → line "
                  "along it. Chain segments to build paths or cycles.",
     "intersect": "Pick one of your drawn lines, then ask what it hits "
                  "(which regions, or whether it crosses another line).",
     "merge": "Select TWO regions sharing a border → creates a solid purple U1, U2, …",
     "measure": "ONE thing → ONE number. length = a drawn segment (or the distance "
-               "between two selected points) • angle = a saved angle (a1, a2…) • "
+               "between two selected points) • angle = one or more saved angles (a1, a2…) • "
                "area / sides = a region.",
     "sort": "Select SEVERAL objects, then choose how to order them (smallest → "
             "largest). Several points → left→right, bottom→top, or distance from the "
@@ -471,10 +472,15 @@ def validate(tool, modes):
         return (False, "Select 1 region, the FRAME, or 2+ regions.")
 
     if tool == "neighbors":
-        if s["n"] == 1 and nV == 1:                    return (True, "")  # regions at a point
-        if s["n"] == 1 and nR == 1:                    return (True, "")  # bordering a region
-        if s["n"] == 2 and nR == 1 and nV == 1:        return (True, "")  # walking order
-        return (False, "Select 1 point, 1 region, or 1 region + 1 of its corners.")
+        # one or more POINTS (and nothing else) → regions meeting at any of them
+        if nV >= 1 and nV == s["n"]:                   return (True, "")
+        # one or more EDGES (and nothing else) → regions on either side of each
+        if nE >= 1 and nE == s["n"]:                   return (True, "")
+        # a single region → its edge / vertex neighbors
+        if nR == 1 and s["n"] == 1:                    return (True, "")
+        # a region + one of its corners → walking order
+        if nR == 1 and nV == 1 and s["n"] == 2:        return (True, "")
+        return (False, "Select point(s), edge(s), 1 region, or 1 region + 1 of its corners.")
 
     if tool == "draw line":
         if modes.get("style") == "ray":
@@ -496,7 +502,8 @@ def validate(tool, modes):
             if modes.get("line") is not None:  return (True, "")   # a drawn segment
             return (False, "Select two points, or pick a drawn segment.")
         if w == "angle":
-            return (nA == 1 and s["n"] == 1, "Select ONE saved angle (a1, a2…).")
+            # one or more saved angles, nothing else mixed in
+            return (nA >= 1 and nA == s["n"], "Select one or more saved angles (a1, a2…).")
         if w in ("area", "sides"):
             return (nR == 1 and s["n"] == 1, "Select ONE region.")
         return (False, "")
@@ -595,10 +602,10 @@ def _rank_fmt(by, v):
     return f"{v:.3f}"
 
 def ranking_finish(call_str, result, by, ref):
-    add_program(call_str + "   # smallest \u2192 largest")
-    ordered = "  \u2192  ".join(
+    add_program(call_str + "   # smallest → largest")
+    ordered = "  →  ".join(
         f"{code_name(it)} ({_rank_fmt(by, _rank_value(it, by, ref))})" for it in result)
-    add_log(f"`{call_str}` \u2014 **smallest \u2192 largest:**  {ordered}")
+    add_log(f"`{call_str}` — **smallest → largest:**  {ordered}")
     st.session_state.selection = []
     st.rerun()
 
@@ -627,16 +634,45 @@ def run_tool(tool, modes):
 
         # ---- NEIGHBORS -----------------------------------------------------
         elif tool == "neighbors":
-            if s["vertices"] and not s["regions"]:
-                v = s["vertices"][0]
-                result = T.neighbors(v)
-                finish(tool, f"neighbors({code_name(v)})", result)
+            # several EDGES → union of the regions on either side of each
+            # (each edge drops its own owning region). T.neighbors of a raw
+            # half-edge returns both bordering faces; we filter + dedupe here.
+            if s["edges"] and not s["regions"] and not s["vertices"]:
+                seen, result, names = set(), [], []
+                for es in s["edges"]:
+                    owner = es.owner
+                    for seg in es.segments:
+                        for face in T.neighbors(seg):
+                            if owner is not None and face is owner:
+                                continue
+                            if id(face) not in seen:
+                                seen.add(id(face))
+                                result.append(face)
+                    names.append(edge_name(es) or "edge")
+                call = (f"neighbors([{', '.join(names)}])"
+                        if len(names) > 1 else f"neighbors({names[0]})")
+                finish(tool, call, result)
+
+            # several POINTS → union of the regions meeting at any of them
+            elif s["vertices"] and not s["regions"]:
+                seen, result = set(), []
+                for v in s["vertices"]:
+                    for face in T.neighbors(v):
+                        if id(face) not in seen:
+                            seen.add(id(face))
+                            result.append(face)
+                names = [code_name(v) for v in s["vertices"]]
+                call = (f"neighbors([{', '.join(names)}])"
+                        if len(names) > 1 else f"neighbors({names[0]})")
+                finish(tool, call, result)
+
             elif s["regions"] and s["vertices"]:
                 reg, vtx = s["regions"][0], s["vertices"][0]
                 ccw = modes.get("ccw", True)
                 result = T.neighbors(reg, "ordered", start=vtx, go_counterclockwise=ccw)
                 finish(tool, f'neighbors({reg.letter}, "ordered", start={code_name(vtx)}, '
                              f"go_counterclockwise={ccw})", result)
+
             else:
                 reg = s["regions"][0]
                 kind = modes["kind"]
@@ -711,9 +747,16 @@ def run_tool(tool, modes):
                            visualize=False)
 
             elif w == "angle":
-                a = s["angles"][0]
-                val = T.measure(a.vertex, a.face, what="angle")
-                finish(tool, f'measure({angle_name(a)}, what="angle")', round(val, 2))
+                # Measure EACH selected angle: one program line + one log line each.
+                for a in s["angles"]:
+                    val = T.measure(a.vertex, a.face, what="angle")
+                    aname = angle_name(a)
+                    call_str = f'measure({aname}, what="angle")'
+                    var = next_name("r")
+                    add_program(f"{var} = {call_str}")
+                    add_log(f"`{call_str}` → **{round(val, 2)}°**")
+                st.session_state.selection = []
+                st.rerun()
 
             else:  # area, sides
                 reg = s["regions"][0]
@@ -728,9 +771,24 @@ def run_tool(tool, modes):
                 reg = s["regions"][0]
                 corners = T.vertex(reg, which="all")
                 result = T.sort(corners, by="angle", reference=reg)
-                ranking_finish(
-                    f'sort(vertex({reg.letter}, which="all"), by="angle", '
-                    f'reference={reg.letter})', result, "angle", reg)
+                call_str = (f'sort(vertex({reg.letter}, which="all"), by="angle", '
+                            f'reference={reg.letter})')
+
+                # Annotate an interior ARC for every corner (not a raw point dot),
+                # reusing any angle already saved for that corner+region.
+                for corner in result:
+                    existing = next(
+                        (nm for nm, a_sel in st.session_state.angles
+                         if a_sel.vertex is corner and a_sel.face is reg),
+                        None)
+                    if existing is None:
+                        aname = next_name("a")
+                        a_sel = AngleSel(corner, reg)
+                        st.session_state.angles.append((aname, a_sel))
+                        st.session_state.annotations.append(
+                            {"kind": "angle", "vertex": corner, "face": reg, "label": aname})
+
+                ranking_finish(call_str, result, "angle", reg)
 
             elif by == "area":
                 regs = list(s["regions"])
@@ -758,124 +816,39 @@ def run_tool(tool, modes):
         st.rerun()
 
 # ============================================================
-# 9. LAYOUT
+# 9. LAYOUT  (LEFT: tools/selection/run | MIDDLE: diagram+selection+saved |
+#             RIGHT: quick actions + scratch pad + program + output)
 # ============================================================
-col1, col2 = st.columns([3, 2])
+col_ctrl, col_map, col_io = st.columns([4, 5, 4], gap="medium")
 
-with col1:
-    display_img = render().resize((DISPLAY_SIDE, DISPLAY_SIDE), Image.Resampling.LANCZOS)
-    coords = streamlit_image_coordinates(display_img, key="map_click")
-
-    if coords is not None and coords != st.session_state.last_click:
-        st.session_state.last_click = coords
-        st.session_state.click_targets = hit_test(coords["x"], coords["y"])
-        st.session_state.pending_angle_vertex = None
-
-    targets = st.session_state.click_targets
-    candidate_buttons = []
-    if targets and any(targets):
-        v, f, e = targets
-        if v:
-            nm = point_name(v, create=False)
-            lbl = nm if nm else f"({v.p.x:.2f},{v.p.y:.2f})"
-            candidate_buttons.append((f"📍 Point {lbl}", "vertex", v))
-            candidate_buttons.append(("📐 Angle here…", "angle", v))
-        if f:
-            candidate_buttons.append((f"⬛ Region {f.letter}", "region", f))
-        if e:
-            for opt in edge_options(e):
-                candidate_buttons.append((f"➖ {opt.text}", "edge", opt))
-
-    if candidate_buttons:
-        st.caption("You clicked near — add to selection:")
-        ccols = st.columns(4)
-        for i, (label, kind, obj) in enumerate(candidate_buttons):
-            if ccols[i % 4].button(label, key=f"cand_{i}", use_container_width=True):
-                push_undo()
-                if kind == "angle":
-                    st.session_state.pending_angle_vertex = obj
-                elif kind == "edge":
-                    if edge_name(obj) is None:
-                        st.session_state.named_edges.append((next_name("e"), obj))
-                    st.session_state.selection.append(obj)
-                    st.session_state.click_targets = None
-                else:
-                    st.session_state.selection.append(obj)
-                    if kind == "vertex":
-                        point_name(obj)
-                    st.session_state.click_targets = None
-                st.rerun()
-
-    pav = st.session_state.pending_angle_vertex
-    if pav is not None:
-        st.caption("Angle of which region?")
-        regs = T.neighbors(pav)          # regions meeting at this point
-        acols = st.columns(4)
-        for i, rg in enumerate(regs):
-            if acols[i % 4].button(f"angle of Region {rg.letter}",
-                                   key=f"ang_{rg.letter}", use_container_width=True):
-                push_undo()
-                a_sel = AngleSel(pav, rg)
-                aname = next_name("a")
-                st.session_state.angles.append((aname, a_sel))
-                st.session_state.annotations.append(
-                    {"kind": "angle", "vertex": pav, "face": rg, "label": aname})
-                st.session_state.selection.append(a_sel)
-                st.session_state.pending_angle_vertex = None
-                st.session_state.click_targets = None
-                st.rerun()
-
-    # --- frame / clear ---
-    ucols = st.columns(4)
-    if ucols[0].button("Select FRAME", use_container_width=True):
-        push_undo()
-        st.session_state.selection.append("frame")
-        st.rerun()
-    if ucols[1].button("Clear selection", use_container_width=True):
-        push_undo()
-        st.session_state.selection = []
-        st.session_state.click_targets = None
-        st.session_state.pending_angle_vertex = None
-        st.rerun()
-
-    # --- SAVED OBJECTS BUFFER (angles + edges) ---
-    # Unions are NOT listed here: a merged region is selected by clicking it
-    # directly on the map (it shows up as "Region U1").
-    saved = []
-    for aname, a_sel in st.session_state.angles:
-        saved.append((f"Select {aname} (angle, Region {a_sel.face.letter})", a_sel))
-    for ename, e_sel in st.session_state.named_edges:
-        saved.append((f"Select {ename} ({e_sel.text})", e_sel))
-    if saved:
-        st.caption("Saved objects:")
-        scols = st.columns(4)
-        for i, (label, obj) in enumerate(saved):
-            if scols[i % 4].button(label, key=f"saved_{i}", use_container_width=True):
-                push_undo()
-                st.session_state.selection.append(obj)
-                st.rerun()
-
-with col2:
+# ----------------------------------------------------------------------------
+# LEFT PANEL — TOOLS + current selection + active tool config + RUN
+# ----------------------------------------------------------------------------
+with col_ctrl:
     st.subheader("Tools")
-    tcols = st.columns(3)
+    tcols = st.columns(2)
     for i, t_name in enumerate(TOOLS):
         is_active = (st.session_state.active_tool == t_name)
         display = TOOL_LABELS.get(t_name, t_name)
         label = f"✅ {display}" if is_active else display
-        if tcols[i % 3].button(label, key=f"tool_{t_name}", use_container_width=True):
+        if tcols[i % 2].button(label, key=f"tool_{t_name}", use_container_width=True):
             st.session_state.active_tool = t_name
             st.rerun()
 
     tool = st.session_state.active_tool
     modes = {}
 
+    # --- SELECTION ---
+    st.subheader("Selection")
+    if st.session_state.selection:
+        st.markdown("\n".join(f"- {describe(o)}" for o in st.session_state.selection))
+    else:
+        st.caption("(click the map to select regions, points, or edges)")
+
     if tool:
         display = TOOL_LABELS.get(tool, tool)
         st.markdown(f"### {display}")
         st.info(INSTRUCTIONS[tool])
-
-        if st.session_state.selection:
-            st.write("**Selected:** " + ", ".join(describe(o) for o in st.session_state.selection))
 
         s = sel_sig()
 
@@ -898,7 +871,14 @@ with col2:
                     horizontal=True, key="rad_vtx_corner")
 
         elif tool == "neighbors":
-            if s["regions"] and s["vertices"]:
+            if s["edges"] and not s["regions"] and not s["vertices"]:
+                n = len(s["edges"])
+                st.caption(f"{n} edge(s) selected → the regions on either side of each "
+                           "(dropping each edge's own region).")
+            elif s["vertices"] and not s["regions"]:
+                n = len(s["vertices"])
+                st.caption(f"{n} point(s) selected → every region meeting at any of them.")
+            elif s["regions"] and s["vertices"]:
                 modes["kind"] = "ordered"
                 modes["ccw"] = st.radio(
                     "Walk direction", [True, False],
@@ -911,8 +891,6 @@ with col2:
                     format_func=lambda k: "Share an edge" if k == "edge"
                     else "Touch only at a corner",
                     horizontal=True, key="rad_nbr_kind")
-            elif s["vertices"]:
-                st.caption("Point selected → every region meeting at that point.")
 
         elif tool == "draw line":
             modes["style"] = st.radio("Line style", ["segment", "full line", "ray"],
@@ -961,12 +939,14 @@ with col2:
                     else:
                         st.caption("Draw a segment first, or select two points.")
             elif modes["what"] == "angle":
-                st.caption("Pick a saved angle (a1, a2…) from the buffer, or create one: "
-                           "click a corner → 📐 Angle here → region.")
+                if s["angles"]:
+                    st.caption(f"{len(s['angles'])} angle(s) selected — each will be measured.")
+                else:
+                    st.caption("Pick saved angles (a1, a2…) from the map panel, or make one: "
+                               "click a corner → 📐 Angle here → region.")
 
         elif tool == "sort":
-            # Offer only the orderings that fit the current selection.
-            opts = []   # list of (label, internal_value)
+            opts = []   # (label, internal_value)
             if len(s["regions"]) == 1 and s["n"] == 1:
                 opts = [("This region's corners, by angle", "angle")]
             elif len(s["regions"]) >= 2 and len(s["regions"]) == s["n"]:
@@ -992,42 +972,147 @@ with col2:
         if st.button("▶ RUN", type="primary", disabled=not ready, use_container_width=True):
             push_undo()
             run_tool(tool, modes)
+    else:
+        st.caption("Pick a tool above to begin.")
+
+# ----------------------------------------------------------------------------
+# MIDDLE PANEL — DIAGRAM + selection-building buttons + saved objects
+# ----------------------------------------------------------------------------
+with col_map:
+    display_img = render().resize((DISPLAY_SIDE, DISPLAY_SIDE), Image.Resampling.LANCZOS)
+    coords = streamlit_image_coordinates(display_img, key="map_click")
+
+    if coords is not None and coords != st.session_state.last_click:
+        st.session_state.last_click = coords
+        st.session_state.click_targets = hit_test(coords["x"], coords["y"])
+        st.session_state.pending_angle_vertex = None
+
+    targets = st.session_state.click_targets
+    candidate_buttons = []
+    if targets and any(targets):
+        v, f, e = targets
+        if v:
+            nm = point_name(v, create=False)
+            lbl = nm if nm else f"({v.p.x:.2f},{v.p.y:.2f})"
+            candidate_buttons.append((f"📍 Point {lbl}", "vertex", v))
+            candidate_buttons.append(("📐 Angle here…", "angle", v))
+        if f:
+            candidate_buttons.append((f"⬛ Region {f.letter}", "region", f))
+        if e:
+            for opt in edge_options(e):
+                candidate_buttons.append((f"➖ {opt.text}", "edge", opt))
+
+    if candidate_buttons:
+        st.caption("You clicked near — add to selection:")
+        ccols = st.columns(2)
+        for i, (label, kind, obj) in enumerate(candidate_buttons):
+            if ccols[i % 2].button(label, key=f"cand_{i}", use_container_width=True):
+                push_undo()
+                if kind == "angle":
+                    st.session_state.pending_angle_vertex = obj
+                elif kind == "edge":
+                    if edge_name(obj) is None:
+                        st.session_state.named_edges.append((next_name("e"), obj))
+                    st.session_state.selection.append(obj)
+                    st.session_state.click_targets = None
+                else:
+                    st.session_state.selection.append(obj)
+                    if kind == "vertex":
+                        point_name(obj)
+                    st.session_state.click_targets = None
+                st.rerun()
+
+    pav = st.session_state.pending_angle_vertex
+    if pav is not None:
+        st.caption("Angle of which region?")
+        regs = T.neighbors(pav)          # regions meeting at this point
+        acols = st.columns(2)
+        for i, rg in enumerate(regs):
+            if acols[i % 2].button(f"angle of Region {rg.letter}",
+                                   key=f"ang_{rg.letter}", use_container_width=True):
+                push_undo()
+                a_sel = AngleSel(pav, rg)
+                aname = next_name("a")
+                st.session_state.angles.append((aname, a_sel))
+                st.session_state.annotations.append(
+                    {"kind": "angle", "vertex": pav, "face": rg, "label": aname})
+                st.session_state.selection.append(a_sel)
+                st.session_state.pending_angle_vertex = None
+                st.session_state.click_targets = None
+                st.rerun()
+
+    # --- frame / clear ---
+    ucols = st.columns(2)
+    if ucols[0].button("Select FRAME", use_container_width=True):
+        push_undo()
+        st.session_state.selection.append("frame")
+        st.rerun()
+    if ucols[1].button("Clear selection", use_container_width=True):
+        push_undo()
+        st.session_state.selection = []
+        st.session_state.click_targets = None
+        st.session_state.pending_angle_vertex = None
+        st.rerun()
+
+    # --- SAVED OBJECTS BUFFER (angles + edges) ---
+    # Unions are NOT listed here: a merged region is selected by clicking it
+    # directly on the map (it shows up as "Region U1").
+    saved = []
+    for aname, a_sel in st.session_state.angles:
+        saved.append((f"Select {aname} (angle, Region {a_sel.face.letter})", a_sel))
+    for ename, e_sel in st.session_state.named_edges:
+        saved.append((f"Select {ename} ({e_sel.text})", e_sel))
+    if saved:
+        st.caption("Saved objects:")
+        scols = st.columns(2)
+        for i, (label, obj) in enumerate(saved):
+            if scols[i % 2].button(label, key=f"saved_{i}", use_container_width=True):
+                push_undo()
+                st.session_state.selection.append(obj)
+                st.rerun()
+
+# ----------------------------------------------------------------------------
+# RIGHT PANEL — quick actions, scratch pad, then program trace + output log
+# (scratch pad + actions on top so they're visible without scrolling; the
+#  longer-growing Program/Output sit underneath in fixed-height scrollers.)
+# ----------------------------------------------------------------------------
+with col_io:
+    st.subheader("Quick actions")
+    qcols = st.columns(2)
+    if qcols[0].button("↩ Undo last move", use_container_width=True,
+                       disabled=not st.session_state.undo_stack):
+        undo_last()
+    if qcols[1].button("Clear drawings & program", use_container_width=True):
+        for k in ["annotations", "lines", "angles", "named_edges", "unions",
+                  "union_consumed", "undo_stack", "program", "log"]:
+            st.session_state[k] = []
+        st.session_state.point_names = {}
+        st.session_state.counters = {"p": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+        st.rerun()
+    if qcols[0].button("Clear output log", use_container_width=True):
+        st.session_state.log = []
+        st.rerun()
+    if qcols[1].button("New random map", use_container_width=True):
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+        st.rerun()
+
+    st.subheader("📝 Scratch pad")
+    st.text_area("scratch", key="scratch_pad", height=120,
+                 label_visibility="collapsed",
+                 placeholder="Free-form notes / answers. Kept until you load a new map.")
 
     st.subheader("Program")
     if st.session_state.program:
-        st.code("\n".join(st.session_state.program), language="python")
+        with st.container(height=200):
+            st.code("\n".join(st.session_state.program), language="python")
     else:
         st.caption("(your actions become code here)")
 
     st.subheader("Output")
     if not st.session_state.log:
         st.caption("(results will appear here)")
-    for entry in reversed(st.session_state.log[-10:]):
-        st.markdown(entry)
-
-# ---------- scratch pad ----------
-st.subheader("📝 Scratch pad")
-st.caption("Free-form notes / answers (e.g. list every pair that satisfies a property). "
-           "Kept until you load a new map.")
-st.text_area("scratch", key="scratch_pad", height=140, label_visibility="collapsed")
-
-# ---------- footer ----------
-st.markdown("---")
-fcols = st.columns(4)
-if fcols[0].button("↩ Undo last move", use_container_width=True,
-                   disabled=not st.session_state.undo_stack):
-    undo_last()
-if fcols[1].button("Clear drawings & program", use_container_width=True):
-    for k in ["annotations", "lines", "angles", "named_edges", "unions",
-              "union_consumed", "undo_stack", "program", "log"]:
-        st.session_state[k] = []
-    st.session_state.point_names = {}
-    st.session_state.counters = {"p": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
-    st.rerun()
-if fcols[2].button("Clear output log", use_container_width=True):
-    st.session_state.log = []
-    st.rerun()
-if fcols[3].button("New random map", use_container_width=True):
-    for k in list(st.session_state.keys()):
-        del st.session_state[k]
-    st.rerun()
+    else:
+        with st.container(height=220):
+            for entry in reversed(st.session_state.log[-25:]):
+                st.markdown(entry)

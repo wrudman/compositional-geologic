@@ -831,3 +831,21 @@ def crosses(line_a, line_b):
         raise ValueError(
             "The lines are too close to parallel or near-touching to judge clearly.")
     return result
+
+def regions_along_edge(edge):
+    """
+    Returns the bounded regions bordering a single edge — one on each side.
+ 
+    Used by neighbors() when the selection is an edge rather than a region:
+    it answers "which regions sit on either side of this edge?". The caller
+    decides whether to drop the edge's owning region from the result.
+ 
+    Example:
+        regions_along_edge(some_edge)   # -> [region_on_one_side, region_on_other]
+    """
+    out = []
+    for f in (edge.leftFace, edge.reverse.leftFace):
+        if f is not None and getattr(f, "bounded", False) and f not in out:
+            out.append(f)
+    return out
+ 
