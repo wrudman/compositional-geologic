@@ -16,7 +16,7 @@ import tools_human as T
 from sel_types import AngleSel, EdgeSel
 
 st.set_page_config(layout="wide", page_title="Geo Tools")
-st.title("Geologic Region Explorer")
+# st.title("Geologic Region Explorer")
 
 DISPLAY_SIDE = 460          # map render size; clicks are mapped back through this
 MATH_SCALE = 800.0
@@ -32,6 +32,7 @@ GRAY_SOLID = (150, 150, 150, 190)   # slightly transparent highlight for selecte
 UNION_PURPLE = (147, 112, 219, 255)
 GREEN_ANGLE = (0, 150, 0, 255)
 BLUE = (0, 0, 255, 255)
+
 
 # ============================================================
 # 0a. SELECTION-ROW HOVER CSS
@@ -777,44 +778,39 @@ TOOL_LABELS = {
 
 INSTRUCTIONS = {
     "vertex": (
-        "- **ONE region** → pick a corner\n"
-        "- **TWO+ regions** → their meeting point\n"
-        "- **The FRAME** → a frame corner"
+        "- **Select ONE Region** → select all vertices or pick a vertex with a given property: leftmost / rightmost, topmost / bottommost, point with the smallest / largest angle.\n"
+        "- **Select Region(s)** → find their meeting point(s)\n"
+        "- **Select the Frame** → a frame corner"
     ),
     "neighbors": (
-        "- **POINT(S)** → every region meeting at any selected point\n"
-        "- **EDGE(S)** → the regions on either side of each "
-        "(dropping each edge's own region)\n"
-        "- **ONE region** → its bordering regions "
-        "(share an edge / touch at a corner)\n"
-        "- **ONE region + ONE of its corners** → the regions passed, in walking order"
+        "- **Select Vertices(s)** → find all regions that share the selected vertices.\n"
+        "- **Select Edge(s)** → find the regions that share the selected edges. \n"
+        "- **Select ONE Region** → find all neighboring regions that share an edge. \n"
+        "- **Select ONE Region + ONE Vertex** → draws a cycle starting at that vertex (clockwise / counter-clockwise) and return a sequence of neighbors in order."
     ),
     "draw line": (
-        "- **Two points** → segment / full line\n"
-        "- **One point** → ray\n"
-        "- **One edge** → a line along it\n"
-        "- Chain segments together to build paths or cycles"
+        "- **Select TWO Vertices** → draw a line segment or a full line that passes through both points. \n"
+        "- **Select ONE Vertex** → draw a ray starting at that vertex that extends up / down / left /right.\n"
+        "- **Select ONE Edge** → draw a line that extends the edge in both directions.\n"
     ),
     "intersect": (
-        "- Pick one of your drawn lines\n"
-        "- Then ask what it hits — which regions, or whether it crosses another line"
+        "- **Select ONE Line** → return all regions this line crosses.\n"
+        "- **Select TWO Lines** → return whether or not the two lines cross."
     ),
     "merge": (
-        "- Select **TWO regions** sharing a border\n"
-        "- → creates a solid purple region: U1, U2, …"
+        "- **Select TWO Regions** → merges the two regions together to combine a new region. The regions must share a boarder. \n"
     ),
     "measure": (
-        "- **ONE thing → ONE number**\n"
-        "- **length** = a drawn segment (or the distance between two selected points)\n"
-        "- **angle** = one or more saved angles (a1, a2…)\n"
-        "- **area / sides** = a region"
+        "- **Select Angle(s)** → return the value of the selected angle(s).\n"
+        "- **Select ONE Region** → return the area or the number of sides or the total area of the selected region.\n"
+        "- **Select TWO Vertices** → return the distance between the two points.\n"
+        "- **Select ONE Drawn Line** → return the length of the drawn line.\n"
     ),
     "sort": (
-        "- Select **SEVERAL objects**, then choose how to order them "
-        "(smallest → largest)\n"
-        "- Several points → left→right, bottom→top, or distance from the first selected\n"
-        "- Several regions → area\n"
-        "- ONE region → its corners by angle"
+        "**All Objects are Sorted smallest → largest **"
+        "- **Select Region(s)** → order the regions by area.\n"
+        "- **Select Vertices** → order by left→right, bottom→top, or distance from the point that was selected first.\n"
+        "- **Select ONE Region** → order the angles of the selected region."
     ),
 }
 
@@ -824,10 +820,14 @@ def validate(tool, modes):
                           len(s["edges"]), len(s["angles"]), len(s["frame"]))
 
     if tool == "vertex":
-        if nF == 1 and s["n"] == 1:        return (True, "")
-        if nR == 1 and s["n"] == 1:        return (True, "")
-        if nR >= 2 and nR == s["n"]:       return (True, "")
-        return (False, "Select 1 region, the FRAME, or 2+ regions.")
+        # Vertices already sitting in the buffer — kept there from earlier
+        # Vertex-tool calls (see finish_vertex) — don't block a new call.
+        # Only the FRAME/region picks you just made actually drive this run.
+        if nF >= 1:                        return (True, "")
+        if nR == 1:                        return (True, "")
+        if nR >= 2:                        return (True, "")
+        return (False, "Select 1 region, the FRAME, or 2+ regions. "
+                        "(Points already in your buffer are kept.)")
 
     if tool == "neighbors":
         # one or more POINTS (and nothing else) → regions meeting at any of them
@@ -947,6 +947,53 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
     clear_selection()
     st.rerun()
 
+def finish_vertex(call_str, result, assign_prefix="v"):
+    """
+    Special-cased finish for the VERTEX tool only.
+
+    Every other tool clears the whole selection buffer when it finishes, so
+    the next pick starts from scratch. Vertex is the exception: many survey
+    questions need several points held at once (to measure between them,
+    sort them, draw a line through them...), so here we:
+        1. drop ONLY the regions / frame that were the INPUT to this call —
+           they're consumed, the same way they always were,
+        2. keep any vertices already sitting in the buffer from earlier
+           Vertex-tool calls (this is what was being wiped before),
+        3. add the newly computed vertex (or vertices, when there are
+           multiple meeting points) into the buffer too — skipping anything
+           already there, so re-running on the same selection doesn't pile
+           up duplicate buffer entries.
+    The buffer now only ever clears for Vertex when you press the explicit
+    "Clear selection" button.
+    """
+    keep_sel, keep_meta, seen_ids = [], [], set()
+    for o, m in zip(st.session_state.selection, st.session_state.selection_meta):
+        if o == "frame" or is_region(o):
+            continue                       # this call's input — consumed
+        keep_sel.append(o)
+        keep_meta.append(m)
+        if is_vertex(o):
+            seen_ids.add(id(o))
+    st.session_state.selection = keep_sel
+    st.session_state.selection_meta = keep_meta
+
+    new_pts = result if isinstance(result, list) else ([result] if result is not None else [])
+    for v in new_pts:
+        if is_vertex(v) and id(v) not in seen_ids:
+            seen_ids.add(id(v))
+            _name, meta = point_name_with_meta(v)
+            add_to_selection(v, meta)
+
+    if assign_prefix:
+        var = next_name("r")
+        add_program(f"{var} = {call_str}")
+    else:
+        add_program(call_str)
+    add_log(f"`{call_str}` → **{describe(result)}**")
+    st.session_state.click_targets = None
+    st.session_state.pending_angle_vertex = None
+    st.rerun()
+
 # ---- ranking display (shared by the Sort tool) ------------------------------
 def _rank_value(it, by, ref):
     if by == "distance":   return map_helpers.dist(it, ref)
@@ -976,20 +1023,20 @@ def run_tool(tool, modes):
             if s["frame"]:
                 which = modes["which"]
                 result = T.vertex("frame", which=which)
-                finish(tool, f'vertex("frame", which="{which}")', result,
-                       "v" if not isinstance(result, list) else "r")
+                finish_vertex(f'vertex("frame", which="{which}")', result,
+                               "v" if not isinstance(result, list) else "r")
             elif len(s["regions"]) >= 2:
                 onf = modes["on_frame"]
                 result = T.vertex(*s["regions"], on_frame=onf)
                 args = ", ".join(o.letter for o in s["regions"])
-                finish(tool, f"vertex({args}, on_frame={onf})", result,
-                       "v" if not isinstance(result, list) else "r")
+                finish_vertex(f"vertex({args}, on_frame={onf})", result,
+                               "v" if not isinstance(result, list) else "r")
             else:
                 reg = s["regions"][0]
                 which = modes["which"]
                 result = T.vertex(reg, which=which)
-                finish(tool, f'vertex({reg.letter}, which="{which}")', result,
-                       "v" if not isinstance(result, list) else "r")
+                finish_vertex(f'vertex({reg.letter}, which="{which}")', result,
+                               "v" if not isinstance(result, list) else "r")
 
         # ---- NEIGHBORS -----------------------------------------------------
         elif tool == "neighbors":
@@ -1504,9 +1551,9 @@ with col_io:
     if qcols[0].button("Clear output log", use_container_width=True):
         st.session_state.log = []
         st.rerun()
-    if qcols[1].button("New random map", use_container_width=True):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
+    # if qcols[1].button("New random map", use_container_width=True):
+    #     for k in list(st.session_state.keys()):
+    #         del st.session_state[k]
         st.rerun()
 
     st.subheader("📝 Scratch pad")
