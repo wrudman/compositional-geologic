@@ -16,8 +16,7 @@ import tools_human as T
 from sel_types import AngleSel, EdgeSel
 
 st.set_page_config(layout="wide", page_title="Geo Tools")
-# MAYBE CHANGE TO THE QUESTION. 
-# st.title("Geologic Region Explorer")
+st.title("Geologic Region Explorer")
 
 DISPLAY_SIDE = 460          # map render size; clicks are mapped back through this
 MATH_SCALE = 800.0
@@ -26,9 +25,10 @@ MATH_SCALE = 800.0
 GOLD_FILL = (255, 215, 0, 230)
 GOLD_OUTLINE = (184, 134, 11, 255)
 TEAL = (0, 255, 204, 255)
+ANGLE_SELECT = (203, 32, 107, 255)   # deep rose: readable + aesthetic for selected angles
 CYAN_EDGE = (0, 255, 255, 235)
 YELLOW_REGION = (255, 255, 0, 100)
-GRAY_SOLID = (150, 150, 150, 255)   # opaque highlight: replaces the old yellow film
+GRAY_SOLID = (150, 150, 150, 190)   # slightly transparent highlight for selected regions
 UNION_PURPLE = (147, 112, 219, 255)
 GREEN_ANGLE = (0, 150, 0, 255)
 BLUE = (0, 0, 255, 255)
@@ -267,7 +267,7 @@ def point_name(v, create=True):
         return None
     name = next_name("v")
     st.session_state.point_names[key] = name
-    st.session_state.annotations.append({"kind": "point", "v": v.p, "label": name})
+    st.session_state.annotations.append({"kind": "point", "p": v.p, "label": name})
     return name
 
 def point_name_with_meta(v):
@@ -280,7 +280,7 @@ def point_name_with_meta(v):
         return st.session_state.point_names[key], None
     name = next_name("v")
     st.session_state.point_names[key] = name
-    ann = {"kind": "point", "v": v.p, "label": name}
+    ann = {"kind": "point", "p": v.p, "label": name}
     st.session_state.annotations.append(ann)
     return name, {"kind": "point", "point_key": key, "annotation_ref": ann}
 
@@ -542,9 +542,9 @@ def render():
     for ann in st.session_state.annotations:
         kind = ann["kind"]
         if kind == "point":
-            highlight_vertex_x(odraw, ann["v"])
+            highlight_vertex_x(odraw, ann["p"])
             if ann.get("label"):
-                px, py = DrawGraph.V2P(ann["v"])
+                px, py = DrawGraph.V2P(ann["p"])
                 odraw.text((px + 16, py - 32), ann["label"], fill=BLUE, font=font,
                            stroke_width=2, stroke_fill=(255, 255, 255, 255))
         elif kind == "line":
@@ -566,7 +566,7 @@ def render():
             odraw.rectangle([p_bl[0], p_tr[1], p_tr[0], p_bl[1]], outline=TEAL, width=10)
         elif is_angle(o):
             draw_interior_arc_x(odraw, o.vertex, o.face, label=angle_name(o),
-                                color=TEAL, width=6)
+                                color=ANGLE_SELECT, width=6)
         elif is_edgesel(o):
             for e in o.segments:
                 highlight_edge_x(odraw, e)
@@ -583,6 +583,41 @@ def render():
 # so the browser can hit-test under the mouse and paint the gray highlight with
 # no server round-trip. Pure read-only: reuses the same V2P transform render()
 # uses, so the overlay is pixel-aligned with the PNG by construction.
+def _consumed_to_union_map():
+    """id(constituent face) -> the union face that swallowed it."""
+    m = {}
+    for union in st.session_state.unions:
+        for f in union["pair"]:
+            m[id(f)] = union["face"]
+    return m
+
+def _edge_interior_to_union(e, cmap):
+    """True if BOTH faces touching edge e were merged into the SAME union, i.e.
+    the edge now lives strictly inside a solid merged region."""
+    fa, fb = e.leftFace, e.reverse.leftFace
+    if not (getattr(fa, "bounded", False) and getattr(fb, "bounded", False)):
+        return False
+    ua, ub = cmap.get(id(fa)), cmap.get(id(fb))
+    return ua is not None and ua is ub
+
+def _vertex_interior_to_union(v, cmap):
+    """True if every bounded region around v was merged into one single union and
+    v does not sit on the outer frame — i.e. v is strictly inside a merged blob.
+    Boundary corners of a union (which still touch a live region or the frame)
+    stay selectable as corners of the union itself."""
+    bounded = [f for f in v.faces if getattr(f, "bounded", False)]
+    if not bounded:
+        return False
+    if any(not getattr(f, "bounded", False) for f in v.faces):
+        return False                    # touches the outside frame -> boundary
+    units = set()
+    for f in bounded:
+        u = cmap.get(id(f))
+        if u is None:
+            return False                # touches a live, un-merged region -> boundary
+        units.add(id(u))
+    return len(units) == 1
+
 def build_hover_shapes():
     sx = DISPLAY_SIDE / img_size[0]
     sy = DISPLAY_SIDE / img_size[1]
@@ -592,6 +627,7 @@ def build_hover_shapes():
         return [X * sx, Y * sy]
 
     consumed = st.session_state.union_consumed
+    cmap = _consumed_to_union_map()
     union_faces = [u["face"] for u in st.session_state.unions]
 
     regions = []
@@ -606,6 +642,8 @@ def build_hover_shapes():
 
     seen, edges = set(), []
     for e in res_map.edges:
+        if _edge_interior_to_union(e, cmap):     # edge now inside a merged region
+            continue
         a, b = D(e.tail.p), D(e.head.p)
         keyk = tuple(sorted([(round(a[0], 1), round(a[1], 1)),
                              (round(b[0], 1), round(b[1], 1))]))
@@ -614,7 +652,8 @@ def build_hover_shapes():
         seen.add(keyk)
         edges.append({"a": a, "b": b})
 
-    vertices = [D(v.p) for v in res_map.vertices]
+    vertices = [D(v.p) for v in res_map.vertices
+                if not _vertex_interior_to_union(v, cmap)]
 
     c0, c1 = D(Graph.Vector(0, 0)), D(Graph.Vector(maxX, maxY))
     frame = {"x0": min(c0[0], c1[0]), "y0": min(c0[1], c1[1]),
@@ -657,8 +696,11 @@ def get_math_coords(px, py):
 
 def hit_test(px, py):
     cp = get_math_coords(px, py)
+    cmap = _consumed_to_union_map()
     v_best, v_d = None, 25 / MATH_SCALE
     for v in res_map.vertices:
+        if _vertex_interior_to_union(v, cmap):   # corner now inside a merge
+            continue
         d = Graph.vecDist(cp, v.p)
         if d < v_d: v_d, v_best = d, v
 
@@ -940,7 +982,8 @@ def run_tool(tool, modes):
                 onf = modes["on_frame"]
                 result = T.vertex(*s["regions"], on_frame=onf)
                 args = ", ".join(o.letter for o in s["regions"])
-                finish(tool, f"vertex({args}, on_frame={onf})", result, "v")
+                finish(tool, f"vertex({args}, on_frame={onf})", result,
+                       "v" if not isinstance(result, list) else "r")
             else:
                 reg = s["regions"][0]
                 which = modes["which"]
@@ -1142,12 +1185,37 @@ col_ctrl, col_map, col_io = st.columns([4, 5, 4], gap="medium")
 # ----------------------------------------------------------------------------
 with col_ctrl:
     st.subheader("Tools")
+
+    # The active tool's button gets a soft mint-green shade (no checkmark).
+    # Streamlit tags each keyed button's wrapper with class "st-key-<key>",
+    # so we inject one scoped CSS rule targeting only the active tool's button.
+    _active_tool = st.session_state.active_tool
+    if _active_tool:
+        _active_key = f"tool_{_active_tool.replace(' ', '_')}"
+        st.markdown(f"""
+        <style>
+        div[class*="st-key-{_active_key}"] button {{
+            background-color: #e3f9ea;
+            border-color: #8fd4a8;
+            color: #1e5631;
+        }}
+        div[class*="st-key-{_active_key}"] button:hover {{
+            background-color: #d2f2de;
+            border-color: #6fc593;
+            color: #1e5631;
+        }}
+        div[class*="st-key-{_active_key}"] button:focus:not(:active) {{
+            border-color: #6fc593;
+            color: #1e5631;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+
     tcols = st.columns(2)
     for i, t_name in enumerate(TOOLS):
-        is_active = (st.session_state.active_tool == t_name)
         display = TOOL_LABELS.get(t_name, t_name)
-        label = f"✅ {display}" if is_active else display
-        if tcols[i % 2].button(label, key=f"tool_{t_name}", use_container_width=True):
+        if tcols[i % 2].button(display, key=f"tool_{t_name.replace(' ', '_')}",
+                               use_container_width=True):
             st.session_state.active_tool = t_name
             st.rerun()
 
@@ -1358,6 +1426,16 @@ with col_map:
     if pav is not None:
         st.caption("Angle of which region?")
         regs = T.neighbors(pav)          # regions meeting at this point
+        # If any of those regions has been merged, offer the angle of the UNION
+        # rather than the now-hidden constituent region.
+        cmap = _consumed_to_union_map()
+        seen_u, regs2 = set(), []
+        for rg in regs:
+            rg = cmap.get(id(rg), rg)
+            if id(rg) not in seen_u:
+                seen_u.add(id(rg))
+                regs2.append(rg)
+        regs = regs2
         acols = st.columns(2)
         for i, rg in enumerate(regs):
             if acols[i % 2].button(f"angle of Region {rg.letter}",
@@ -1425,6 +1503,10 @@ with col_io:
         st.rerun()
     if qcols[0].button("Clear output log", use_container_width=True):
         st.session_state.log = []
+        st.rerun()
+    if qcols[1].button("New random map", use_container_width=True):
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
         st.rerun()
 
     st.subheader("📝 Scratch pad")

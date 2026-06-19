@@ -434,23 +434,43 @@ def _line_endpoints(line):
 
 def vertex_overlap(*regions, on_frame=False):
     """
-    Returns the point where exactly the given regions meet at a single shared vertex.
+    Returns the point(s) where exactly the given regions meet at a shared vertex.
 
     Use this to identify a corner or junction common to several regions. Pass
     on_frame=True if the point also touches the outer frame of the diagram.
 
+    Two regions can touch at more than one place (e.g. they wrap around a third
+    region, or share two separate corners). In that case this returns EVERY such
+    meeting point:
+        * no meeting point   -> None
+        * exactly one        -> that single vertex
+        * two or more        -> a list of all the meeting vertices
+
     Example:
         p = vertex_overlap(E, C, on_frame=True)
-        # the point where regions E and C meet at the frame boundary
+        # the point (or points) where regions E and C meet at the frame boundary
     """
     region_set = set(regions)
+    found = []
+    seen = set()
     for v in regions[0].vertices:
+        if id(v) in seen:                      # f.vertices is a closed ring; its
+            continue                           # first vertex is repeated at the end
         faces_at_v = set(v.faces)
         bounded_faces = {f for f in faces_at_v if f.bounded}
         has_outside = any(not f.bounded for f in faces_at_v)
-        if bounded_faces == region_set and has_outside == on_frame:
-            return v
-    return None
+        # A meeting point is any corner shared by ALL the given regions. We do NOT
+        # require that *only* they touch it: away from the frame, two regions'
+        # shared corner almost always has a third region touching too, so an
+        # exact-set match would wrongly return nothing there.
+        if region_set <= bounded_faces and has_outside == on_frame:
+            seen.add(id(v))
+            found.append(v)
+    if not found:
+        return None
+    if len(found) == 1:
+        return found[0]
+    return found
 
 
 def leftmost(region):
@@ -848,4 +868,3 @@ def regions_along_edge(edge):
         if f is not None and getattr(f, "bounded", False) and f not in out:
             out.append(f)
     return out
- 
