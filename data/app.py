@@ -1,8 +1,12 @@
-# app.py
+import os
 import math
+import base64
+import tempfile
+from io import BytesIO
+
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw
-from streamlit_image_coordinates import streamlit_image_coordinates
 
 import Graph
 import BuildRandomMap
@@ -12,7 +16,8 @@ import tools_human as T
 from sel_types import AngleSel, EdgeSel
 
 st.set_page_config(layout="wide", page_title="Geo Tools")
-st.title("Geologic Region Explorer")
+# MAYBE CHANGE TO THE QUESTION. 
+# st.title("Geologic Region Explorer")
 
 DISPLAY_SIDE = 460          # map render size; clicks are mapped back through this
 MATH_SCALE = 800.0
@@ -27,6 +32,169 @@ GRAY_SOLID = (150, 150, 150, 255)   # opaque highlight: replaces the old yellow 
 UNION_PURPLE = (147, 112, 219, 255)
 GREEN_ANGLE = (0, 150, 0, 255)
 BLUE = (0, 0, 255, 255)
+
+# ============================================================
+# 0a. SELECTION-ROW HOVER CSS
+# ------------------------------------------------------------
+# Each selection row is rendered inside st.container(key=f"sel_row_{i}"),
+# which Streamlit tags with a CSS class "st-key-sel_row_<i>". This rule
+# matches that class by substring, so it scopes ONLY to selection rows —
+# nothing else in the app is touched. The remove (✕) button stays faintly
+# visible by default (so it's always clickable, even without hover/on
+# touch devices) and brightens to full opacity on row hover.
+# ============================================================
+_SELECTION_ROW_CSS = """
+<style>
+div[class*="st-key-sel_row_"]{
+    border-radius:6px;
+    padding:1px 4px;
+    transition:background-color .15s ease;
+}
+div[class*="st-key-sel_row_"]:hover{
+    background-color:rgba(150,150,150,0.15);
+}
+div[class*="st-key-sel_row_"] button{
+    opacity:0.25;
+    transition:opacity .15s ease;
+}
+div[class*="st-key-sel_row_"]:hover button{
+    opacity:1;
+}
+</style>
+"""
+
+# ============================================================
+# 0b. HOVER COMPONENT  (the ONLY new machinery)
+# ------------------------------------------------------------
+# A tiny bidirectional Streamlit component. It:
+#   * draws the rendered PNG on a base <canvas>,
+#   * paints a light-gray highlight on a top <canvas> on mousemove
+#     (100% client-side: NO server round-trip while hovering),
+#   * returns {x, y} on click — exactly the shape the old
+#     streamlit_image_coordinates returned — so every downstream
+#     line of code (hit_test, selection, tools) is unchanged.
+# The front-end is written to disk once and served as a static
+# component, so you still only edit / run this one app.py.
+# ============================================================
+_GEO_CANVAS_HTML = r"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+ html,body{margin:0;padding:0;background:transparent;}
+ #wrap{position:relative;}
+ canvas{position:absolute;top:0;left:0;}
+ #ov{cursor:crosshair;}
+</style></head><body>
+<div id="wrap"><canvas id="bg"></canvas><canvas id="ov"></canvas></div>
+<script>
+function send(type,data){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:type},data),"*");}
+const Streamlit={
+  ready:function(){send("streamlit:componentReady",{apiVersion:1});},
+  height:function(h){send("streamlit:setFrameHeight",{height:h});},
+  value:function(v){send("streamlit:setComponentValue",{value:v,dataType:"json"});}
+};
+var SIDE=460, SHAPES=null, imgEl=null, clickN=0;
+var bg=document.getElementById('bg'), ov=document.getElementById('ov');
+var bgx=bg.getContext('2d'), ovx=ov.getContext('2d');
+
+function setup(image, shapes, side){
+  SIDE=side; SHAPES=shapes;
+  bg.width=ov.width=side; bg.height=ov.height=side;
+  if(!imgEl || imgEl._src!==image){
+    imgEl=new Image(); imgEl._src=image;
+    imgEl.onload=function(){bgx.clearRect(0,0,side,side);bgx.drawImage(imgEl,0,0,side,side);};
+    imgEl.src="data:image/png;base64,"+image;
+  } else { bgx.clearRect(0,0,side,side); bgx.drawImage(imgEl,0,0,side,side); }
+  Streamlit.height(side+4);
+}
+
+function distSeg(px,py,a,b){
+  var vx=b[0]-a[0], vy=b[1]-a[1], wx=px-a[0], wy=py-a[1];
+  var c1=vx*wx+vy*wy; if(c1<=0)return Math.hypot(px-a[0],py-a[1]);
+  var c2=vx*vx+vy*vy; if(c2<=c1)return Math.hypot(px-b[0],py-b[1]);
+  var t=c1/c2; return Math.hypot(px-(a[0]+t*vx),py-(a[1]+t*vy));
+}
+function inPoly(px,py,pts){
+  var inside=false;
+  for(var i=0,j=pts.length-1;i<pts.length;j=i++){
+    var xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1];
+    if(((yi>py)!=(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+function angIn(px,py,a){
+  var d=Math.hypot(px-a.cx,py-a.cy);
+  if(Math.abs(d-a.r)>9)return false;
+  var ang=Math.atan2(py-a.cy,px-a.cx)*180/Math.PI;
+  while(ang<a.start)ang+=360; while(ang>=a.start+360)ang-=360;
+  return ang<=a.end;
+}
+function pick(px,py){
+  var S=SHAPES, i; if(!S)return null;
+  for(i=0;i<S.vertices.length;i++){var v=S.vertices[i];
+    if(Math.hypot(px-v[0],py-v[1])<11)return {t:'vertex',d:v};}
+  for(i=0;i<S.angles.length;i++){ if(angIn(px,py,S.angles[i]))return {t:'angle',d:S.angles[i]}; }
+  var be=null,bd=8;
+  for(i=0;i<S.edges.length;i++){var e=S.edges[i],dd=distSeg(px,py,e.a,e.b); if(dd<bd){bd=dd;be=e;}}
+  if(be)return {t:'edge',d:be};
+  var f=S.frame;
+  var nV=(Math.abs(px-f.x0)<8||Math.abs(px-f.x1)<8)&&py>=f.y0-8&&py<=f.y1+8;
+  var nH=(Math.abs(py-f.y0)<8||Math.abs(py-f.y1)<8)&&px>=f.x0-8&&px<=f.x1+8;
+  if(nV||nH)return {t:'frame',d:f};
+  for(i=0;i<S.regions.length;i++){ if(inPoly(px,py,S.regions[i].pts))return {t:'region',d:S.regions[i]}; }
+  return null;
+}
+var GRAY='rgba(150,150,150,';
+function paint(hit){
+  ovx.clearRect(0,0,SIDE,SIDE);
+  if(!hit)return;
+  if(hit.t==='region'){var p=hit.d.pts; ovx.beginPath(); ovx.moveTo(p[0][0],p[0][1]);
+    for(var i=1;i<p.length;i++)ovx.lineTo(p[i][0],p[i][1]); ovx.closePath();
+    ovx.fillStyle=GRAY+'0.45)'; ovx.fill();}
+  else if(hit.t==='edge'){ovx.beginPath(); ovx.moveTo(hit.d.a[0],hit.d.a[1]); ovx.lineTo(hit.d.b[0],hit.d.b[1]);
+    ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=12; ovx.lineCap='round'; ovx.stroke();}
+  else if(hit.t==='vertex'){ovx.beginPath(); ovx.arc(hit.d[0],hit.d[1],10,0,2*Math.PI);
+    ovx.fillStyle=GRAY+'0.7)'; ovx.fill();}
+  else if(hit.t==='angle'){var a=hit.d; ovx.beginPath();
+    ovx.arc(a.cx,a.cy,a.r,a.start*Math.PI/180,a.end*Math.PI/180,false);
+    ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=6; ovx.stroke();}
+  else if(hit.t==='frame'){var fr=hit.d; ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=8;
+    ovx.strokeRect(fr.x0,fr.y0,fr.x1-fr.x0,fr.y1-fr.y0);}
+}
+ov.addEventListener('mousemove',function(e){var r=ov.getBoundingClientRect();
+  paint(pick(e.clientX-r.left, e.clientY-r.top));});
+ov.addEventListener('mouseleave',function(){ovx.clearRect(0,0,SIDE,SIDE);});
+ov.addEventListener('click',function(e){var r=ov.getBoundingClientRect();
+  clickN++; Streamlit.value({x:Math.round(e.clientX-r.left),y:Math.round(e.clientY-r.top),n:clickN});});
+window.addEventListener("message",function(e){
+  if(!e.data||e.data.type!=="streamlit:render")return;
+  var a=e.data.args||{}; setup(a.image, a.shapes, a.side||460);});
+Streamlit.ready(); Streamlit.height(SIDE+4);
+</script></body></html>
+"""
+
+def _geo_canvas_component():
+    """Write the front-end once and return the declared component fn."""
+    try:
+        base = os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        base = os.getcwd()
+    comp_dir = os.path.join(base, "geo_canvas_comp")
+    try:
+        os.makedirs(comp_dir, exist_ok=True)
+        idx = os.path.join(comp_dir, "index.html")
+        if (not os.path.exists(idx)) or open(idx, "r", encoding="utf-8").read() != _GEO_CANVAS_HTML:
+            with open(idx, "w", encoding="utf-8") as f:
+                f.write(_GEO_CANVAS_HTML)
+    except Exception:
+        comp_dir = os.path.join(tempfile.gettempdir(), "geo_canvas_comp")
+        os.makedirs(comp_dir, exist_ok=True)
+        with open(os.path.join(comp_dir, "index.html"), "w", encoding="utf-8") as f:
+            f.write(_GEO_CANVAS_HTML)
+    return components.declare_component("geo_canvas", path=comp_dir)
+
+_GEO_CANVAS = _geo_canvas_component()
+
+def geo_canvas(image_b64, shapes, side, key=None):
+    return _GEO_CANVAS(image=image_b64, shapes=shapes, side=side, key=key, default=None)
 
 # ============================================================
 # 0. TYPE CHECKERS (name-based: immune to Streamlit reruns)
@@ -62,6 +230,8 @@ if "res_map" not in st.session_state:
     st.session_state.maxX, st.session_state.maxY = maxX, maxY
     st.session_state.active_tool = None
     st.session_state.selection = []
+    st.session_state.selection_meta = []   # parallel to selection: what to
+                                            # retract if that item is removed
     st.session_state.last_click = None
     st.session_state.click_targets = None
     st.session_state.pending_angle_vertex = None
@@ -75,7 +245,7 @@ if "res_map" not in st.session_state:
     st.session_state.point_names = {}
     st.session_state.program = []
     st.session_state.log = []
-    st.session_state.counters = {"p": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+    st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
 
 res_map = st.session_state.res_map
 maxX, maxY = st.session_state.maxX, st.session_state.maxY
@@ -95,10 +265,24 @@ def point_name(v, create=True):
         return st.session_state.point_names[key]
     if not create:
         return None
-    name = next_name("p")
+    name = next_name("v")
     st.session_state.point_names[key] = name
-    st.session_state.annotations.append({"kind": "point", "p": v.p, "label": name})
+    st.session_state.annotations.append({"kind": "point", "v": v.p, "label": name})
     return name
+
+def point_name_with_meta(v):
+    """Same as point_name(), but also returns cleanup metadata IF this call
+    just created a brand-new name + label (vs. reusing one the point already
+    had). Used only at the moment a vertex enters the selection, so the
+    per-item remove (✕) button can retract exactly what it added."""
+    key = id(v)
+    if key in st.session_state.point_names:
+        return st.session_state.point_names[key], None
+    name = next_name("v")
+    st.session_state.point_names[key] = name
+    ann = {"kind": "point", "v": v.p, "label": name}
+    st.session_state.annotations.append(ann)
+    return name, {"kind": "point", "point_key": key, "annotation_ref": ann}
 
 def angle_name(a_sel):
     for name, sel in st.session_state.angles:
@@ -155,6 +339,46 @@ def sel_sig():
         "frame":    [o for o in s if o == "frame"],
         "n": len(s),
     }
+
+# ---- selection add/clear/remove (keep selection + selection_meta in lockstep) ----
+def add_to_selection(obj, meta=None):
+    """Append obj to the selection together with optional cleanup metadata —
+    what to retract from the map if this exact entry is later removed via the
+    per-item ✕ button. meta is None for plain re-selections (frame, regions,
+    edges, or re-picking an already-saved point/angle): there's nothing extra
+    to clean up beyond the live highlight, which disappears on its own."""
+    st.session_state.selection.append(obj)
+    st.session_state.selection_meta.append(meta)
+
+def clear_selection():
+    st.session_state.selection = []
+    st.session_state.selection_meta = []
+
+def remove_selection_item(i):
+    """Remove the i-th selection entry (the per-row ✕ button). If selecting
+    it had just created a point label or a new angle arc, retract that too —
+    but only if it was freshly created by THIS selection event; re-picking an
+    already-saved point/angle and then removing it leaves the saved object
+    (and its permanent mark) intact."""
+    sel, meta_list = st.session_state.selection, st.session_state.selection_meta
+    if i < 0 or i >= len(sel):
+        return
+    meta = meta_list[i] if i < len(meta_list) else None
+    sel.pop(i)
+    if i < len(meta_list):
+        meta_list.pop(i)
+    if meta:
+        if meta["kind"] == "point":
+            st.session_state.point_names.pop(meta["point_key"], None)
+            ref = meta.get("annotation_ref")
+            st.session_state.annotations = [a for a in st.session_state.annotations if a is not ref]
+        elif meta["kind"] == "angle":
+            entry = meta.get("angle_entry")
+            st.session_state.angles = [a for a in st.session_state.angles if a is not entry]
+            ref = meta.get("annotation_ref")
+            st.session_state.annotations = [a for a in st.session_state.annotations if a is not ref]
+    st.session_state.click_targets = None
+    st.session_state.pending_angle_vertex = None
 
 # ============================================================
 # 3. LINE GEOMETRY
@@ -318,9 +542,9 @@ def render():
     for ann in st.session_state.annotations:
         kind = ann["kind"]
         if kind == "point":
-            highlight_vertex_x(odraw, ann["p"])
+            highlight_vertex_x(odraw, ann["v"])
             if ann.get("label"):
-                px, py = DrawGraph.V2P(ann["p"])
+                px, py = DrawGraph.V2P(ann["v"])
                 odraw.text((px + 16, py - 32), ann["label"], fill=BLUE, font=font,
                            stroke_width=2, stroke_fill=(255, 255, 255, 255))
         elif kind == "line":
@@ -353,6 +577,75 @@ def render():
 
     img.alpha_composite(overlay)
     return img
+
+# ---- HOVER SHAPES -----------------------------------------------------------
+# Serialize the live geometry into DISPLAY-space (0..DISPLAY_SIDE) vector shapes
+# so the browser can hit-test under the mouse and paint the gray highlight with
+# no server round-trip. Pure read-only: reuses the same V2P transform render()
+# uses, so the overlay is pixel-aligned with the PNG by construction.
+def build_hover_shapes():
+    sx = DISPLAY_SIDE / img_size[0]
+    sy = DISPLAY_SIDE / img_size[1]
+
+    def D(p):
+        X, Y = DrawGraph.V2P(p)
+        return [X * sx, Y * sy]
+
+    consumed = st.session_state.union_consumed
+    union_faces = [u["face"] for u in st.session_state.unions]
+
+    regions = []
+    for f in res_map.faces:
+        if not getattr(f, "bounded", False):
+            continue
+        if f in consumed:
+            continue
+        regions.append({"id": id(f), "pts": [D(v.p) for v in f.vertices]})
+    for fu in union_faces:
+        regions.append({"id": id(fu), "pts": [D(v.p) for v in fu.vertices]})
+
+    seen, edges = set(), []
+    for e in res_map.edges:
+        a, b = D(e.tail.p), D(e.head.p)
+        keyk = tuple(sorted([(round(a[0], 1), round(a[1], 1)),
+                             (round(b[0], 1), round(b[1], 1))]))
+        if keyk in seen:
+            continue
+        seen.add(keyk)
+        edges.append({"a": a, "b": b})
+
+    vertices = [D(v.p) for v in res_map.vertices]
+
+    c0, c1 = D(Graph.Vector(0, 0)), D(Graph.Vector(maxX, maxY))
+    frame = {"x0": min(c0[0], c1[0]), "y0": min(c0[1], c1[1]),
+             "x1": max(c0[0], c1[0]), "y1": max(c0[1], c1[1])}
+
+    angles = []
+    for _nm, a_sel in st.session_state.angles:
+        vertex, face = a_sel.vertex, a_sel.face
+        pc = vertex.p
+        e_in = next((e for e in face.edges if e.head.p == pc), None)
+        e_out = next((e for e in face.edges if e.tail.p == pc), None)
+        if not e_in:
+            e_in = next((e for e in face.edges if Graph.vecDist(e.head.p, pc) < 1e-9), None)
+        if not e_out:
+            e_out = next((e for e in face.edges if Graph.vecDist(e.tail.p, pc) < 1e-9), None)
+        if not e_in or not e_out:
+            continue
+        cx, cy = D(pc)
+        pxp, pyp = D(e_in.tail.p)
+        pxn, pyn = D(e_out.head.p)
+        ang_prev = math.degrees(math.atan2(pyp - cy, pxp - cx))
+        ang_next = math.degrees(math.atan2(pyn - cy, pxn - cx))
+        start, end = ang_prev, ang_next
+        while end < start:
+            end += 360
+        if abs((end - start) - 180.0) < 0.1:
+            continue
+        angles.append({"cx": cx, "cy": cy, "r": 20.0, "start": start, "end": end})
+
+    return {"regions": regions, "edges": edges, "vertices": vertices,
+            "frame": frame, "angles": angles}
 
 # ============================================================
 # 6. CLICK HIT-TESTING
@@ -441,23 +734,46 @@ TOOL_LABELS = {
 }
 
 INSTRUCTIONS = {
-    "vertex": "ONE region → pick a corner • TWO+ regions → their meeting point • "
-              "the FRAME → a frame corner.",
-    "neighbors": "POINT(S) → every region meeting at any selected point • EDGE(S) → "
-                 "the regions on either side of each (dropping each edge's own region) • "
-                 "ONE region → its bordering regions (share an edge / touch at a corner) • "
-                 "ONE region + ONE of its corners → the regions passed in walking order.",
-    "draw line": "Two points → segment/full line • one point → ray • one edge → line "
-                 "along it. Chain segments to build paths or cycles.",
-    "intersect": "Pick one of your drawn lines, then ask what it hits "
-                 "(which regions, or whether it crosses another line).",
-    "merge": "Select TWO regions sharing a border → creates a solid purple U1, U2, …",
-    "measure": "ONE thing → ONE number. length = a drawn segment (or the distance "
-               "between two selected points) • angle = one or more saved angles (a1, a2…) • "
-               "area / sides = a region.",
-    "sort": "Select SEVERAL objects, then choose how to order them (smallest → "
-            "largest). Several points → left→right, bottom→top, or distance from the "
-            "first selected • Several regions → area • ONE region → its corners by angle.",
+    "vertex": (
+        "- **ONE region** → pick a corner\n"
+        "- **TWO+ regions** → their meeting point\n"
+        "- **The FRAME** → a frame corner"
+    ),
+    "neighbors": (
+        "- **POINT(S)** → every region meeting at any selected point\n"
+        "- **EDGE(S)** → the regions on either side of each "
+        "(dropping each edge's own region)\n"
+        "- **ONE region** → its bordering regions "
+        "(share an edge / touch at a corner)\n"
+        "- **ONE region + ONE of its corners** → the regions passed, in walking order"
+    ),
+    "draw line": (
+        "- **Two points** → segment / full line\n"
+        "- **One point** → ray\n"
+        "- **One edge** → a line along it\n"
+        "- Chain segments together to build paths or cycles"
+    ),
+    "intersect": (
+        "- Pick one of your drawn lines\n"
+        "- Then ask what it hits — which regions, or whether it crosses another line"
+    ),
+    "merge": (
+        "- Select **TWO regions** sharing a border\n"
+        "- → creates a solid purple region: U1, U2, …"
+    ),
+    "measure": (
+        "- **ONE thing → ONE number**\n"
+        "- **length** = a drawn segment (or the distance between two selected points)\n"
+        "- **angle** = one or more saved angles (a1, a2…)\n"
+        "- **area / sides** = a region"
+    ),
+    "sort": (
+        "- Select **SEVERAL objects**, then choose how to order them "
+        "(smallest → largest)\n"
+        "- Several points → left→right, bottom→top, or distance from the first selected\n"
+        "- Several regions → area\n"
+        "- ONE region → its corners by angle"
+    ),
 }
 
 def validate(tool, modes):
@@ -531,7 +847,7 @@ def add_program(line): st.session_state.program.append(line)
 def add_log(text):     st.session_state.log.append(text)
 
 # ---- single-step UNDO -------------------------------------------------------
-_UNDO_KEYS = ["selection", "annotations", "lines", "angles", "named_edges",
+_UNDO_KEYS = ["selection", "selection_meta", "annotations", "lines", "angles", "named_edges",
               "unions", "union_consumed", "point_names", "counters",
               "program", "log"]
 
@@ -586,7 +902,7 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
     else:
         add_program(call_str)
     add_log(f"`{call_str}` → **{describe(result)}**")
-    st.session_state.selection = []
+    clear_selection()
     st.rerun()
 
 # ---- ranking display (shared by the Sort tool) ------------------------------
@@ -606,7 +922,7 @@ def ranking_finish(call_str, result, by, ref):
     ordered = "  →  ".join(
         f"{code_name(it)} ({_rank_fmt(by, _rank_value(it, by, ref))})" for it in result)
     add_log(f"`{call_str}` — **smallest → largest:**  {ordered}")
-    st.session_state.selection = []
+    clear_selection()
     st.rerun()
 
 def run_tool(tool, modes):
@@ -619,18 +935,18 @@ def run_tool(tool, modes):
                 which = modes["which"]
                 result = T.vertex("frame", which=which)
                 finish(tool, f'vertex("frame", which="{which}")', result,
-                       "p" if not isinstance(result, list) else "r")
+                       "v" if not isinstance(result, list) else "r")
             elif len(s["regions"]) >= 2:
                 onf = modes["on_frame"]
                 result = T.vertex(*s["regions"], on_frame=onf)
                 args = ", ".join(o.letter for o in s["regions"])
-                finish(tool, f"vertex({args}, on_frame={onf})", result, "p")
+                finish(tool, f"vertex({args}, on_frame={onf})", result, "v")
             else:
                 reg = s["regions"][0]
                 which = modes["which"]
                 result = T.vertex(reg, which=which)
                 finish(tool, f'vertex({reg.letter}, which="{which}")', result,
-                       "p" if not isinstance(result, list) else "r")
+                       "v" if not isinstance(result, list) else "r")
 
         # ---- NEIGHBORS -----------------------------------------------------
         elif tool == "neighbors":
@@ -700,7 +1016,7 @@ def run_tool(tool, modes):
             st.session_state.annotations.append({"kind": "line", "line": line, "label": name})
             add_program(f"{name} = {call}")
             add_log(f"`{name} = {call}` → drawn")
-            st.session_state.selection = []
+            clear_selection()
             st.rerun()
 
         # ---- INTERSECT -----------------------------------------------------
@@ -727,7 +1043,7 @@ def run_tool(tool, modes):
             st.session_state.union_consumed += [fa, fb]
             add_program(f"{uname} = merge({fa.letter}, {fb.letter})")
             add_log(f"`{uname} = merge({fa.letter}, {fb.letter})` → new solid region **{uname}**")
-            st.session_state.selection = []
+            clear_selection()
             st.rerun()
 
         # ---- MEASURE (one thing → one number) ------------------------------
@@ -755,7 +1071,7 @@ def run_tool(tool, modes):
                     var = next_name("r")
                     add_program(f"{var} = {call_str}")
                     add_log(f"`{call_str}` → **{round(val, 2)}°**")
-                st.session_state.selection = []
+                clear_selection()
                 st.rerun()
 
             else:  # area, sides
@@ -812,7 +1128,7 @@ def run_tool(tool, modes):
 
     except Exception as ex:
         add_log(f"❌ **{tool}** failed: {ex}")
-        st.session_state.selection = []
+        clear_selection()
         st.rerun()
 
 # ============================================================
@@ -841,7 +1157,15 @@ with col_ctrl:
     # --- SELECTION ---
     st.subheader("Selection")
     if st.session_state.selection:
-        st.markdown("\n".join(f"- {describe(o)}" for o in st.session_state.selection))
+        st.markdown(_SELECTION_ROW_CSS, unsafe_allow_html=True)
+        for i, o in enumerate(st.session_state.selection):
+            row = st.container(key=f"sel_row_{i}")
+            rcols = row.columns([9, 1])
+            rcols[0].markdown(f"- {describe(o)}")
+            if rcols[1].button("✕", key=f"sel_remove_{i}", help="Remove from selection"):
+                push_undo()
+                remove_selection_item(i)
+                st.rerun()
     else:
         st.caption("(click the map to select regions, points, or edges)")
 
@@ -980,7 +1304,14 @@ with col_ctrl:
 # ----------------------------------------------------------------------------
 with col_map:
     display_img = render().resize((DISPLAY_SIDE, DISPLAY_SIDE), Image.Resampling.LANCZOS)
-    coords = streamlit_image_coordinates(display_img, key="map_click")
+
+    # encode the rendered map + serialize hover geometry, then hand both to the
+    # custom canvas component. Hovering is painted in the browser; clicks come
+    # back as {x, y} exactly like the old streamlit_image_coordinates call.
+    _buf = BytesIO()
+    display_img.save(_buf, format="PNG")
+    _img_b64 = base64.b64encode(_buf.getvalue()).decode()
+    coords = geo_canvas(_img_b64, build_hover_shapes(), DISPLAY_SIDE, key="map_click")
 
     if coords is not None and coords != st.session_state.last_click:
         st.session_state.last_click = coords
@@ -1013,12 +1344,13 @@ with col_map:
                 elif kind == "edge":
                     if edge_name(obj) is None:
                         st.session_state.named_edges.append((next_name("e"), obj))
-                    st.session_state.selection.append(obj)
+                    add_to_selection(obj)
                     st.session_state.click_targets = None
                 else:
-                    st.session_state.selection.append(obj)
+                    meta = None
                     if kind == "vertex":
-                        point_name(obj)
+                        _name, meta = point_name_with_meta(obj)
+                    add_to_selection(obj, meta)
                     st.session_state.click_targets = None
                 st.rerun()
 
@@ -1033,10 +1365,12 @@ with col_map:
                 push_undo()
                 a_sel = AngleSel(pav, rg)
                 aname = next_name("a")
-                st.session_state.angles.append((aname, a_sel))
-                st.session_state.annotations.append(
-                    {"kind": "angle", "vertex": pav, "face": rg, "label": aname})
-                st.session_state.selection.append(a_sel)
+                angle_entry = (aname, a_sel)
+                st.session_state.angles.append(angle_entry)
+                ann = {"kind": "angle", "vertex": pav, "face": rg, "label": aname}
+                st.session_state.annotations.append(ann)
+                add_to_selection(a_sel, {"kind": "angle", "angle_entry": angle_entry,
+                                         "annotation_ref": ann})
                 st.session_state.pending_angle_vertex = None
                 st.session_state.click_targets = None
                 st.rerun()
@@ -1045,11 +1379,11 @@ with col_map:
     ucols = st.columns(2)
     if ucols[0].button("Select FRAME", use_container_width=True):
         push_undo()
-        st.session_state.selection.append("frame")
+        add_to_selection("frame")
         st.rerun()
     if ucols[1].button("Clear selection", use_container_width=True):
         push_undo()
-        st.session_state.selection = []
+        clear_selection()
         st.session_state.click_targets = None
         st.session_state.pending_angle_vertex = None
         st.rerun()
@@ -1068,7 +1402,7 @@ with col_map:
         for i, (label, obj) in enumerate(saved):
             if scols[i % 2].button(label, key=f"saved_{i}", use_container_width=True):
                 push_undo()
-                st.session_state.selection.append(obj)
+                add_to_selection(obj)
                 st.rerun()
 
 # ----------------------------------------------------------------------------
@@ -1087,14 +1421,10 @@ with col_io:
                   "union_consumed", "undo_stack", "program", "log"]:
             st.session_state[k] = []
         st.session_state.point_names = {}
-        st.session_state.counters = {"p": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+        st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
         st.rerun()
     if qcols[0].button("Clear output log", use_container_width=True):
         st.session_state.log = []
-        st.rerun()
-    if qcols[1].button("New random map", use_container_width=True):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
         st.rerun()
 
     st.subheader("📝 Scratch pad")
