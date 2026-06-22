@@ -2,7 +2,14 @@ import os
 import math
 import base64
 import tempfile
+import json
+import pickle
+import random
+import re
+import time
+import uuid
 from io import BytesIO
+from datetime import datetime
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -15,11 +22,151 @@ import map_helpers
 import tools_human as T
 from sel_types import AngleSel, EdgeSel
 
-st.set_page_config(layout="wide", page_title="Geo Tools")
+st.set_page_config(layout="wide", page_title="Geometry Reasoning Survey")
 # st.title("Geologic Region Explorer")
 
 DISPLAY_SIDE = 460          # map render size; clicks are mapped back through this
 MATH_SCALE = 800.0
+DEFAULT_PARTICIPANT_ID = "local_demo"
+SURVEY_VERSION = "compositional_questions_v1"
+SURVEY_QUESTION_COUNT = 24
+RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
+
+FALLBACK_QUESTION_BANK = [
+    {
+        "question_id": "q001_total_regions",
+        "seed": 35,
+        "num_regions": 8,
+        "question_text": "How many regions are there in the diagram in total?",
+        "answer": "",
+        "answer_type": "fill_in_the_blank",
+        "answer_placeholder": "Enter a number",
+    },
+    {
+        "question_id": "q002_regions_bordering_b",
+        "seed": 73,
+        "num_regions": 8,
+        "question_text": (
+            "Which regions border region B along an edge? "
+            "Bordering along an edge is not the same as bordering along a vertex."
+        ),
+        "answer": "",
+        "answer_type": "fill_in_the_blank",
+        "answer_placeholder": "Example: A, C, F",
+    },
+    {
+        "question_id": "q003_line_path",
+        "seed": 42,
+        "num_regions": 8,
+        "question_text": "Use the tools to solve the current geometry question.",
+        "answer": "",
+        "answer_type": "fill_in_the_blank",
+        "answer_placeholder": "Enter your answer",
+    },
+]
+
+def _safe_id(value):
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in str(value))
+    return safe[:80] or DEFAULT_PARTICIPANT_ID
+
+def get_participant_id():
+    if st.session_state.get("participant_id"):
+        return st.session_state["participant_id"]
+    raw_id = (
+        st.query_params.get("participant_id")
+        or st.query_params.get("pid")
+        or st.query_params.get("survey_instance")
+    )
+    if not raw_id:
+        raw_id = f"participant_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    participant_id = _safe_id(raw_id)
+    st.session_state["participant_id"] = participant_id
+    return participant_id
+
+def find_dataset_path():
+    explicit_path = st.query_params.get("dataset_path") or os.environ.get("GEOMETRY_SURVEY_DATASET")
+    if explicit_path and os.path.exists(explicit_path):
+        return explicit_path
+    candidates = []
+    for root, _, files in os.walk(os.getcwd()):
+        for filename in ("dataset_24_balanced.json", "dataset_25_balanced.json"):
+            if filename in files:
+                candidates.append(os.path.join(root, filename))
+    return sorted(candidates)[-1] if candidates else ""
+
+def normalize_dataset_item(item, item_index):
+    question = item.get("question", item)
+    question_id = question.get("question_id", item.get("pair_id", f"q_{item_index:03d}"))
+    return {
+        "question_id": str(question_id),
+        "pair_id": item.get("pair_id", f"pair_{item_index:03d}"),
+        "seed": item.get("seed", question.get("seed", 42)),
+        "num_regions": item.get("region_count", question.get("num_regions", 8)),
+        "diagram_complexity": item.get("diagram_complexity", ""),
+        "question_text": question.get("question_text", ""),
+        "answer": question.get("answer", ""),
+        "answer_type": question.get("answer_type", "fill_in_the_blank"),
+        "answer_placeholder": question.get("answer_placeholder", ""),
+        "choices": question.get("choices", []),
+    }
+
+def load_question_bank(participant_id):
+    dataset_path = find_dataset_path()
+    if not dataset_path:
+        return FALLBACK_QUESTION_BANK, ""
+    try:
+        with open(dataset_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        return FALLBACK_QUESTION_BANK, ""
+    raw_items = payload.get("items", payload if isinstance(payload, list) else [])
+    normalized = [
+        normalize_dataset_item(item, idx)
+        for idx, item in enumerate(raw_items)
+    ]
+    normalized = [
+        item for item in normalized
+        if item.get("question_text") and item.get("seed") is not None
+    ]
+    if not normalized:
+        return FALLBACK_QUESTION_BANK, dataset_path
+    sampler = random.Random(participant_id)
+    sampler.shuffle(normalized)
+    return normalized[: min(SURVEY_QUESTION_COUNT, len(normalized))], dataset_path
+
+def _answer_matches_choices(answer, choices):
+    answer_norm = str(answer).strip().lower()
+    return bool(answer_norm) and answer_norm in {
+        str(choice).strip().lower()
+        for choice in choices
+    }
+
+def get_two_choice_options(question):
+    question_lower = question.get("question_text", "").lower()
+    answer_text = str(question.get("answer", ""))
+    explicit_choices = question.get("choices") or []
+    if explicit_choices and _answer_matches_choices(answer_text, explicit_choices):
+        return explicit_choices
+    yes_no_question = re.match(
+        r"^\s*(do|does|did|is|are|was|were|can|could|will|would|has|have)\b",
+        question_lower,
+    )
+    if yes_no_question and answer_text.strip().lower() in {"yes", "no"}:
+        return ["Yes", "No"]
+    if "clockwise or counterclockwise" in question_lower or "counterclockwise or clockwise" in question_lower:
+        return ["Clockwise", "Counterclockwise"]
+    if "above or below" in question_lower or "below or above" in question_lower:
+        return ["Above", "Below"]
+    return None
+
+def normalized_answer_type(question):
+    return "two_choice" if get_two_choice_options(question) else "fill_in_the_blank"
+
+PARTICIPANT_ID = get_participant_id()
+if "question_bank" not in st.session_state or "dataset_path" not in st.session_state:
+    st.session_state.question_bank, st.session_state.dataset_path = load_question_bank(PARTICIPANT_ID)
+QUESTION_BANK = st.session_state.question_bank
+DATASET_PATH = st.session_state.dataset_path
 
 # Xiaohui's palette
 GOLD_FILL = (255, 215, 0, 230)
@@ -207,18 +354,103 @@ def is_region(o):
     return (not is_angle(o) and not is_edgesel(o)
             and hasattr(o, "edges") and hasattr(o, "bounded"))
 
-# ============================================================
-# 1. SESSION INIT
-# ============================================================
-if "res_map" not in st.session_state:
+def question_id_for(question, index):
+    return question.get("question_id", f"q_{index:03d}")
+
+def _locked_next_question_index():
+    return min(
+        st.session_state.get("max_confirmed_question_index", -1) + 1,
+        len(QUESTION_BANK),
+    )
+
+def current_question():
+    if "survey_question_index" not in st.session_state:
+        st.session_state.survey_question_index = 0
+    idx = _locked_next_question_index()
+    idx = max(0, min(idx, len(QUESTION_BANK) - 1))
+    st.session_state.survey_question_index = idx
+    return QUESTION_BANK[idx]
+
+def init_survey_timer():
+    if "survey_started_at" not in st.session_state:
+        st.session_state.survey_started_at = time.time()
+
+def survey_elapsed_seconds():
+    started = st.session_state.get("survey_started_at", time.time())
+    return max(0, int(time.time() - started))
+
+def format_elapsed(seconds):
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+def render_timer():
+    elapsed = survey_elapsed_seconds()
+    components.html(
+        f"""
+        <div style="
+            display:flex;
+            justify-content:flex-end;
+            font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+        ">
+          <div id="survey-timer" style="
+              min-width:150px;
+              border:1px solid #d7dee8;
+              border-radius:8px;
+              padding:9px 12px;
+              background:linear-gradient(180deg,#ffffff 0%,#f6f8fb 100%);
+              box-shadow:0 1px 2px rgba(15,23,42,0.06);
+              text-align:right;
+          ">
+            <div style="
+                font-size:0.68rem;
+                font-weight:650;
+                letter-spacing:0.08em;
+                text-transform:uppercase;
+                color:#64748b;
+            ">Survey time</div>
+            <div id="survey-timer-value" style="
+                margin-top:2px;
+                font-variant-numeric:tabular-nums;
+                font-size:1.35rem;
+                font-weight:750;
+                color:#1f2937;
+                line-height:1.15;
+            ">{format_elapsed(elapsed)}</div>
+          </div>
+        </div>
+        <script>
+        const startSeconds = {elapsed};
+        const startMs = Date.now();
+        const value = document.getElementById("survey-timer-value");
+        function pad(n) {{ return String(n).padStart(2, "0"); }}
+        function format(total) {{
+            total = Math.max(0, Math.floor(total));
+            const s = total % 60;
+            const mTotal = Math.floor(total / 60);
+            const m = mTotal % 60;
+            const h = Math.floor(mTotal / 60);
+            return h ? `${{h}}:${{pad(m)}}:${{pad(s)}}` : `${{m}}:${{pad(s)}}`;
+        }}
+        setInterval(() => {{
+            value.textContent = format(startSeconds + (Date.now() - startMs) / 1000);
+        }}, 1000);
+        </script>
+        """,
+        height=76,
+    )
+
+def reset_tool_state_for_question(question):
     Graph.initialize()
     maxX, maxY = 1.0, 1.0
-    seed = 42
-    res_map = BuildRandomMap.BuildRandomMap(8, maxX, maxY, seed)
+    seed = question.get("seed", 42)
+    num_regions = question.get("num_regions", 8)
+    res_map = BuildRandomMap.BuildRandomMap(num_regions, maxX, maxY, seed)
     map_helpers.use_map(res_map)
     T.setup(res_map)
 
-    # lock region label positions ONCE
     face_label_cache = {}
     for face in res_map.faces:
         if face.bounded:
@@ -231,22 +463,51 @@ if "res_map" not in st.session_state:
     st.session_state.maxX, st.session_state.maxY = maxX, maxY
     st.session_state.active_tool = None
     st.session_state.selection = []
-    st.session_state.selection_meta = []   # parallel to selection: what to
-                                            # retract if that item is removed
+    st.session_state.selection_meta = []
     st.session_state.last_click = None
     st.session_state.click_targets = None
     st.session_state.pending_angle_vertex = None
     st.session_state.annotations = []
-    st.session_state.lines = []        # [(name, line_dict)]
-    st.session_state.angles = []       # [(name, AngleSel)]
-    st.session_state.named_edges = []  # [(name, EdgeSel)]
-    st.session_state.unions = []       # [{"name","face","pair","label_xy"}]
-    st.session_state.union_consumed = []   # constituent faces now hidden inside a union
-    st.session_state.undo_stack = []   # snapshots for single-step undo
+    st.session_state.lines = []
+    st.session_state.angles = []
+    st.session_state.named_edges = []
+    st.session_state.unions = []
+    st.session_state.union_consumed = []
+    st.session_state.undo_stack = []
     st.session_state.point_names = {}
     st.session_state.program = []
     st.session_state.log = []
     st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+    st.session_state.loaded_question_id = question.get("question_id", "")
+
+# ============================================================
+# 1. SESSION INIT
+# ============================================================
+if "survey_responses" not in st.session_state:
+    st.session_state.survey_responses = {}
+if "last_result_path" not in st.session_state:
+    st.session_state.last_result_path = ""
+if "survey_completed" not in st.session_state:
+    st.session_state.survey_completed = False
+if "timer_hidden" not in st.session_state:
+    st.session_state.timer_hidden = False
+if "max_confirmed_question_index" not in st.session_state:
+    answered_indices = [
+        int(response.get("question_index", -1))
+        for response in st.session_state.survey_responses.values()
+        if isinstance(response, dict) and str(response.get("answer", "")).strip()
+    ]
+    st.session_state.max_confirmed_question_index = max(answered_indices, default=-1)
+if _locked_next_question_index() >= len(QUESTION_BANK):
+    st.session_state.survey_completed = True
+
+QUESTION = current_question()
+if (
+    "res_map" not in st.session_state
+    or st.session_state.get("loaded_question_id") != QUESTION.get("question_id", "")
+):
+    reset_tool_state_for_question(QUESTION)
+init_survey_timer()
 
 res_map = st.session_state.res_map
 maxX, maxY = st.session_state.maxX, st.session_state.maxY
@@ -1221,10 +1482,121 @@ def run_tool(tool, modes):
         clear_selection()
         st.rerun()
 
+def _ts():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+def survey_answer_key(question):
+    return f"answer_{st.session_state.survey_question_index}_{question.get('question_id', '')}"
+
+def current_trial_record(question, answer):
+    return {
+        "participant_id": PARTICIPANT_ID,
+        "survey_version": SURVEY_VERSION,
+        "question_index": st.session_state.survey_question_index,
+        "question": question,
+        "answer": answer,
+        "survey_elapsed_seconds": survey_elapsed_seconds(),
+        "submitted_at": _ts(),
+        "program": list(st.session_state.program),
+        "output_log": list(st.session_state.log),
+    }
+
+def result_file_path():
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    return os.path.join(RESULTS_DIR, f"compositional_survey_{PARTICIPANT_ID}.json")
+
+def save_survey_results():
+    payload = {
+        "participant_id": PARTICIPANT_ID,
+        "survey_version": SURVEY_VERSION,
+        "dataset_path": DATASET_PATH,
+        "saved_at": _ts(),
+        "question_count": len(QUESTION_BANK),
+        "questions": QUESTION_BANK,
+        "responses": st.session_state.get("survey_responses", {}),
+    }
+    path = result_file_path()
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
+    st.session_state.last_result_path = path
+    return path
+
+if st.session_state.survey_completed:
+    st.title("Geometry Reasoning Survey")
+    st.success("Survey complete. Thank you.")
+    if st.session_state.last_result_path:
+        st.caption(f"Saved result file: {st.session_state.last_result_path}")
+    st.stop()
+
 # ============================================================
 # 9. LAYOUT  (LEFT: tools/selection/run | MIDDLE: diagram+selection+saved |
 #             RIGHT: quick actions + scratch pad + program + output)
 # ============================================================
+question_number = st.session_state.survey_question_index + 1
+st.title("Geometry Reasoning Survey")
+top_left, top_right = st.columns([3, 1])
+with top_left:
+    st.subheader(f"Question {question_number} of {len(QUESTION_BANK)}")
+    st.write(QUESTION.get("question_text", ""))
+    if DATASET_PATH:
+        st.caption(f"Dataset: {os.path.basename(DATASET_PATH)}")
+    else:
+        st.caption("Using fallback questions.")
+with top_right:
+    st.caption(f"Participant: {PARTICIPANT_ID}")
+    st.caption(f"Seed: {QUESTION.get('seed', '')}; regions: {QUESTION.get('num_regions', '')}")
+    if st.session_state.timer_hidden:
+        if st.button("Show timer", use_container_width=True):
+            st.session_state.timer_hidden = False
+            st.rerun()
+    else:
+        render_timer()
+        if st.button("Hide timer", use_container_width=True):
+            st.session_state.timer_hidden = True
+            st.rerun()
+
+with st.form("survey_answer_form", clear_on_submit=False):
+    key = survey_answer_key(QUESTION)
+    existing = st.session_state.survey_responses.get(QUESTION.get("question_id", ""), {}).get("answer", "")
+    if normalized_answer_type(QUESTION) == "two_choice":
+        options = get_two_choice_options(QUESTION)
+        current_index = options.index(existing) if existing in options else None
+        answer_value = st.radio("Answer:", options, index=current_index, horizontal=True, key=f"{key}_choice")
+    else:
+        answer_value = st.text_input(
+            "Answer:",
+            value=existing,
+            placeholder=QUESTION.get("answer_placeholder", ""),
+            key=f"{key}_text",
+        )
+    is_last_question = st.session_state.survey_question_index >= len(QUESTION_BANK) - 1
+    button_label = "Confirm Final Answer" if is_last_question else "Confirm Answer"
+    submitted = st.form_submit_button(button_label, type="primary")
+    if submitted:
+        cleaned = (answer_value or "").strip()
+        if not cleaned:
+            st.error("Please enter an answer before saving.")
+        else:
+            qid = question_id_for(QUESTION, st.session_state.survey_question_index)
+            st.session_state.survey_responses[qid] = current_trial_record(QUESTION, cleaned)
+            st.session_state.max_confirmed_question_index = max(
+                st.session_state.max_confirmed_question_index,
+                st.session_state.survey_question_index,
+            )
+            path = save_survey_results()
+            st.success(f"Saved answer. Results file: {path}")
+            if is_last_question:
+                st.session_state.survey_completed = True
+                st.rerun()
+            else:
+                st.session_state.survey_question_index += 1
+                st.rerun()
+
+if st.session_state.last_result_path:
+    st.caption(f"Last saved: {st.session_state.last_result_path}")
+
+st.divider()
+
 col_ctrl, col_map, col_io = st.columns([4, 5, 4], gap="medium")
 
 # ----------------------------------------------------------------------------
@@ -1554,7 +1926,6 @@ with col_io:
     # if qcols[1].button("New random map", use_container_width=True):
     #     for k in list(st.session_state.keys()):
     #         del st.session_state[k]
-        st.rerun()
 
     st.subheader("📝 Scratch pad")
     st.text_area("scratch", key="scratch_pad", height=120,
