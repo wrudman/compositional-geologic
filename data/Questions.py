@@ -16,16 +16,19 @@ failureOutput = ("", "", False, 0)
 
 
 #Definiton for convexity, passing thorough interior etc
-convex_def = (
-    "A region is convex if, for any two points inside the region, the straight line between them stays entirely inside the region (e.g., a square or a circle).\n"
-    "A region is not convex if it has a “dent” or “cave-in.” In this case, you can pick two points inside the region such that the straight line between them is not entirely contained within the region.\n"
-)
-union_def = (
-    "A region union is the region formed by two or more adjacent regions. The union is treated as a single region. The shared boundary between the original regions is ignored and is not part of the outer boundary of the resulting region.\n"
-)
-int_angle_def = (
-    "An interior angle is the angle inside a region at a corner (vertex), formed by the two edges meeting at that vertex.\n"
-)
+# convex_def = (
+#     "A region is convex if, for any two points inside the region, the straight line between them stays entirely inside the region (e.g., a square or a circle).\n"
+#     "A region is not convex if it has a "dent" or "cave-in." In this case, you can pick two points inside the region such that the straight line between them is not entirely contained within the region.\n"
+# )
+# union_def = (
+#     "A region union is the region formed by two or more adjacent regions. The union is treated as a single region. The shared boundary between the original regions is ignored and is not part of the outer boundary of the resulting region.\n"
+# )
+# int_angle_def = (
+#     "An interior angle is the angle inside a region at a corner (vertex), formed by the two edges meeting at that vertex.\n"
+# )
+
+union_def  = ""
+int_angle_def = ""
 border_edge_def = (
     "Bordering along an edge is not the same as bordering along a vertex.\n"
 )
@@ -37,6 +40,9 @@ multiple_times_def = (
 )
 outside_def = (
     "For this question, treat the area outside the frame as a valid region and label it as \"Outside\".\n"
+)
+none_answer_def = (
+    "If there is not any, input \"None\".\n"
 )
 
 
@@ -65,6 +71,7 @@ def DisplayQAs(qaList):
 def Question1(face):
     question = "Which regions border region " + face.letter+ "? "
     question += border_edge_def
+    question += none_answer_def
     answerSet = set()
     for e in face.edges:
         fb = e.reverse.leftFace        
@@ -207,16 +214,16 @@ def BetweenDirs(da,db,dc):
         cb = ba+2*np.pi
     return ba < np.pi-angleeps and cb < np.pi-angleeps  
 
-#                          QUESTION 3            
+# #                          QUESTION 3            
 
-def Question3(map):
-    question = "Which if any of the regions are not convex?\n" + convex_def 
-    answerSet = set()
-    for face in map.faces:            
-        if face.bounded and not face.convex:
-            answerSet.add(face)
-    answerText = Faces2Text(answerSet)         
-    return question, answerText, answerSet, 1+len(answerSet)
+# def Question3(map):
+#     question = "Which if any of the regions are not convex?\n" + convex_def 
+#     answerSet = set()
+#     for face in map.faces:            
+#         if face.bounded and not face.convex:
+#             answerSet.add(face)
+#     answerText = Faces2Text(answerSet)         
+#     return question, answerText, answerSet, 1+len(answerSet)
     
 
 
@@ -228,9 +235,9 @@ def Question4(face,v,cyclicDirection,vIdentCode):
     vName = identifyVertex(v,vIdentCode)
     if vName == "":
          return failureOutput  
-    questionText = "Let p be " + vName + ". "
-    questionText += "Suppose you start at p and go " + cyclicPhrase(cyclicDirection)
-    questionText += " around " + face.letter + " until you have returned to p. "
+    questionText = "Let v₁ be " + vName + ". "
+    questionText += "Suppose you start at v₁ and go " + cyclicPhrase(cyclicDirection)
+    questionText += " around " + face.letter + " until you have returned to v₁. "
     questionText += "What regions do you pass through on your " + oppSidePhrase(cyclicDirection) 
     questionText += " in sequence?\n"
     questionText += outside_def
@@ -286,6 +293,7 @@ def oppSidePhrase(direction):
 
 def Question5(map):
     question = "Which pairs of regions, if any, share a vertex but not along an edge?\n"
+    question += none_answer_def
     answerSet = set()
     answerText="{"
     found = False
@@ -313,22 +321,23 @@ def Question5(map):
     return question, answerText, answerSet, 1+len(answerSet)
 
 
-#                          QUESTIONS 6 & 7
-def Question6(map):
-    global answerSet
-    question = "Which pairs of regions, if any, share two or more disconnected edges? " 
-    question += "Do not include the outside of the frame.\n"
-    answerSet = set()
-    for f in map.faces[1:]:
-        Question6A(f,False)
-    if len(answerSet)==0:
-        return failureOutput
-    return question, FacePairCollection2Text(answerSet), answerSet, 1+len(answerSet)
+# #                          QUESTIONS 6 & 7
+# def Question6(map):
+#     global answerSet
+#     question = "Which pairs of regions, if any, share two or more disconnected edges? " 
+#     question += "Do not include the outside of the frame.\n"
+#     answerSet = set()
+#     for f in map.faces[1:]:
+#         Question6A(f,False)
+#     if len(answerSet)==0:
+#         return failureOutput
+#     return question, FacePairCollection2Text(answerSet), answerSet, 1+len(answerSet)
 
 def Question7(map):
     global answerSet
     question = "Which regions, if any, meet the outside of the frame " 
-    question += "along two or more disconnected edges?"
+    question += "along two or more disconnected edges?\n"
+    question += none_answer_def
     answerSet = set() 
     Question6A(map.faces[0],True)
     return question, Faces2Text(answerSet), answerSet, 1+len(answerSet)
@@ -359,7 +368,8 @@ def Question6A(f,isFrame):
 #                          QUESTIONS 8 and 9
  
 def Question8(map,k):
-    question = "Which regions have " + str(k) + " edges?" 
+    question = "Which regions have " + str(k) + " edges?\n" 
+    question += none_answer_def
     answerSet = set()
     for f in map.faces:
         if f.bounded and f.numSides == k:
@@ -380,15 +390,15 @@ def Question10(vp,vu,vv,vw,codeP,codeU,codeV,codeW):
     distA = Graph.pointDist(vp.p,vu.p)
     distB = Graph.pointDist(vp.p,vv.p)
     distC = Graph.pointDist(vp.p,vw.p)
-    dists, text, vertexPairs = order3([distA,distB,distC], ["u","v","w"], 
+    dists, text, vertexPairs = order3([distA,distB,distC], ["v₂","v₃","v₄"], 
                                       [vu,vv,vw])
     q = Question10Quality(dists)
     if q==0:
         return failureOutput  
-    question = LetVerticesBeText([vp,vu,vv,vw],['p','u','v','w'],[codeP,codeU,codeV,codeW]) 
+    question = LetVerticesBeText([vp,vu,vv,vw],['v₁','v₂','v₃','v₄'],[codeP,codeU,codeV,codeW]) 
     if question == "":
         return failureOutput                
-    question = question + "\nSort u, v, w in increasing order of distance from p."
+    question = question + "\nSort v₂, v₃, v₄ in increasing order of distance from v₁."
     answerText = "[" + text[0] + ", " + text[1] + ", " + text[2] + "]" 
     return question, answerText, vertexPairs, q
 
@@ -476,7 +486,7 @@ def Q11Quality(angles,n):
 
 def Question12(va, vb, code, map):
     """
-    Question 12: Extend an edge 'm' into an infinite line L and list 
+    Question 12: Extend an edge 'e1' into an infinite line L and list 
     the regions it passes through in sequence.
     Uses the 'Midpoint Sampling' logic for high robustness.
     """
@@ -484,21 +494,21 @@ def Question12(va, vb, code, map):
     if BoundaryEdge(va.p, vb.p, map.bounds):
         return failureOutput
     
-    # 2. Identify the edge label (e.g., 'm') from the map data
+    # 2. Identify the edge using an e-number label plus a human-readable description.
     texts = identifyEdgeTexts(va, vb)
     print(f"DEBUG: Original Edge Points: ({va.p.x}, {va.p.y}) to ({vb.p.x}, {vb.p.y})")
     print(f"DEBUG: Edge Label Found: {texts}")
     if not texts:
         return failureOutput
+    edge_label = identifyEdgeLabel(va, vb, map)
         
     # 3. Calculate intersections with the frame to simulate an "infinite" line
-    # This gives us the entry and exit points of the line L on the map
     pa_ext, pb_ext = GetFrameIntersections(va.p, vb.p, map.bounds)
     print(f"DEBUG: Extended Line Endpoints: {pa_ext}, {pb_ext}")
 
     # Thresholds for the Robustness Check
-    EPSILON_THRESHOLD = 0.0005 # The mathematical ground truth
-    VISUAL_THRESHOLD = 0.06    # What is clearly visible to a human/AI
+    EPSILON_THRESHOLD = 0.0005
+    VISUAL_THRESHOLD = 0.06
 
     # 4. Get the "Absolute Truth" path (mathematical sequence)
     true_path = TraceSegment(pa_ext, pb_ext, map, min_dist=EPSILON_THRESHOLD)
@@ -506,27 +516,22 @@ def Question12(va, vb, code, map):
     # 5. Get the "Visually Robust" path (what is clearly seen)
     robust_path = TraceSegment(pa_ext, pb_ext, map, min_dist=VISUAL_THRESHOLD)
 
-    # 6. REJECTION LOGIC (Hard Rejection):
-    # If the mathematical path differs from the visual path, the line is "scraping" 
-    # a vertex or an edge. We reject these cases to ensure there is no ambiguity.
+    # 6. REJECTION LOGIC (Hard Rejection)
     true_letters = [f.letter for f in true_path]
     robust_letters = [f.letter for f in robust_path]
 
     if not true_letters or true_letters != robust_letters:
         return failureOutput
 
-# --- NEW: UNIQUE SET LOGIC ---
     # Convert the sequence to a sorted list of unique letters
-    # Example: ['D', 'B', 'G', 'H', 'H'] -> ['B', 'D', 'G', 'H']
     unique_letters = sorted(list(set(true_letters)))
 
     # 6. Formulate the final question text
-    # Removed "in sequence" and added "distinct" to be precise
-    question = (f"Let m be {decode(texts, code)}. "
-                f"Suppose m is extended in both directions along straight line L. "
+    question = (f"Let {edge_label} be {decode(texts, code)}. "
+                f"Suppose {edge_label} is extended in both directions along straight line L. "
                 f"Which distinct regions does the line L pass through in the interior?\n")
     question += pass_interior_def
-    # Note: You might want to remove 'multiple_times_def' since it's a set now
+    question += none_answer_def
 
     # Format the answer as a set {A, B, C}
     answer_text = "{" + ", ".join(unique_letters) + "}"
@@ -582,7 +587,6 @@ def TraceSegment(pa, pb, map, min_dist=0.05):
             continue
             
         # MIDPOINT SAMPLING: Find which face contains the center of this sub-segment.
-        # This avoids the ambiguity of points sitting exactly on boundaries.
         mid = Graph.midpoint(p1, p2)
         for face in map.faces:
             # Ignore the unbounded "outside" region
@@ -591,42 +595,36 @@ def TraceSegment(pa, pb, map, min_dist=0.05):
                 break 
                 
     return path_sequence
+
 def GetFrameIntersections(p1, p2, bounds):
     """
     Extends the segment p1-p2 to the boundaries of the box defined by bounds.
     Returns two points on the frame.
     """
     maxX, maxY = bounds
-    # Line equation: p = p1 + t * (p2 - p1)
     dx = p2.x - p1.x
     dy = p2.y - p1.y
     
     t_values = []
     
-    # Intersection with x=0 and x=maxX
     if abs(dx) > 1e-9:
         t_values.append(-p1.x / dx)
         t_values.append((maxX - p1.x) / dx)
     
-    # Intersection with y=0 and y=maxY
     if abs(dy) > 1e-9:
         t_values.append(-p1.y / dy)
         t_values.append((maxY - p1.y) / dy)
         
-    # We only care about the t values that place the point on the frame
     valid_pts = []
     for t in t_values:
         px = p1.x + t * dx
         py = p1.y + t * dy
-        # Check if the intersection point is within the frame boundaries (with epsilon)
         if -1e-5 <= px <= maxX + 1e-5 and -1e-5 <= py <= maxY + 1e-5:
             valid_pts.append(Graph.Vector(px, py))
             
-    # Sort points to ensure we return the two most distant ones (the frame exits)
     if len(valid_pts) < 2:
-        return p1, p2 # Fallback
+        return p1, p2  # Fallback
         
-    # Find the pair of points furthest apart
     p_start = valid_pts[0]
     p_end = max(valid_pts, key=lambda p: Graph.vecDist(p_start, p))
     
@@ -638,23 +636,13 @@ def BoundaryEdge(pa, pb, bounds):
     frame boundary (the edges of the diagram).
     """
     bigX, bigY = bounds
-    eps = 0.001  # Tolerance for floating-point coordinate comparison
-    
-    # Check if both points lie on the Left boundary (x = 0)
+    eps = 0.001
+
     on_left = (abs(pa.x) < eps and abs(pb.x) < eps)
-    
-    # Check if both points lie on the Right boundary (x = maxX)
     on_right = (abs(pa.x - bigX) < eps and abs(pb.x - bigX) < eps)
-    
-    # Check if both points lie on the Bottom boundary (y = 0)
     on_bottom = (abs(pa.y) < eps and abs(pb.y) < eps)
-    
-    # Check if both points lie on the Top boundary (y = maxY)
     on_top = (abs(pa.y - bigY) < eps and abs(pb.y - bigY) < eps)
-    
-    # A segment is a 'boundary edge' if:
-    # 1. The two points are identical (not a valid line segment)
-    # 2. Both points lie on the same frame edge (Left, Right, Top, or Bottom)
+
     if pa == pb or on_left or on_right or on_bottom or on_top:
         return True
         
@@ -677,7 +665,7 @@ def Question13(v, code):
         return failureOutput
 
     id = decode(possIDs, code)
-    question = "Let p be " + id + ". Which regions meet at p?"
+    question = "Let v₁ be " + id + ". Which regions meet at v₁?"
 
     answerNames = sorted([f.letter for f in v.faces if f.bounded])
     answerText = "{" + ", ".join(answerNames) + "}"
@@ -705,6 +693,7 @@ def Question15(fa,fb,map):
     question += "Which of the labelled regions A-" + lastLetter + " does U border on an edge? \n"
     question += union_def
     question += border_edge_def
+    question += none_answer_def
     answerSet = set()
     for e in fa.edges:
         f = e.reverse.leftFace
@@ -745,67 +734,62 @@ def Question16(faces,map):
     return question, Faces2Text(newFaces), newFaces, len(newFaces)
 
 
-# ==========================================
-#                          QUESTION 17
-# ==========================================
-def Question17(fa, fb):
-    """
-    Checks if the union of two adjacent regions is convex.
-    Returns: (question, answerText, is_convex, quality)
-    """
-    if fa == fb or not fa.bounded or not fb.bounded or fa.num == 0 or fb.num == 0:
-        return None, None, False, 0.0
+# # ==========================================
+# #                          QUESTION 17
+# # ==========================================
+# def Question17(fa, fb):
+#     """
+#     Checks if the union of two adjacent regions is convex.
+#     Returns: (question, answerText, is_convex, quality)
+#     """
+#     if fa == fb or not fa.bounded or not fb.bounded or fa.num == 0 or fb.num == 0:
+#         return None, None, False, 0.0
 
-    # FaceUnion is your helper that merges the geometry of two faces
-    fu = FaceUnion(fa, fb)
+#     # FaceUnion is your helper that merges the geometry of two faces
+#     fu = FaceUnion(fa, fb)
     
-    if fu == False:
-        # This usually means they aren't actually adjacent
-        return None, None, False, 0.0
+#     if fu == False:
+#         # This usually means they aren't actually adjacent
+#         return None, None, False, 0.0
 
-    # fu.convex is a boolean calculated by your computeConvex function
-    is_convex = fu.convex
+#     # fu.convex is a boolean calculated by your computeConvex function
+#     is_convex = fu.convex
     
-    # Updated wording: "Let U be the union..."
-    question = f"Let U be the union of regions {fa.letter} and {fb.letter}. Is U convex? \n"
-    question += union_def
-    question += convex_def
-    answerText = "Yes" if is_convex else "No"
-    quality = 1.0
+#     # Updated wording: "Let U be the union..."
+#     question = f"Let U be the union of regions {fa.letter} and {fb.letter}. Is U convex? \n"
+#     question += union_def
+#     question += convex_def
+#     answerText = "Yes" if is_convex else "No"
+#     quality = 1.0
     
-    return question, answerText, is_convex, quality
+#     return question, answerText, is_convex, quality
 
 
 def Question18(va, vb, codeA, codeB, map):
     """
-    Question 18: Travel in a straight line from point p to point q.
+    Question 18: Travel in a straight line from point v₁ to point v₂.
     Lists the regions passed through in sequence, including duplicates.
     """
-    # 1. Validation: Ensure points are distinct and not sharing a face 
-    # (to make the question non-trivial)
+    # 1. Validation: Ensure points are distinct and not sharing a face
     if va == vb:
         return failureOutput
     for f in va.faces:
         if f in vb.faces:
             return failureOutput
-        
 
-    # 2. Generate vertex identification text (e.g., "Let p be vertex 1...")
-    question_init = LetVerticesBeText([va, vb], ['p', 'q'], [codeA, codeB])
+    # 2. Generate vertex identification text
+    question_init = LetVerticesBeText([va, vb], ['v₁', 'v₂'], [codeA, codeB])
     if question_init == "":
         return failureOutput
 
     # 3. Use TraceSegment to find the sequence of regions
-    # Use the same dual-threshold logic as Q12 to ensure visual clarity
     EPSILON_THRESHOLD = 0.0005 
     VISUAL_THRESHOLD = 0.06    
 
-    # Mathematical Ground Truth
     true_path = TraceSegment(va.p, vb.p, map, min_dist=EPSILON_THRESHOLD)
-    # Visually clear path
     robust_path = TraceSegment(va.p, vb.p, map, min_dist=VISUAL_THRESHOLD)
 
-    # 4. REJECTION LOGIC: If visuals and truth don't match, reject the case
+    # 4. REJECTION LOGIC
     true_letters = [f.letter for f in true_path]
     robust_letters = [f.letter for f in robust_path]
 
@@ -814,27 +798,25 @@ def Question18(va, vb, codeA, codeB, map):
 
     # 5. Formulate Question Text
     question = question_init
-    question += "If you travel in a straight line from p to q, "
+    question += "If you travel in a straight line from v₁ to v₂, "
     question += "what regions do you pass through in the interior, in sequence?\n"
     question += pass_interior_def
     question += multiple_times_def
 
     # 6. Format Answer
-    # We keep the sequence and duplicates (e.g., {A, B, A})
     answer_text = "[" + ", ".join(true_letters) + "]"
     
-    # Calculate quality: length of path * a baseline quality score
-    # (Assuming a quality of 1.0 for robust paths)
     quality_score = len(true_letters) * 1.0
     
     return question, answer_text, true_path, quality_score
+
 #                          QUESTION 19
 def Question19(va, direction, code, map):
     """
-    Question 19: Travel from vertex p in a specified cardinal direction 
+    Question 19: Travel from vertex v₁ in a specified cardinal direction 
     (Up, Down, Left, Right) until hitting the frame.
     """
-    # 1. Basic Check: Ensure the movement is valid (e.g., not moving out of frame immediately)
+    # 1. Basic Check: Ensure the movement is valid
     if not Q19Check(va, direction, map):
         return failureOutput
         
@@ -850,37 +832,30 @@ def Question19(va, direction, code, map):
     EPSILON_THRESHOLD = 0.0005 
     VISUAL_THRESHOLD = 0.06    
 
-    # Mathematical truth
     true_path = TraceSegment(pa, pb, map, min_dist=EPSILON_THRESHOLD)
-    # Visually distinct path
     robust_path = TraceSegment(pa, pb, map, min_dist=VISUAL_THRESHOLD)
 
-    # 4. REJECTION LOGIC: If the visual interpretation could be ambiguous, reject
+    # 4. REJECTION LOGIC
     true_letters = [f.letter for f in true_path]
     robust_letters = [f.letter for f in robust_path]
 
-    # Reject if paths differ or if the line doesn't pass through any interior
     if not true_letters or true_letters != robust_letters:
         return failureOutput
 
     # 5. Formulate Question Text
     phrase1, phrase2 = Q19DirectionPhrases(direction)
-    question = (f"Let p be {vName}. Suppose that you travel in a {phrase1} "
-                f"from p until you reach the {phrase2} of the frame. "
+    question = (f"Let v₁ be {vName}. Suppose that you travel in a {phrase1} "
+                f"from v₁ until you reach the {phrase2} of the frame. "
                 f"What regions do you pass through in the interior, in sequence?\n")
     question += pass_interior_def
     question += multiple_times_def
 
-    # 6. Format Answer (Using [] for sequence)
+    # 6. Format Answer
     answer_text = "[" + ", ".join(true_letters) + "]"
     
-    # Simple quality metric based on the number of regions crossed
     quality_score = len(true_letters) * 1.0
     
     return question, answer_text, true_path, quality_score
-
-# Keep your Q19Check, Q19DirectionPhrases, and Q19OtherEnd as they are, 
-# as they handle the setup correctly.
 
 def Q19Check(va,direction,map):
     if va.num < 4:
@@ -937,17 +912,17 @@ def Q19EdgesCross(pa,pb,angleAtA,f):
 def Question20(va,vb,vc, direction, codeA, codeB, codeC):
     if not distinct([va,vb,vc]):
         return failureOutput
-    question = LetVerticesBeText([va,vb,vc],['u','v','w'],[codeA,codeB,codeC])
+    question = LetVerticesBeText([va,vb,vc],['v₁','v₂','v₃'],[codeA,codeB,codeC])
     if question == "":
         return failureOutput
-    question += "\nOrder u, v, and w in order " 
+    question += "\nOrder v₁, v₂, and v₃ in order " 
     if direction == 0:
         c = [va.p.x, vb.p.x, vc.p.x]
         question += "left to right."
     else:
         c = [va.p.y, vb.p.y, vc.p.y]  
         question += "bottom to top."
-    c, vvs, names = order3(c,[va,vb,vc], ['u','v', 'w'])
+    c, vvs, names = order3(c,[va,vb,vc], ['v₁','v₂','v₃'])
     quality = min(c[1]-c[0], c[2]-c[1])
     if quality < 0.05:
        return failureOutput  
@@ -958,8 +933,8 @@ def Question21(va,vb,vc, codeA, codeB, codeC):
     global smallAng
     if not distinct([va,vb,vc]):
         return failureOutput
-    question = LetVerticesBeText([va,vb,vc],['u','v','w'],[codeA,codeB,codeC]) 
-    question += "Suppose that someone travels from u to v to w back to u."
+    question = LetVerticesBeText([va,vb,vc],['v₁','v₂','v₃'],[codeA,codeB,codeC]) 
+    question += "Suppose that someone travels from v₁ to v₂ to v₃ back to v₁."
     question += " Is this cycle clockwise or counterclockwise?"
     angleAtA = Graph.signedAngle(vc.p,va.p,vb.p)
     angleAtB = Graph.signedAngle(va.p,vb.p,vc.p)
@@ -985,12 +960,12 @@ def Question21(va,vb,vc, codeA, codeB, codeC):
 def Question22(va,vb,vc,vd,codeA,codeB,codeC,codeD):
     if not distinct([va,vb,vc,vd]):
         return failureOutput
-    question = LetVerticesBeText([va,vb,vc,vd],['p','q','u','v'],             
+    question = LetVerticesBeText([va,vb,vc,vd],['v₁','v₂','v₃','v₄'],             
                                    [codeA,codeB,codeC,codeD])
     if question == "":
         return failureOutput
-    question += "\nDoes the line segment between p and q cross "
-    question += "the line segment between u and v?"
+    question += "\nDoes the line segment between v₁ and v₂ cross "
+    question += "the line segment between v₃ and v₄?"
     crosses, quality = CrossLines(va.p,vb.p,vc.p,vd.p)
     if (quality == 0):
         return failureOutput
@@ -1034,7 +1009,8 @@ def Question23(dir,map):
     else:
        d1, d2 ="bottom", "top"
     question = "Which pairs of regions, if any, share a vertex that is the " + d1
-    question += " vertex for one region and the " + d2 + " vertex of the other?"
+    question += " vertex for one region and the " + d2 + " vertex of the other?\n"
+    question += none_answer_def
     facePairs = Q23Compute(map,dir)
     answerText = FacePairCollection2Text(facePairs)
     if len(facePairs) > 6:
@@ -1158,31 +1134,22 @@ def Question27(res_map):
     regions = [f for f in res_map.faces if f.bounded and f.num > 0]
     
     if not regions:
-        # Return 4 values to maintain consistent unpacking in the pilot script
         return None, None, None, 0.0
         
     # Sort regions by area in descending order
     sorted_regions = sorted(regions, key=lambda f: f.area, reverse=True)
     
-    # DATA QUALITY CHECK:
-    # If the largest area is not at least 1.5x larger than the second largest,
-    # it is too difficult for a human (or AI) to distinguish visually.
-    # We return None to signal that this map is "bad" for this specific question.
     if len(sorted_regions) > 1 and sorted_regions[0].area < sorted_regions[1].area * 1.5:
         return None, None, None, 0.0
 
     max_face = sorted_regions[0]
     
-    # Construct the Q&A pair
     question = "Which region has the largest area?"
     answer_text = max_face.letter
     
-    # Return: (Question, Answer, Metadata/Object, Quality Score)
     return question, answer_text, max_face, 1.0
 
 
-#                          QUESTION 28
-# ==========================================
 #                          QUESTION 28
 # ==========================================
 def Question28(fa, fb):
@@ -1190,30 +1157,23 @@ def Question28(fa, fb):
     Determines if fa is clearly above or below fb by comparing vertical bounds.
     Uses a 0.05 buffer to ensure the spatial relationship is visually obvious.
     """
-    # Validation: ensure regions are different, internal, and bounded
     if fa == fb or not fa.bounded or not fb.bounded or fa.num == 0 or fb.num == 0:
         return None, None, None, 0.0
     
     # BoundingBox (fa.box) index map: [0]:minX, [1]:maxX, [2]:minY, [3]:maxY
-    # In Cartesian: higher Y is "above"
     a_min_y, a_max_y = fa.box[2], fa.box[3]
     b_min_y, b_max_y = fb.box[2], fb.box[3]
 
-    # Case 1: Region A's bottom is higher than Region B's top
     if a_min_y > b_max_y + 0.05: 
         answerText = "above"
         gap = a_min_y - b_max_y
-    # Case 2: Region A's top is lower than Region B's bottom
     elif a_max_y < b_min_y - 0.05:
         answerText = "below"
         gap = b_min_y - a_max_y
     else:
-        # Vertical overlap exists; the relationship isn't "strictly" above/below
         return None, None, None, 0.0
 
     question = f"Is region {fa.letter} above or below region {fb.letter}?"
-    
-    # Saliency Quality: The larger the clear vertical gap, the higher the quality
     quality = 1.0 + gap
     
     return question, answerText, answerText, quality
@@ -1227,46 +1187,36 @@ def Question29(fe, fb, map, samples=400):
         return failureOutput
 
     max_robust_count = 0
-    # The 'Human-Visible' Threshold
     VISUAL_THRESHOLD = 0.15
-    # The 'Absolute Truth' Threshold
     EPSILON_THRESHOLD = 0.0005 
 
     for _ in range(samples):
         pa = Graph.randomPointInFace(fe, True)
         pb = Graph.randomPointInFace(fb, True)
 
-        # 1. Calculate the 'Perfect' Ground Truth
         true_path = TraceSegment(pa, pb, map, min_dist=EPSILON_THRESHOLD)
         true_set = {f.letter for f in true_path if f != fe and f != fb}
         true_count = len(true_set)
 
-        # 2. Calculate the 'Visually Clear' Path
         robust_path = TraceSegment(pa, pb, map, min_dist=VISUAL_THRESHOLD)
         robust_set = {f.letter for f in robust_path if f != fe and f != fb}
         robust_count = len(robust_set)
 
-        # HARD REJECTION: If the 'Truth' and 'Visuals' differ, 
-        # this specific two regions are too ambiguous/scraped. Skip it.
         if true_count != robust_count:
             return failureOutput
 
-        # If they match, it's a high-quality, clear path.
         if robust_count > max_robust_count:
             max_robust_count = robust_count
 
-    # If no visually clear path exists at all, reject the whole question for this map
     if max_robust_count == 0:
         return None
 
-    # Final Question Formulation
     question = (f"Consider all possible straight line segments connecting a point in the interior of region {fe.letter} "
                 f"to a point in the interior of region {fb.letter}. "
                 f"What is the maximum number of distinct regions, excluding regions {fe.letter} and {fb.letter}, "
                 f"that such a line segment can pass through? \n")
     question += pass_interior_def
 
-    # Return: question, answer, numeric answer, quality score
     return question, str(max_robust_count), max_robust_count, 1.0 + (max_robust_count * 0.5)
 
 
@@ -1310,7 +1260,6 @@ def TraceSegment(pa, pb, map, min_dist=0.05):
     dy = pb.y - pa.y
     length = np.sqrt(dx**2 + dy**2)
     
-    # Normal vector (perp_x, perp_y) - scaled to a tiny offset
     offset_dist = 0.002 
     if length > 1e-7:
         perp_x = (-dy / length) * offset_dist
@@ -1327,7 +1276,6 @@ def TraceSegment(pa, pb, map, min_dist=0.05):
             
         mid = Graph.midpoint(p1, p2)
         
-        # Define two points slightly to the left and right of the midpoint
         p_left = Graph.Vector(mid.x + perp_x, mid.y + perp_y)
         p_right = Graph.Vector(mid.x - perp_x, mid.y - perp_y)
 
@@ -1335,10 +1283,6 @@ def TraceSegment(pa, pb, map, min_dist=0.05):
             if not face.bounded:
                 continue
             
-            # CRITICAL LOGIC: 
-            # A line is only "inside" a face if both its left and right 
-            # neighborhood points are also inside that face. 
-            # If they are in different faces, the line is on a boundary.
             if Graph.pointInsideFace(p_left, face) and Graph.pointInsideFace(p_right, face):
                 path_sequence.append(face)
                 break 
@@ -1420,17 +1364,11 @@ def faceExtremeVertexID(v, face, angleOption):
     if v not in face.trueVertices:
         return []
 
-    # FIX: Robustly create a list of all OTHER vertices in the face for comparison.
-    # This avoids index errors and ensures v is compared against EVERY neighbor.
     alternatives = [alt for alt in face.trueVertices if alt != v]
     
-    # If there are no other vertices, it's not "extreme" relative to anything
     if not alternatives:
         return []
 
-    # Geometric distinction checks
-    # These functions should return True only if v is uniquely or strictly 
-    # the most extreme in that direction.
     left, right = horizontallyDistinct(v, alternatives)
     bottom, top = verticallyDistinct(v, alternatives)
     
@@ -1440,26 +1378,21 @@ def faceExtremeVertexID(v, face, angleOption):
 
     texts = []
 
-    # 1. Horizontal labels
     if left:
         texts.append("the leftmost vertex of " + face.letter)
     elif right:
         texts.append("the rightmost vertex of " + face.letter)
 
-    # 2. Vertical labels (Using .append instead of += for clarity)
     if bottom:
         texts.append("the bottommost vertex of " + face.letter)
     elif top:
         texts.append("the topmost vertex of " + face.letter)
 
-    # 3. Angular labels
     if acute:
         texts.append("the vertex of " + face.letter + " with the sharpest angle")
     elif obtuse:
         texts.append("the vertex of " + face.letter + " with the widest angle")
 
-    # If no geometric extremes found, fall back to "Corner" descriptions 
-    # (e.g., "the top left vertex of the frame")
     if not texts:    
         return CornerText(v, face, alternatives)
     
@@ -1560,23 +1493,35 @@ def identifyEdgeTexts(va,vb):
                         texts = texts + identifyEdgeFace(vb,va,fa)
     return texts
 
+def identifyEdgeLabel(va, vb, map):
+    """
+    Returns a stable e-number for the undirected edge between va and vb.
+    Reverse half-edges share the same label.
+    """
+    edge_keys = []
+    for edge in map.edges:
+        key = tuple(sorted([edge.tail.num, edge.head.num]))
+        if key not in edge_keys:
+            edge_keys.append(key)
+
+    target_key = tuple(sorted([va.num, vb.num]))
+    if target_key in edge_keys:
+        return "e" + str(edge_keys.index(target_key) + 1)
+    return "e1"
+
 def identifyEdgeFace(va, vb, fa):
     # Combined description logic
     return idEdgeByBounds(va, vb, fa)
 
 def idEdgeByBounds(va, vb, fa):
     """
-    Identifies the edge of
-     face 'fa' by checking what lies on the opposite side.
+    Identifies the edge of face 'fa' by checking what lies on the opposite side.
     Includes a strict check to ensure boundary descriptions are coordinate-accurate.
     """
     oppFaces = SingleEdgeOppFaces(va, vb, fa)
     if not oppFaces:
         return []
     
-    # --- Strict Boundary Check ---
-    # An edge is only "on the frame" if BOTH endpoints share a boundary coordinate.
-    # maxX and maxY represent the map limits (usually 1.0 or from map.bounds).
     maxX, maxY = 1.0, 1.0 
     
     on_left   = abs(va.p.x) < 1e-5 and abs(vb.p.x) < 1e-5
@@ -1585,23 +1530,16 @@ def idEdgeByBounds(va, vb, fa):
     on_top    = abs(va.p.y - maxY) < 1e-5 and abs(vb.p.y - maxY) < 1e-5
     
     is_on_frame = on_left or on_right or on_bottom or on_top
-    # -----------------------------
 
-    # If the opposite side is the unbounded "outside" region
     if not oppFaces[0].bounded:
-        # Only use this description if the edge is physically on the frame line.
-        # Otherwise, for an extending line (Q12), this description is misleading.
         if is_on_frame:
             oppText = "the outside of the frame"
         else:
-            # Reject this label if the edge only touches the frame at a vertex
             return [] 
             
-    # If there is exactly one neighboring region
     elif len(oppFaces) == 1:
         oppText = f"region {oppFaces[0].letter}"
         
-    # If the edge borders multiple regions (rare in simple maps)
     else:
         letters = [f.letter for f in oppFaces]
         oppText = "regions " + ", ".join(letters[:-1]) + ", and " + letters[-1]
@@ -1614,18 +1552,15 @@ def SingleEdgeOppFaces(va, vb, f):
     """
     oppFaces = []
     
-    # Safe index lookup
     try:
         indexA = f.vertices.index(va)
         indexB = f.vertices.index(vb)
     except ValueError:
-        # If va or vb aren't in this face's vertex list, it's not the right edge
         return []
 
     ee = f.edges
     n = len(ee)
     
-    # Slice the edges to find what lies 'opposite'
     if indexA < indexB:
         edgesIn = f.edges[indexA:indexB]
         edgesOut = f.edges[indexB:n] + f.edges[0:indexA]
@@ -1638,7 +1573,6 @@ def SingleEdgeOppFaces(va, vb, f):
         if oppFace not in oppFaces:
             oppFaces.append(oppFace)
             
-    # If the line loops back into the same faces, it's not a simple crossing
     for e in edgesOut:
         if e.reverse.leftFace in oppFaces:
             return []
@@ -1697,15 +1631,6 @@ def idHorizontalEdge(va,vb,fa):
 
 
   
-#def CountTrueEdges(face):
-#    prevEdge = face.edges[-1]
-#    count = 0
-#    for e in face.edges:
-#        if e.trueEdge != prevEdge.trueEdge:
-#            count += 1
-#        prevEdge = e
-#    return count
-
 def Faces2TextForVertexID(faces):    
     outside = False
     properFaces = []
@@ -1906,8 +1831,7 @@ def LineCrossesFaces(pa, pb, visibleSeg, map, min_dist=0.0005):
     """
     Checks which faces the line segment pa-pb crosses.
     min_dist: The minimum length the segment must travel inside a face 
-              to be counted. Use a small value (0.0005) for truth, 
-              and a larger value (0.04) for visual clarity.
+              to be counted.
     """
     global epsilon, smallAng, angleeps
     
@@ -1965,14 +1889,10 @@ def LineCrossesFaces(pa, pb, visibleSeg, map, min_dist=0.0005):
         if not valid_face:
             continue
 
-        # Reject if the line is dangerously close to a vertex or edge (Scraping)
         if -smallAng < extreme_left < smallAng or -smallAng < extreme_right < smallAng:
            return [], -1
         
-        # If the angular sweep confirms the line enters the interior
         if extreme_left > smallAng and extreme_right < -smallAng:
-            # --- NEW: Physical Distance Check ---
-            # Calculate the actual length of the path through this specific face
             actual_path_len = CalculateIntersectionLength(pa, pb, face)
             
             if actual_path_len > min_dist:
@@ -1989,7 +1909,6 @@ def CalculateIntersectionLength(pa, pb, face):
             p_cross = Graph.lineIntersect(pa, pb, edge.tail.p, edge.head.p)
             pts.append(p_cross)
     
-    # Sort points along the segment to check midpoints
     if abs(pb.x - pa.x) > 0.0001:
         pts.sort(key=lambda p: p.x if pb.x > pa.x else -p.x)
     else:
@@ -2025,8 +1944,6 @@ def TwoPointDefSide(aj,ak,bj,bk,visibleSeg):
     right = visibleSeg and ((aj > -np.pi/2 and bj > np.pi/2) or (aj < -np.pi/2 and bj < np.pi/2))
     right = right or (bj > np.pi/2 and bk < np.pi/2) or (bj < np.pi/2 and bk > np.pi/2)
     right = right or (aj > -np.pi/2 and ak < -np.pi/2) or (aj < -np.pi/2 and ak > -np.pi/2)
-#    if (left or right):
-#        print(left, right, aj, ak, bj, bk)
     return left, right
 
 
@@ -2057,7 +1974,6 @@ def LineCrossesFacesOld(pa,pb,map):
                 if abs(dotProds[v.num]) < epsilon:
                     coin += 1
             quality, crosses = qualityCross(pa,pb,f,bigPos,smallPos,bigNeg,smallNeg,coin)
-#            print(f,bigPos,smallPos,bigNeg,smallNeg,coin,quality,crosses)           
             if quality < 0:            
                 return [], -1
             if crosses:
@@ -2095,8 +2011,6 @@ def qualityCross(pa,pb,f,bigPos,smallPos,bigNeg,smallNeg,coin):
         quality = -1
     return quality, False
 
-# f has already been determined to be on one side of the line pa-pb, but it lies fairly close
-# to the lineThe question is, is it visually obvious that it is on one side of the line?
 def obviouslyOneSide(f,pa,pb):
     for v in f.vertices[1:]:
         if obviouslyVertexOneSide(v.p,pa,pb):
@@ -2119,5 +2033,3 @@ def SharesVertex(f,faces):
             if ff in v.faces:
                 return True
     return False
-
-
