@@ -455,17 +455,17 @@ def Question11(fa,codes):
     quality = Q11Quality(angles,n)
     if quality == 0:
         return failureOutput  
-    question = "Region " + fa.letter + " has " + str(n) + " vertices, numbered as follows:\n "
+    question = "Region " + fa.letter + " has " + str(n) + " interior angles, numbered as follows:\n "
     for i in range(n):
         vName = identifyVertexForQ11(vvs[i],fa,codes[i])
         if vName == "":
             return failureOutput
-        question = question + "(" + str(i+1) + ") " + vName
+        question = question + "(" + str(i+1) + ") the angle at " + vName
         if i==n-1:
             question += ".\n"
         else:
             question += ";\n"
-    question += "Sort these in increasing order by the size of the interior angle at each corner.\n"+int_angle_def
+    question += "Sort these angles in increasing order by size.\n"+int_angle_def
     answerList = []
     for i in range(n):
         answerList += [vvs[indices[i]]]
@@ -486,7 +486,7 @@ def Q11Quality(angles,n):
 
 def Question12(va, vb, code, map):
     """
-    Question 12: Extend an edge 'e1' into an infinite line L and list 
+    Question 12: Extend an edge 'e1' into an infinite line L1 and list 
     the regions it passes through in sequence.
     Uses the 'Midpoint Sampling' logic for high robustness.
     """
@@ -500,7 +500,8 @@ def Question12(va, vb, code, map):
     print(f"DEBUG: Edge Label Found: {texts}")
     if not texts:
         return failureOutput
-    edge_label = identifyEdgeLabel(va, vb, map)
+    edge_label = "e1"
+    line_label = "L1"
         
     # 3. Calculate intersections with the frame to simulate an "infinite" line
     pa_ext, pb_ext = GetFrameIntersections(va.p, vb.p, map.bounds)
@@ -528,8 +529,8 @@ def Question12(va, vb, code, map):
 
     # 6. Formulate the final question text
     question = (f"Let {edge_label} be {decode(texts, code)}. "
-                f"Suppose {edge_label} is extended in both directions along straight line L. "
-                f"Which distinct regions does the line L pass through in the interior?\n")
+                f"Suppose {edge_label} is extended in both directions along straight line {line_label}. "
+                f"Which distinct regions does the line {line_label} pass through in the interior?\n")
     question += pass_interior_def
     question += none_answer_def
 
@@ -689,8 +690,7 @@ def Question15(fa,fb,map):
     if fu==False:
         return failureOutput
     question = UnionText(fa,fb,'U')
-    lastLetter = chr(ord('@')+len(map.faces)-1)
-    question += "Which of the labelled regions A-" + lastLetter + " does U border on an edge? \n"
+    question += "Which regions share an edge with the union U? \n"
     question += union_def
     question += border_edge_def
     question += none_answer_def
@@ -934,6 +934,8 @@ def Question21(va,vb,vc, codeA, codeB, codeC):
     if not distinct([va,vb,vc]):
         return failureOutput
     question = LetVerticesBeText([va,vb,vc],['v₁','v₂','v₃'],[codeA,codeB,codeC]) 
+    if question == "":
+        return failureOutput
     question += "Suppose that someone travels from v₁ to v₂ to v₃ back to v₁."
     question += " Is this cycle clockwise or counterclockwise?"
     angleAtA = Graph.signedAngle(vc.p,va.p,vb.p)
@@ -1087,22 +1089,20 @@ def Question25(face, map_bounds):
     maxX, maxY = map_bounds
     tol = 0.001 
     
-    on_left = on_right = on_top = on_bottom = 0
-    
-    # Use [:-1] to avoid counting the overlapping start/end vertex twice
-    for v in face.vertices[:-1]:
-        px, py = v.p.x, v.p.y
-        if abs(px - 0) < tol: on_left += 1
-        if abs(px - maxX) < tol: on_right += 1
-        if abs(py - 0) < tol: on_bottom += 1
-        if abs(py - maxY) < tol: on_top += 1
+    def endpoints_on_same_frame_side(va, vb):
+        ax, ay = va.p.x, va.p.y
+        bx, by = vb.p.x, vb.p.y
+        return (abs(ax) < tol and abs(bx) < tol or
+                abs(ax - maxX) < tol and abs(bx - maxX) < tol or
+                abs(ay) < tol and abs(by) < tol or
+                abs(ay - maxY) < tol and abs(by - maxY) < tol)
 
-    # If 2 distinct vertices lie on the same boundary, 
-    # the edge between them must lie on that boundary.
-    touches_edge = (on_left >= 2 or on_right >= 2 or 
-                    on_top >= 2 or on_bottom >= 2)
+    touches_edge = any(
+        endpoints_on_same_frame_side(face.vertices[i], face.vertices[i + 1])
+        for i in range(len(face.vertices) - 1)
+    )
             
-    question = f"Does region {face.letter} have any edges that touch the frame?"
+    question = f"Does region {face.letter} share an edge with the frame?"
     answerText = "Yes" if touches_edge else "No"
     quality = 1.0 
     
@@ -1333,24 +1333,33 @@ def identifyVertexForQ11(v,face,code):
         return ""
     return decode(possIDs,code)
 
+def visibleMeetingFaces(v):
+     return [face for face in v.faces if face.bounded and v in face.trueVertices]
+
+
 def faceMeetingID(v):
-     ffl = v.faces
+     ffl = visibleMeetingFaces(v)
+     if len(ffl) < 2:
+          return []
      fa = ffl[0]
      ff = set(ffl)
      text = "the meeting point of regions " + Faces2TextForVertexID(ffl)
-     for va in fa.vertices[1:]:
-         if va !=v and ff.issubset(set(va.faces)) :
+     for va in fa.trueVertices:
+         if va != v and ff.issubset(set(visibleMeetingFaces(va))):
               return []
      return [text]
 
   
 
 def vertexFaceMeetForQ11(v,face):
-     ff = set(v.faces)
-     ffb = v.faces.copy()
-     ffb.remove(face)
-     for va in face.vertices[1:]:
-         if va !=v and ff.issubset(set(va.faces)) :
+     if not face.bounded or v not in face.trueVertices:
+          return []
+     ffb = [f for f in visibleMeetingFaces(v) if f != face]
+     if len(ffb) == 0:
+          return []
+     ff = set([face] + ffb)
+     for va in face.trueVertices:
+         if va != v and ff.issubset(set(visibleMeetingFaces(va))):
               return []
      return ["the meeting point of " + Faces2TextForVertexID([face]+ffb)]
 
