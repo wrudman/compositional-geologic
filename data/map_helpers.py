@@ -41,6 +41,12 @@ angleeps = 0.00001
 smallDist = 0.07
 smallAng = 0.1
 
+# How far (in map units) to step perpendicular to a line when deciding whether
+# it truly enters a region's interior versus merely running along an edge or
+# grazing a corner. See _strictly_inside_face. Small enough never to over-reach
+# a thin region's far side, large enough to beat floating-point noise.
+interiorMargin = 0.0015
+
 # The current diagram. Set this once with use_map(map) before running queries.
 _MAP = None
 
@@ -215,7 +221,34 @@ def _faces_crossed_in_order(pa, pb, faces):
     return crossedFaces
 
 
+def _strictly_inside_face(p, face, nx, ny):
+    """True only if the line genuinely passes through `face`'s interior at p —
+    not merely along one of its edges, and not just through a single corner.
+
+    Test: p itself, plus two tiny probe points stepped PERPENDICULAR to the
+    line (interiorMargin to each side), must ALL be inside the face. (nx, ny) is
+    the unit normal to the line.
+
+        * line running ALONG an edge -> the probe on the far side lands outside
+          the face, so the face is rejected (boundary-only contact excluded).
+        * line grazing a single CORNER -> both probes land outside, rejected.
+        * line through the true INTERIOR -> both probes stay inside, accepted.
+
+    This relies only on Graph.pointInsideFace, so it is immune to whatever edge-
+    distance convention Graph.distPointFromEdge happens to use."""
+    if not Graph.pointInsideFace(p, face):
+        return False
+    pL = Graph.Vector(p.x + nx * interiorMargin, p.y + ny * interiorMargin)
+    pR = Graph.Vector(p.x - nx * interiorMargin, p.y - ny * interiorMargin)
+    return Graph.pointInsideFace(pL, face) and Graph.pointInsideFace(pR, face)
+
+
 def _walk_samples(pa, pb, map, steps):
+    dx, dy = pb.x - pa.x, pb.y - pa.y
+    dlen = (dx * dx + dy * dy) ** 0.5
+    if dlen < epsilon:
+        return []
+    nx, ny = -dy / dlen, dx / dlen        # unit normal to the line of travel
     ordered = []
     current = None
     for i in range(steps + 1):
@@ -223,7 +256,7 @@ def _walk_samples(pa, pb, map, steps):
         p = Graph.Vector((1 - t) * pa.x + t * pb.x,
                          (1 - t) * pa.y + t * pb.y)
         f = next((face for face in map.faces
-                  if face.bounded and Graph.pointInsideFace(p, face)), None)
+                  if face.bounded and _strictly_inside_face(p, face, nx, ny)), None)
         if f is not None and f is not current:
             ordered.append(f)
             current = f
@@ -232,29 +265,22 @@ def _walk_samples(pa, pb, map, steps):
 
 def _sample_faces_in_order(pa, pb, map):
     """
-    Robust ordered region walk from pa to pb. Samples points densely along the
-    segment and records each bounded region as it is entered. A region entered,
-    left, and re-entered appears more than once. Unlike the angle-classification
-    path, this never bails out on near-tangent or near-parallel geometry, so it
-    is used for finite segments and rays where that gating was returning nothing.
+    Ordered region walk from pa to pb. Samples densely along the segment and
+    records each bounded region as the line ENTERS its interior — strictly, via
+    _strictly_inside_face. A region entered, left, and re-entered appears more
+    than once.
+
+    A line that merely coincides with a shared boundary edge, or touches a
+    region only at a vertex, never produces a strictly-interior sample for that
+    region, so it is not reported. (The old "nudge off the boundary" fallback is
+    intentionally gone: nudging would re-introduce exactly the boundary-only
+    contact we now want to exclude.)
     """
     d = Graph.vecDist(pa, pb)
     if d < epsilon:
         return []
     steps = max(120, int(800 * d))
-    ordered = _walk_samples(pa, pb, map, steps)
-    if ordered:
-        return ordered
-    # Fallback: the line may run almost exactly along shared boundaries, so every
-    # sample landed on an edge. Nudge a hair to one side and retry before giving up.
-    nx, ny = -(pb.y - pa.y) / d, (pb.x - pa.x) / d   # unit normal
-    for off in (0.5 * smallDist, -0.5 * smallDist):
-        qa = Graph.Vector(pa.x + nx * off, pa.y + ny * off)
-        qb = Graph.Vector(pb.x + nx * off, pb.y + ny * off)
-        ordered = _walk_samples(qa, qb, map, steps)
-        if ordered:
-            return ordered
-    return ordered
+    return _walk_samples(pa, pb, map, steps)
 
 
 def _ray_other_end(p, direction, bounds):
@@ -419,8 +445,17 @@ def _line_endpoints(line):
         if length < epsilon:
             return pa, pb
         ux, uy = dx / length, dy / length
-        maxX, maxY = _MAP.bounds
-        far = (maxX + maxY) * 2  # comfortably beyond the frame in both directions
+        maxX, maxY = 0.0, 0.0
+        try:
+            maxX, maxY = _MAP.bounds
+        except Exception:
+            pass
+        # Reach comfortably beyond the frame in both directions. The length*4
+        # floor guarantees the line still extends well past the clicked segment
+        # into neighbouring regions even if _MAP.bounds is missing or degenerate
+        # (without it, a full line drawn ALONG an edge would sample only that
+        # edge and report nothing). Kept modest so the sampler stays fast.
+        far = max((abs(maxX) + abs(maxY)) * 2.0, length * 4.0)
         back = Graph.Vector(pa.x - ux * far, pa.y - uy * far)
         fwd = Graph.Vector(pb.x + ux * far, pb.y + uy * far)
         return back, fwd
@@ -732,25 +767,34 @@ def regions_at(point):
     return [f for f in point.faces if f.bounded]
 
 
+def _unique_in_order(faces):
+    """Drop repeats while preserving first-seen (travel) order."""
+    out = []
+    for f in faces:
+        if f not in out:
+            out.append(f)
+    return out
+
+
 def regions_crossed(line):
     """
-    Returns an unordered set of regions whose interior the line passes through.
-    The line must come from segment(), ray(), or extend(). A region counts only
-    if the line goes through its interior, not merely along its boundary.
+    Returns the regions whose interior the line passes through, in the order
+    they are entered while travelling along the line, with repeats removed. The
+    line must come from segment(), ray(), or extend(). A region counts only if
+    the line goes through its interior, not merely along its boundary.
     Requires use_map(map) to have been called first.
+
+    (Routes through the same strict-interior sampler as regions_in_order. The
+    older angle-classification engine bailed out entirely — returning nothing
+    for EVERY region — whenever the line ran tangent to any edge, which happens
+    routinely when a full line is drawn along a shared border.)
 
     Example:
         regions_crossed(extend(p, q))
     """
     if _MAP is None:
         raise RuntimeError("Call use_map(map) before using regions_crossed().")
-    if line['type'] == 'ray':
-        faces, _ = _ray_crosses_faces(line['a'], line['direction'], _MAP)
-        return set(faces)
-    pa, pb = line['a'], line['b']
-    infinite = (line['type'] == 'extend')
-    faces, _ = _line_crosses_faces(pa, pb, infinite, _MAP)
-    return set(faces)
+    return _unique_in_order(regions_in_order(line))
 
 
 def regions_in_order(line):

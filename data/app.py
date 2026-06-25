@@ -1344,7 +1344,7 @@ INSTRUCTIONS = {
         "- **Select ONE Drawn Line** → return the length of the drawn line.\n"
     ),
     "sort": (
-        "**All Objects are Sorted smallest → largest **"
+        "**All Objects are Sorted smallest → largest** \n"
         "- **Select Region(s)** → order the regions by area.\n"
         "- **Select Vertices** → order by left→right, bottom→top, or distance from the point that was selected first.\n"
         "- **Select ONE Region** → order the angles of the selected region."
