@@ -1,4 +1,5 @@
 import os
+import html
 import math
 import base64
 import tempfile
@@ -6,6 +7,7 @@ import json
 import pickle
 import random
 import re
+import time
 import uuid
 from io import BytesIO
 from datetime import datetime
@@ -21,15 +23,76 @@ import map_helpers
 import tools_human as T
 from sel_types import AngleSel, EdgeSel
 
-st.set_page_config(layout="wide", page_title="Geometry Reasoning Survey")
+st.set_page_config(layout="wide")
 # st.title("Geologic Region Explorer")
 
-DISPLAY_SIDE = 460          # map render size; clicks are mapped back through this
+DISPLAY_SIDE = 560          # map render size; clicks are mapped back through this
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "compositional_questions_v1"
 SURVEY_QUESTION_COUNT = 24
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
+
+ANSWER_HINTS_HUMAN = {
+    "number": "Enter a number.",
+    "single_region": "Enter one region label, e.g. A.",
+    "region_set": "List all matching regions in any order, separated by commas, e.g. A, B, C. If none, write None.",
+    "region_sequence": "List the regions in order, separated by commas, e.g. A, B, C.",
+    "region_pairs": "List each pair in parentheses, in any order, e.g. (A, B), (C, D). If none, write None.",
+    "ordered_items": "List the named objects in order, separated by commas.",
+    "number_sequence": "List the item numbers in order, separated by commas, e.g. 1, 2, 3.",
+}
+
+QUESTION_HINT_TYPES = {
+    "1": "region_set",
+    "4": "region_sequence",
+    "5": "region_pairs",
+    "7": "region_set",
+    "8": "region_set",
+    "9": "number",
+    "10": "ordered_items",
+    "11": "number_sequence",
+    "12": "region_set",
+    "13": "region_set",
+    "14": "number",
+    "15": "region_set",
+    "16": "region_sequence",
+    "18": "region_sequence",
+    "19": "region_sequence",
+    "20": "ordered_items",
+    "23": "region_pairs",
+    "26": "number",
+    "27": "single_region",
+    "29": "number",
+}
+
+DEFINITIONS_TEXT = """
+**Vertex:** a point where two or more edges meet.
+
+**Edge:** a line segment that forms part of a region boundary.
+
+**Region:** one enclosed area of the diagram.
+
+**Interior angle:** the angle inside a region at a vertex, formed by the two edges that meet there.
+
+**Outside of the frame:** the area outside the diagram frame. When a question asks you to treat it as a region, label it as "Outside of the frame".
+
+**Clockwise:** movement around a circle in the top, right, bottom, left direction.
+
+**Counterclockwise:** movement around a circle in the top, left, bottom, right direction.
+
+**Union:** a combination of two neighboring regions treated as one larger region.
+"""
+
+TOOLS_GUIDE_TEXT = """
+Use the tools as a scratch pad while solving each question.
+
+First, click the diagram to select the relevant vertices, edges, or regions.
+
+Then choose a tool, set any options, and click Run.
+
+The tool output and any marks on the diagram are there to help you decide your final answer.
+"""
 
 FALLBACK_QUESTION_BANK = [
     {
@@ -64,11 +127,38 @@ FALLBACK_QUESTION_BANK = [
     },
 ]
 
+ATTENTION_CHECK_QUESTION = {
+    "question_id": "attention_check_select_2",
+    "pair_id": "attention_check",
+    "seed": 42,
+    "num_regions": 8,
+    "diagram_complexity": "attention_check",
+    "question_text": (
+        "To show that you are reading the instructions, "
+        "please select option 2."
+    ),
+    "answer": "2",
+    "answer_type": "multiple_choice",
+    "answer_placeholder": "",
+    "choices": ["1", "2", "3", "4", "5"],
+    "is_attention_check": True,
+}
+
+def add_attention_check(questions):
+    questions = list(questions)
+    if any(q.get("is_attention_check") for q in questions):
+        return questions
+    insert_index = min(max(1, len(questions) // 2), len(questions))
+    questions.insert(insert_index, dict(ATTENTION_CHECK_QUESTION))
+    return questions
+
 def _safe_id(value):
     safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in str(value))
     return safe[:80] or DEFAULT_PARTICIPANT_ID
 
 def get_participant_id():
+    if st.session_state.get("participant_id"):
+        return st.session_state["participant_id"]
     raw_id = (
         st.query_params.get("participant_id")
         or st.query_params.get("pid")
@@ -110,12 +200,12 @@ def normalize_dataset_item(item, item_index):
 def load_question_bank(participant_id):
     dataset_path = find_dataset_path()
     if not dataset_path:
-        return FALLBACK_QUESTION_BANK, ""
+        return add_attention_check(FALLBACK_QUESTION_BANK), ""
     try:
         with open(dataset_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
     except Exception:
-        return FALLBACK_QUESTION_BANK, ""
+        return add_attention_check(FALLBACK_QUESTION_BANK), ""
     raw_items = payload.get("items", payload if isinstance(payload, list) else [])
     normalized = [
         normalize_dataset_item(item, idx)
@@ -126,10 +216,11 @@ def load_question_bank(participant_id):
         if item.get("question_text") and item.get("seed") is not None
     ]
     if not normalized:
-        return FALLBACK_QUESTION_BANK, dataset_path
+        return add_attention_check(FALLBACK_QUESTION_BANK), dataset_path
     sampler = random.Random(participant_id)
     sampler.shuffle(normalized)
-    return normalized[: min(SURVEY_QUESTION_COUNT, len(normalized))], dataset_path
+    selected = normalized[: min(SURVEY_QUESTION_COUNT, len(normalized))]
+    return add_attention_check(selected), dataset_path
 
 def _answer_matches_choices(answer, choices):
     answer_norm = str(answer).strip().lower()
@@ -159,8 +250,159 @@ def get_two_choice_options(question):
 def normalized_answer_type(question):
     return "two_choice" if get_two_choice_options(question) else "fill_in_the_blank"
 
+
+def ordered_items_answer_hint(question):
+    question_text = str(question.get("question_text", ""))
+    match = re.search(r"\b([va])(_?\d+|[₀-₉]+)", question_text, flags=re.IGNORECASE)
+    base_hint = ANSWER_HINTS_HUMAN["ordered_items"]
+    if not match:
+        return base_hint
+
+    prefix, index_text = match.groups()
+    if index_text.startswith("_"):
+        examples = [f"{prefix}_{i}" for i in range(1, 4)]
+    elif re.fullmatch(r"[₀-₉]+", index_text):
+        subscript_digits = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+        examples = [f"{prefix}{str(i).translate(subscript_digits)}" for i in range(1, 4)]
+    else:
+        examples = [f"{prefix}{i}" for i in range(1, 4)]
+    return f"{base_hint[:-1]}, e.g. {', '.join(examples)}."
+
+
+def answer_hint_for(question):
+    if normalized_answer_type(question) == "two_choice":
+        return ""
+    qid = str(question.get("question_id", ""))
+    hint_type = QUESTION_HINT_TYPES.get(qid)
+    if hint_type:
+        if hint_type == "ordered_items":
+            return ordered_items_answer_hint(question)
+        return ANSWER_HINTS_HUMAN.get(hint_type, "")
+
+    answer = str(question.get("answer", "")).strip()
+    if re.fullmatch(r"\d+(?:\.\d+)?", answer):
+        return ANSWER_HINTS_HUMAN["number"]
+    if re.fullmatch(r"[A-Z]", answer):
+        return ANSWER_HINTS_HUMAN["single_region"]
+    if answer.startswith("{("):
+        return ANSWER_HINTS_HUMAN["region_pairs"]
+    if answer.startswith("{") or answer.lower() == "none":
+        return ANSWER_HINTS_HUMAN["region_set"]
+    if answer.startswith("["):
+        if re.search(r"v[₀-₉0-9]|a[₀-₉0-9]", answer):
+            return ordered_items_answer_hint(question)
+        if re.search(r"\d", answer):
+            return ANSWER_HINTS_HUMAN["number_sequence"]
+        return ANSWER_HINTS_HUMAN["region_sequence"]
+    return ""
+
+
+_SUBSCRIPT_DIGIT_TRANSLATION = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
+
+
+def _normalize_answer_notation(value):
+    text = str(value or "").translate(_SUBSCRIPT_DIGIT_TRANSLATION)
+    return re.sub(
+        r"\b([va])_?(?=\d)",
+        lambda match: match.group(1).lower(),
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
+def _answer_tokens(value):
+    text = _normalize_answer_notation(value).strip()
+    if not text:
+        return []
+    if text.lower() == "none":
+        return ["none"]
+    ignored_words = {
+        "region", "regions", "vertex", "vertices", "angle", "angles",
+        "edge", "edges", "object", "objects", "item", "items",
+        "and", "or", "then", "the", "of", "frame",
+    }
+    return [
+        token.lower()
+        for token in re.findall(r"v[₀-₉0-9]+|a[₀-₉0-9]+|[A-Za-z]+|\d+(?:\.\d+)?", text)
+        if token.lower() not in ignored_words
+    ]
+
+def _answer_hint_type(question):
+    qid = str(question.get("question_id", ""))
+    hint_type = QUESTION_HINT_TYPES.get(qid)
+    if hint_type:
+        return hint_type
+    answer = str(question.get("answer", "")).strip()
+    if answer.startswith("{("):
+        return "region_pairs"
+    if answer.startswith("{") or answer.lower() == "none":
+        return "region_set"
+    if answer.startswith("["):
+        if re.search(r"v[₀-₉0-9]|a[₀-₉0-9]", answer):
+            return "ordered_items"
+        if re.search(r"\d", answer):
+            return "number_sequence"
+        return "region_sequence"
+    if re.fullmatch(r"\d+(?:\.\d+)?", answer):
+        return "number"
+    if re.fullmatch(r"[A-Z]", answer):
+        return "single_region"
+    return ""
+
+
+
+def format_answer_for_feedback(question):
+    answer = str(question.get("answer", "")).strip()
+    if not answer:
+        return ""
+    if normalized_answer_type(question) == "two_choice":
+        options = get_two_choice_options(question) or []
+        for option in options:
+            if str(option).strip().lower() == answer.lower():
+                return str(option)
+        return answer
+
+    hint_type = _answer_hint_type(question)
+    if answer.lower() == "none":
+        return "None"
+    if hint_type == "region_pairs":
+        return answer.strip("{}[] ")
+    if hint_type in {"region_set", "region_sequence", "ordered_items", "number_sequence"}:
+        tokens = _answer_tokens(answer)
+        if not tokens:
+            return answer.strip("{}[] ")
+        if hint_type in {"region_set", "region_sequence"}:
+            tokens = [token.upper() if len(token) == 1 and token.isalpha() else token for token in tokens]
+        return ", ".join(tokens)
+    return answer
+
+def answer_is_correct(question, answer):
+    correct = _normalize_answer_notation(question.get("answer", "")).strip()
+    if not correct:
+        return None
+    submitted = _normalize_answer_notation(answer).strip()
+    if normalized_answer_type(question) == "two_choice":
+        return submitted.lower() == correct.lower()
+    hint_type = _answer_hint_type(question)
+    if hint_type == "number":
+        try:
+            return float(submitted) == float(correct)
+        except ValueError:
+            return submitted.lower() == correct.lower()
+    submitted_tokens = _answer_tokens(submitted)
+    correct_tokens = _answer_tokens(correct)
+    if hint_type in {"region_set", "region_pairs"}:
+        return sorted(submitted_tokens) == sorted(correct_tokens)
+    if hint_type in {"region_sequence", "ordered_items", "number_sequence"}:
+        return submitted_tokens == correct_tokens
+    return "".join(submitted.lower().split()) == "".join(correct.lower().split())
+
 PARTICIPANT_ID = get_participant_id()
-QUESTION_BANK, DATASET_PATH = load_question_bank(PARTICIPANT_ID)
+if "question_bank" not in st.session_state or "dataset_path" not in st.session_state:
+    st.session_state.question_bank, st.session_state.dataset_path = load_question_bank(PARTICIPANT_ID)
+st.session_state.question_bank = add_attention_check(st.session_state.question_bank)
+QUESTION_BANK = st.session_state.question_bank
+DATASET_PATH = st.session_state.dataset_path
 
 # Xiaohui's palette
 GOLD_FILL = (255, 215, 0, 230)
@@ -170,7 +412,7 @@ ANGLE_SELECT = (203, 32, 107, 255)   # deep rose: readable + aesthetic for selec
 CYAN_EDGE = (0, 255, 255, 235)
 YELLOW_REGION = (255, 255, 0, 100)
 GRAY_SOLID = (150, 150, 150, 190)   # slightly transparent highlight for selected regions
-UNION_PURPLE = (147, 112, 219, 255)
+UNION_PURPLE = (147, 112, 219, 180)
 GREEN_ANGLE = (0, 150, 0, 255)
 BLUE = (0, 0, 255, 255)
 
@@ -181,9 +423,8 @@ BLUE = (0, 0, 255, 255)
 # Each selection row is rendered inside st.container(key=f"sel_row_{i}"),
 # which Streamlit tags with a CSS class "st-key-sel_row_<i>". This rule
 # matches that class by substring, so it scopes ONLY to selection rows —
-# nothing else in the app is touched. The remove (✕) button stays faintly
-# visible by default (so it's always clickable, even without hover/on
-# touch devices) and brightens to full opacity on row hover.
+# nothing else in the app is touched. The remove (✕) button uses a persistent
+# red treatment so it remains easy to discover without relying on hover.
 # ============================================================
 _SELECTION_ROW_CSS = """
 <style>
@@ -196,11 +437,21 @@ div[class*="st-key-sel_row_"]:hover{
     background-color:rgba(150,150,150,0.15);
 }
 div[class*="st-key-sel_row_"] button{
-    opacity:0.25;
-    transition:opacity .15s ease;
+    opacity:1;
+    color:#b42318;
+    background-color:#fff5f5;
+    border-color:#efb7b2;
+    font-size:18px;
+    font-weight:700;
+    justify-content:center;
+    min-height:2rem;
+    padding:0.1rem 0.4rem;
+    transition:background-color .15s ease,border-color .15s ease;
 }
 div[class*="st-key-sel_row_"]:hover button{
-    opacity:1;
+    color:#8f1d14;
+    background-color:#fee4e2;
+    border-color:#d92d20;
 }
 </style>
 """
@@ -233,12 +484,12 @@ const Streamlit={
   height:function(h){send("streamlit:setFrameHeight",{height:h});},
   value:function(v){send("streamlit:setComponentValue",{value:v,dataType:"json"});}
 };
-var SIDE=460, SHAPES=null, imgEl=null, clickN=0;
+var SIDE=460, SHAPES=null, imgEl=null, clickN=0, SELECT_TYPE='region';
 var bg=document.getElementById('bg'), ov=document.getElementById('ov');
 var bgx=bg.getContext('2d'), ovx=ov.getContext('2d');
 
-function setup(image, shapes, side){
-  SIDE=side; SHAPES=shapes;
+function setup(image, shapes, side, selectType){
+  SIDE=side; SHAPES=shapes; SELECT_TYPE=selectType||'region';
   bg.width=ov.width=side; bg.height=ov.height=side;
   if(!imgEl || imgEl._src!==image){
     imgEl=new Image(); imgEl._src=image;
@@ -271,17 +522,18 @@ function angIn(px,py,a){
 }
 function pick(px,py){
   var S=SHAPES, i; if(!S)return null;
-  for(i=0;i<S.vertices.length;i++){var v=S.vertices[i];
-    if(Math.hypot(px-v[0],py-v[1])<11)return {t:'vertex',d:v};}
-  for(i=0;i<S.angles.length;i++){ if(angIn(px,py,S.angles[i]))return {t:'angle',d:S.angles[i]}; }
-  var be=null,bd=8;
-  for(i=0;i<S.edges.length;i++){var e=S.edges[i],dd=distSeg(px,py,e.a,e.b); if(dd<bd){bd=dd;be=e;}}
-  if(be)return {t:'edge',d:be};
-  var f=S.frame;
-  var nV=(Math.abs(px-f.x0)<8||Math.abs(px-f.x1)<8)&&py>=f.y0-8&&py<=f.y1+8;
-  var nH=(Math.abs(py-f.y0)<8||Math.abs(py-f.y1)<8)&&px>=f.x0-8&&px<=f.x1+8;
-  if(nV||nH)return {t:'frame',d:f};
-  for(i=0;i<S.regions.length;i++){ if(inPoly(px,py,S.regions[i].pts))return {t:'region',d:S.regions[i]}; }
+  if(SELECT_TYPE==='vertex'){
+    for(i=0;i<S.vertices.length;i++){var v=S.vertices[i];
+      if(Math.hypot(px-v[0],py-v[1])<11)return {t:'vertex',d:v};}
+  } else if(SELECT_TYPE==='angle'){
+    for(i=0;i<S.angles.length;i++){ if(angIn(px,py,S.angles[i]))return {t:'angle',d:S.angles[i]}; }
+  } else if(SELECT_TYPE==='edge'){
+    var be=null,bd=8;
+    for(i=0;i<S.edges.length;i++){var e=S.edges[i],dd=distSeg(px,py,e.a,e.b); if(dd<bd){bd=dd;be=e;}}
+    if(be)return {t:'edge',d:be};
+  } else {
+    for(i=0;i<S.regions.length;i++){ if(inPoly(px,py,S.regions[i].pts))return {t:'region',d:S.regions[i]}; }
+  }
   return null;
 }
 var GRAY='rgba(150,150,150,';
@@ -308,7 +560,7 @@ ov.addEventListener('click',function(e){var r=ov.getBoundingClientRect();
   clickN++; Streamlit.value({x:Math.round(e.clientX-r.left),y:Math.round(e.clientY-r.top),n:clickN});});
 window.addEventListener("message",function(e){
   if(!e.data||e.data.type!=="streamlit:render")return;
-  var a=e.data.args||{}; setup(a.image, a.shapes, a.side||460);});
+  var a=e.data.args||{}; setup(a.image, a.shapes, a.side||460, a.select_type||'region');});
 Streamlit.ready(); Streamlit.height(SIDE+4);
 </script></body></html>
 """
@@ -335,8 +587,10 @@ def _geo_canvas_component():
 
 _GEO_CANVAS = _geo_canvas_component()
 
-def geo_canvas(image_b64, shapes, side, key=None):
-    return _GEO_CANVAS(image=image_b64, shapes=shapes, side=side, key=key, default=None)
+def geo_canvas(image_b64, shapes, side, select_type="region", key=None):
+    return _GEO_CANVAS(
+        image=image_b64, shapes=shapes, side=side, select_type=select_type,
+        key=key, default=None)
 
 # ============================================================
 # 0. TYPE CHECKERS (name-based: immune to Streamlit reruns)
@@ -348,12 +602,93 @@ def is_region(o):
     return (not is_angle(o) and not is_edgesel(o)
             and hasattr(o, "edges") and hasattr(o, "bounded"))
 
+def question_id_for(question, index):
+    return question.get("question_id", f"q_{index:03d}")
+
+def _locked_next_question_index():
+    return min(
+        st.session_state.get("max_confirmed_question_index", -1) + 1,
+        len(QUESTION_BANK),
+    )
+
 def current_question():
     if "survey_question_index" not in st.session_state:
         st.session_state.survey_question_index = 0
-    idx = max(0, min(st.session_state.survey_question_index, len(QUESTION_BANK) - 1))
+    idx = _locked_next_question_index()
+    idx = max(0, min(idx, len(QUESTION_BANK) - 1))
     st.session_state.survey_question_index = idx
     return QUESTION_BANK[idx]
+
+def init_survey_timer():
+    if "survey_started_at" not in st.session_state:
+        st.session_state.survey_started_at = time.time()
+
+def survey_elapsed_seconds():
+    started = st.session_state.get("survey_started_at", time.time())
+    return max(0, int(time.time() - started))
+
+def format_elapsed(seconds):
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+def render_timer():
+    elapsed = survey_elapsed_seconds()
+    components.html(
+        f"""
+        <div style="
+            display:flex;
+            justify-content:flex-end;
+            font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+        ">
+          <div id="survey-timer" style="
+              min-width:150px;
+              border:1px solid #d7dee8;
+              border-radius:8px;
+              padding:9px 12px;
+              background:linear-gradient(180deg,#ffffff 0%,#f6f8fb 100%);
+              box-shadow:0 1px 2px rgba(15,23,42,0.06);
+              text-align:right;
+          ">
+            <div style="
+                font-size:0.68rem;
+                font-weight:650;
+                letter-spacing:0.08em;
+                text-transform:uppercase;
+                color:#64748b;
+            ">Survey time</div>
+            <div id="survey-timer-value" style="
+                margin-top:2px;
+                font-variant-numeric:tabular-nums;
+                font-size:1.35rem;
+                font-weight:750;
+                color:#1f2937;
+                line-height:1.15;
+            ">{format_elapsed(elapsed)}</div>
+          </div>
+        </div>
+        <script>
+        const startSeconds = {elapsed};
+        const startMs = Date.now();
+        const value = document.getElementById("survey-timer-value");
+        function pad(n) {{ return String(n).padStart(2, "0"); }}
+        function format(total) {{
+            total = Math.max(0, Math.floor(total));
+            const s = total % 60;
+            const mTotal = Math.floor(total / 60);
+            const m = mTotal % 60;
+            const h = Math.floor(mTotal / 60);
+            return h ? `${{h}}:${{pad(m)}}:${{pad(s)}}` : `${{m}}:${{pad(s)}}`;
+        }}
+        setInterval(() => {{
+            value.textContent = format(startSeconds + (Date.now() - startMs) / 1000);
+        }}, 1000);
+        </script>
+        """,
+        height=76,
+    )
 
 def reset_tool_state_for_question(question):
     Graph.initialize()
@@ -380,6 +715,7 @@ def reset_tool_state_for_question(question):
     st.session_state.last_click = None
     st.session_state.click_targets = None
     st.session_state.pending_angle_vertex = None
+    st.session_state.pending_edge_options = []
     st.session_state.annotations = []
     st.session_state.lines = []
     st.session_state.angles = []
@@ -390,18 +726,47 @@ def reset_tool_state_for_question(question):
     st.session_state.point_names = {}
     st.session_state.program = []
     st.session_state.log = []
+    st.session_state.tool_calls = []
+    st.session_state.question_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    st.session_state.question_started_time = time.time()
     st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
     st.session_state.loaded_question_id = question.get("question_id", "")
 
 # ============================================================
 # 1. SESSION INIT
 # ============================================================
+if "survey_responses" not in st.session_state:
+    st.session_state.survey_responses = {}
+if "last_result_path" not in st.session_state:
+    st.session_state.last_result_path = ""
+if "survey_completed" not in st.session_state:
+    st.session_state.survey_completed = False
+if "timer_hidden" not in st.session_state:
+    st.session_state.timer_hidden = False
+if "answer_feedback" not in st.session_state:
+    st.session_state.answer_feedback = None
+if "max_confirmed_question_index" not in st.session_state:
+    answered_indices = [
+        int(response.get("question_index", -1))
+        for response in st.session_state.survey_responses.values()
+        if isinstance(response, dict) and str(response.get("answer", "")).strip()
+    ]
+    st.session_state.max_confirmed_question_index = max(answered_indices, default=-1)
+if _locked_next_question_index() >= len(QUESTION_BANK):
+    st.session_state.survey_completed = True
+
 QUESTION = current_question()
 if (
     "res_map" not in st.session_state
     or st.session_state.get("loaded_question_id") != QUESTION.get("question_id", "")
 ):
     reset_tool_state_for_question(QUESTION)
+init_survey_timer()
+if "tool_calls" not in st.session_state:
+    st.session_state.tool_calls = []
+if "question_started_time" not in st.session_state:
+    st.session_state.question_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    st.session_state.question_started_time = time.time()
 
 res_map = st.session_state.res_map
 maxX, maxY = st.session_state.maxX, st.session_state.maxY
@@ -410,9 +775,18 @@ img_size = (int(200 + 800 * maxX), int(200 + 800 * maxY))
 # ============================================================
 # 2. NAMING & DESCRIPTIONS
 # ============================================================
+SUBSCRIPT_DIGITS = {"0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉"}
+SUBSCRIPT_TO_DIGITS = {v: k for k, v in SUBSCRIPT_DIGITS.items()}
+
+def to_subscript_number(n):
+    return "".join(SUBSCRIPT_DIGITS.get(ch, ch) for ch in str(n))
+
 def next_name(prefix):
+    st.session_state.counters.setdefault(prefix, 1)
     n = st.session_state.counters[prefix]
     st.session_state.counters[prefix] += 1
+    if prefix == "U":
+        return prefix
     return f"{prefix}{n}"
 
 def point_name(v, create=True):
@@ -479,7 +853,7 @@ def describe(o):
         return f"Region {o.letter}" if getattr(o, "bounded", True) else "the Outside (frame)"
     if is_vertex(o):
         nm = point_name(o, create=False)
-        return nm if nm else f"point ({o.p.x:.2f}, {o.p.y:.2f})"
+        return nm if nm else "Vertex"
     if isinstance(o, dict) and "type" in o:
         return {"segment": "a segment", "extend": "a full line", "ray": "a ray"}[o["type"]]
     if isinstance(o, float): return f"{o:.4f}"
@@ -511,11 +885,9 @@ def clear_selection():
     st.session_state.selection_meta = []
 
 def remove_selection_item(i):
-    """Remove the i-th selection entry (the per-row ✕ button). If selecting
-    it had just created a point label or a new angle arc, retract that too —
-    but only if it was freshly created by THIS selection event; re-picking an
-    already-saved point/angle and then removing it leaves the saved object
-    (and its permanent mark) intact."""
+    """Remove the i-th selection entry (the per-row ✕ button). Vertex
+    labels are persistent, so deselecting a vertex leaves its point label on
+    the map. Newly selected angle arcs are still retracted on deselection."""
     sel, meta_list = st.session_state.selection, st.session_state.selection_meta
     if i < 0 or i >= len(sel):
         return
@@ -525,9 +897,9 @@ def remove_selection_item(i):
         meta_list.pop(i)
     if meta:
         if meta["kind"] == "point":
-            st.session_state.point_names.pop(meta["point_key"], None)
-            ref = meta.get("annotation_ref")
-            st.session_state.annotations = [a for a in st.session_state.annotations if a is not ref]
+            # Vertex labels are persistent names. Deselecting a vertex only
+            # removes it from the current selection; the label stays visible.
+            pass
         elif meta["kind"] == "angle":
             entry = meta.get("angle_entry")
             st.session_state.angles = [a for a in st.session_state.angles if a is not entry]
@@ -633,6 +1005,12 @@ def draw_interior_arc_x(odraw, vertex, face, label=None,
         odraw.text((lx, ly), label, fill=color, font=font, anchor="mm",
                    stroke_width=2, stroke_fill=(255, 255, 255, 255))
 
+
+def draw_union_label(draw, xy, name, font_big):
+    lx, ly = xy
+    draw.text((lx, ly), name, fill=(0, 0, 0, 255), font=font_big,
+              anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
+
 def draw_union_solid(draw, union, font_big):
     fu = union["face"]
     pts = [DrawGraph.V2P(v.p) for v in fu.vertices]
@@ -640,9 +1018,7 @@ def draw_union_solid(draw, union, font_big):
     for e in fu.edges:
         draw.line([DrawGraph.V2P(e.tail.p), DrawGraph.V2P(e.head.p)],
                   fill=(0, 0, 0, 255), width=6)
-    lx, ly = union["label_xy"]
-    draw.text((lx, ly), union["name"], fill=(0, 0, 0, 255), font=font_big,
-              anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
+    draw_union_label(draw, union["label_xy"], union["name"], font_big)
 
 def _face_label_lp_d(face):
     """Stable label position for a face (uses the locked cache when available)."""
@@ -816,8 +1192,7 @@ def build_hover_shapes():
              "x1": max(c0[0], c1[0]), "y1": max(c0[1], c1[1])}
 
     angles = []
-    for _nm, a_sel in st.session_state.angles:
-        vertex, face = a_sel.vertex, a_sel.face
+    for vertex, face in selectable_angle_targets():
         pc = vertex.p
         e_in = next((e for e in face.edges if e.head.p == pc), None)
         e_out = next((e for e in face.edges if e.tail.p == pc), None)
@@ -841,6 +1216,25 @@ def build_hover_shapes():
 
     return {"regions": regions, "edges": edges, "vertices": vertices,
             "frame": frame, "angles": angles}
+
+def live_selectable_regions():
+    consumed = st.session_state.union_consumed
+    regions = [
+        f for f in res_map.faces
+        if getattr(f, "bounded", False) and f not in consumed
+    ]
+    regions.extend(u["face"] for u in st.session_state.unions)
+    return regions
+
+def selectable_angle_targets():
+    cmap = _consumed_to_union_map()
+    targets = []
+    for face in live_selectable_regions():
+        for vertex in getattr(face, "vertices", []):
+            if _vertex_interior_to_union(vertex, cmap):
+                continue
+            targets.append((vertex, face))
+    return targets
 
 # ============================================================
 # 6. CLICK HIT-TESTING
@@ -878,6 +1272,65 @@ def hit_test(px, py):
         d = Graph.distPointFromEdge(cp, e.tail.p, e.head.p)
         if d < e_d: e_d, e_best = d, e
     return v_best, f_hit, e_best
+
+def _display_angle_shape(vertex, face):
+    sx = DISPLAY_SIDE / img_size[0]
+    sy = DISPLAY_SIDE / img_size[1]
+
+    def D(p):
+        X, Y = DrawGraph.V2P(p)
+        return X * sx, Y * sy
+
+    pc = vertex.p
+    e_in = next((e for e in face.edges if e.head.p == pc), None)
+    e_out = next((e for e in face.edges if e.tail.p == pc), None)
+    if not e_in:
+        e_in = next((e for e in face.edges if Graph.vecDist(e.head.p, pc) < 1e-9), None)
+    if not e_out:
+        e_out = next((e for e in face.edges if Graph.vecDist(e.tail.p, pc) < 1e-9), None)
+    if not e_in or not e_out:
+        return None
+    cx, cy = D(pc)
+    pxp, pyp = D(e_in.tail.p)
+    pxn, pyn = D(e_out.head.p)
+    start = math.degrees(math.atan2(pyp - cy, pxp - cx))
+    end = math.degrees(math.atan2(pyn - cy, pxn - cx))
+    while end < start:
+        end += 360
+    if abs((end - start) - 180.0) < 0.1:
+        return None
+    return {"cx": cx, "cy": cy, "r": 20.0, "start": start, "end": end}
+
+def _angle_shape_contains(shape, px, py):
+    dist = math.hypot(px - shape["cx"], py - shape["cy"])
+    if abs(dist - shape["r"]) > 11:
+        return False
+    ang = math.degrees(math.atan2(py - shape["cy"], px - shape["cx"]))
+    while ang < shape["start"]:
+        ang += 360
+    while ang >= shape["start"] + 360:
+        ang -= 360
+    return ang <= shape["end"]
+
+def hit_test_by_mode(px, py, mode):
+    v, f, e = hit_test(px, py)
+    if mode == "Region":
+        return ("region", f) if f else (None, None)
+    if mode == "Vertex":
+        return ("vertex", v) if v else (None, None)
+    if mode == "Edge":
+        return ("edge", e) if e else (None, None)
+    if mode == "Angle":
+        best, best_delta = None, 999
+        for vertex, face in selectable_angle_targets():
+            shape = _display_angle_shape(vertex, face)
+            if shape and _angle_shape_contains(shape, px, py):
+                delta = abs(math.hypot(px - shape["cx"], py - shape["cy"]) - shape["r"])
+                if delta < best_delta:
+                    best_delta = delta
+                    best = AngleSel(vertex, face)
+        return ("angle", best) if best else (None, None)
+    return (None, None)
 
 def edge_options(e):
     root = getattr(e, "trueEdge", e)
@@ -1043,10 +1496,63 @@ def validate(tool, modes):
 def add_program(line): st.session_state.program.append(line)
 def add_log(text):     st.session_state.log.append(text)
 
+def _tool_output(value):
+    if isinstance(value, (list, tuple, set)):
+        return {"type": "list", "items": [_tool_output(v) for v in value]}
+    if value is None:
+        return {"type": "none", "value": None}
+    if isinstance(value, bool):
+        return {"type": "boolean", "value": value}
+    if isinstance(value, (int, float)):
+        return {"type": "number", "value": value}
+    if isinstance(value, str):
+        return {"type": "text", "value": value}
+    if is_vertex(value):
+        return {"type": "annotation", "kind": "point", "label": code_name(value)}
+    if is_angle(value):
+        return {
+            "type": "annotation",
+            "kind": "angle",
+            "label": angle_name(value),
+            "region": value.face.letter,
+        }
+    if is_edgesel(value):
+        return {
+            "type": "annotation",
+            "kind": "edge",
+            "label": edge_name(value),
+            "description": value.text,
+        }
+    if is_region(value):
+        return {
+            "type": "region",
+            "label": value.letter if getattr(value, "bounded", True) else "Outside",
+        }
+    return {"type": "text", "value": describe(value)}
+
+def infer_call_type(output):
+    if isinstance(output, dict) and output.get("type") == "annotation":
+        return "annotation"
+    return "analysis"
+
+def record_tool_call(tool, function, input_text, output, output_text=None, call_type=None):
+    calls = st.session_state.setdefault("tool_calls", [])
+    calls.append({
+        "order": len(calls) + 1,
+        "tool": tool,
+        "function": function,
+        "call_type": call_type or infer_call_type(output),
+        "input": input_text,
+        "output": output,
+        "output_text": output_text if output_text is not None else describe(output),
+        "timestamp": _ts(),
+        "survey_elapsed_seconds": survey_elapsed_seconds(),
+    })
+
 # ---- single-step UNDO -------------------------------------------------------
 _UNDO_KEYS = ["selection", "selection_meta", "annotations", "lines", "angles", "named_edges",
               "unions", "union_consumed", "point_names", "counters",
-              "program", "log"]
+              "program", "log", "tool_calls"]
 
 def push_undo():
     """Snapshot the tracked state BEFORE a mutating action so it can be undone."""
@@ -1099,6 +1605,7 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
     else:
         add_program(call_str)
     add_log(f"`{call_str}` → **{describe(result)}**")
+    record_tool_call(tool, call_str.split("(", 1)[0], call_str, _tool_output(result), describe(result))
     clear_selection()
     st.rerun()
 
@@ -1118,8 +1625,8 @@ def finish_vertex(call_str, result, assign_prefix="v"):
            multiple meeting points) into the buffer too — skipping anything
            already there, so re-running on the same selection doesn't pile
            up duplicate buffer entries.
-    The buffer now only ever clears for Vertex when you press the explicit
-    "Clear selection" button.
+    Retained vertices remain until they are removed with their per-item ✕
+    controls or the survey advances to another question.
     """
     keep_sel, keep_meta, seen_ids = [], [], set()
     for o, m in zip(st.session_state.selection, st.session_state.selection_meta):
@@ -1145,6 +1652,7 @@ def finish_vertex(call_str, result, assign_prefix="v"):
     else:
         add_program(call_str)
     add_log(f"`{call_str}` → **{describe(result)}**")
+    record_tool_call("vertex", "vertex", call_str, _tool_output(result), describe(result))
     st.session_state.click_targets = None
     st.session_state.pending_angle_vertex = None
     st.rerun()
@@ -1166,6 +1674,19 @@ def ranking_finish(call_str, result, by, ref):
     ordered = "  →  ".join(
         f"{code_name(it)} ({_rank_fmt(by, _rank_value(it, by, ref))})" for it in result)
     add_log(f"`{call_str}` — **smallest → largest:**  {ordered}")
+    record_tool_call(
+        "sort",
+        "sort",
+        call_str,
+        {
+            "type": "list",
+            "items": [code_name(it) for it in result],
+            "order": "smallest_to_largest",
+            "sort_by": by,
+        },
+        ordered,
+        "analysis",
+    )
     clear_selection()
     st.rerun()
 
@@ -1190,8 +1711,9 @@ def run_tool(tool, modes):
                 reg = s["regions"][0]
                 which = modes["which"]
                 result = T.vertex(reg, which=which)
-                finish_vertex(f'vertex({reg.letter}, which="{which}")', result,
-                               "v" if not isinstance(result, list) else "r")
+                call_str = f'vertex({reg.letter}, which="{which}")'
+                finish_vertex(call_str, result,
+                              "v" if not isinstance(result, list) else "r")
 
         # ---- NEIGHBORS -----------------------------------------------------
         elif tool == "neighbors":
@@ -1261,6 +1783,14 @@ def run_tool(tool, modes):
             st.session_state.annotations.append({"kind": "line", "line": line, "label": name})
             add_program(f"{name} = {call}")
             add_log(f"`{name} = {call}` → drawn")
+            record_tool_call(
+                tool,
+                "draw",
+                call,
+                {"type": "annotation", "kind": "line", "label": name},
+                name,
+                "annotation",
+            )
             clear_selection()
             st.rerun()
 
@@ -1288,6 +1818,19 @@ def run_tool(tool, modes):
             st.session_state.union_consumed += [fa, fb]
             add_program(f"{uname} = merge({fa.letter}, {fb.letter})")
             add_log(f"`{uname} = merge({fa.letter}, {fb.letter})` → new solid region **{uname}**")
+            record_tool_call(
+                tool,
+                "merge",
+                f"merge({fa.letter}, {fb.letter})",
+                {
+                    "type": "annotation",
+                    "kind": "union",
+                    "label": uname,
+                    "regions": [fa.letter, fb.letter],
+                },
+                uname,
+                "annotation",
+            )
             clear_selection()
             st.rerun()
 
@@ -1316,6 +1859,14 @@ def run_tool(tool, modes):
                     var = next_name("r")
                     add_program(f"{var} = {call_str}")
                     add_log(f"`{call_str}` → **{round(val, 2)}°**")
+                    record_tool_call(
+                        tool,
+                        "measure",
+                        call_str,
+                        {"type": "number", "value": round(val, 2), "unit": "degrees"},
+                        f"{round(val, 2)}°",
+                        "analysis",
+                    )
                 clear_selection()
                 st.rerun()
 
@@ -1382,7 +1933,11 @@ def _ts():
 def survey_answer_key(question):
     return f"answer_{st.session_state.survey_question_index}_{question.get('question_id', '')}"
 
-def current_trial_record(question, answer):
+def current_trial_record(question, answer, is_correct=None):
+    question_started_time = st.session_state.get("question_started_time")
+    response_time_seconds = None
+    if question_started_time is not None:
+        response_time_seconds = round(time.time() - question_started_time, 3)
     return {
         "participant_id": PARTICIPANT_ID,
         "survey_version": SURVEY_VERSION,
@@ -1390,7 +1945,13 @@ def current_trial_record(question, answer):
         "question": question,
         "answer": answer,
         "scratch_pad": st.session_state.get("scratch_pad", ""),
+        "correct_answer": question.get("answer", ""),
+        "is_correct": is_correct,
+        "question_started_at": st.session_state.get("question_started_at"),
+        "survey_elapsed_seconds": survey_elapsed_seconds(),
+        "response_time_seconds": response_time_seconds,
         "submitted_at": _ts(),
+        "tool_calls": list(st.session_state.get("tool_calls", [])),
         "program": list(st.session_state.program),
         "output_log": list(st.session_state.log),
     }
@@ -1415,80 +1976,195 @@ def save_survey_results():
     st.session_state.last_result_path = path
     return path
 
-if "survey_responses" not in st.session_state:
-    st.session_state.survey_responses = {}
-if "last_result_path" not in st.session_state:
-    st.session_state.last_result_path = ""
+if st.session_state.survey_completed:
+    st.success("Survey complete. Thank you.")
+    if st.session_state.last_result_path:
+        st.caption(f"Saved result file: {st.session_state.last_result_path}")
+    st.stop()
 
 # ============================================================
 # 9. LAYOUT  (LEFT: tools/selection/run | MIDDLE: diagram+selection+saved |
-#             RIGHT: quick actions + scratch pad + program + output)
+#             RIGHT: quick actions + scratch pad + output)
 # ============================================================
 question_number = st.session_state.survey_question_index + 1
-st.title("Geometry Reasoning Survey")
 top_left, top_right = st.columns([3, 1])
 with top_left:
-    st.subheader(f"Question {question_number} of {len(QUESTION_BANK)}")
-    st.write(QUESTION.get("question_text", ""))
-    if DATASET_PATH:
-        st.caption(f"Dataset: {os.path.basename(DATASET_PATH)}")
-    else:
-        st.caption("Using fallback questions.")
+    st.caption(f"Question {question_number} of {len(QUESTION_BANK)}")
+    question_text = html.escape(str(QUESTION.get("question_text", "")))
+    st.markdown(
+        f'<div style="font-size:20px; font-weight:600; line-height:1.45; '
+        f'margin:0.2rem 0 0.75rem 0;">{question_text}</div>',
+        unsafe_allow_html=True,
+    )
 with top_right:
-    st.caption(f"Participant: {PARTICIPANT_ID}")
-    st.caption(f"Seed: {QUESTION.get('seed', '')}; regions: {QUESTION.get('num_regions', '')}")
-
-with st.form("survey_answer_form", clear_on_submit=False):
-    key = survey_answer_key(QUESTION)
-    existing = st.session_state.survey_responses.get(QUESTION.get("question_id", ""), {}).get("answer", "")
-    if normalized_answer_type(QUESTION) == "two_choice":
-        options = get_two_choice_options(QUESTION)
-        current_index = options.index(existing) if existing in options else None
-        answer_value = st.radio("Answer:", options, index=current_index, horizontal=True, key=f"{key}_choice")
+    if st.session_state.timer_hidden:
+        if st.button("Show timer", use_container_width=True):
+            st.session_state.timer_hidden = False
+            st.rerun()
     else:
-        answer_value = st.text_input(
-            "Answer:",
-            value=existing,
-            placeholder=QUESTION.get("answer_placeholder", ""),
-            key=f"{key}_text",
-        )
-    submit_cols = st.columns([1, 1, 2])
-    submitted = submit_cols[0].form_submit_button("Save Answer")
-    save_and_next = submit_cols[1].form_submit_button("Save & Next")
-    if submitted or save_and_next:
-        cleaned = (answer_value or "").strip()
-        if not cleaned:
-            st.error("Please enter an answer before saving.")
-        else:
-            qid = QUESTION.get("question_id", f"q_{st.session_state.survey_question_index:03d}")
-            st.session_state.survey_responses[qid] = current_trial_record(QUESTION, cleaned)
-            path = save_survey_results()
-            # The submitted text is now preserved in this question's JSON
-            # response, so start the scratch pad empty for subsequent work.
-            st.session_state.scratch_pad = ""
-            st.success(f"Saved answer. Results file: {path}")
-            if save_and_next and st.session_state.survey_question_index < len(QUESTION_BANK) - 1:
-                st.session_state.survey_question_index += 1
+        timer_col, hide_timer_col = st.columns([3, 1], vertical_alignment="center")
+        with timer_col:
+            render_timer()
+        with hide_timer_col:
+            if st.button("Hide", help="Hide timer", use_container_width=True):
+                st.session_state.timer_hidden = True
                 st.rerun()
 
-nav_cols = st.columns([1, 1, 3])
-if nav_cols[0].button("Previous Question", disabled=st.session_state.survey_question_index == 0):
-    st.session_state.survey_question_index -= 1
-    st.rerun()
-if nav_cols[1].button("Next Question", disabled=st.session_state.survey_question_index >= len(QUESTION_BANK) - 1):
-    st.session_state.survey_question_index += 1
-    st.rerun()
-if st.session_state.last_result_path:
-    nav_cols[2].caption(f"Last saved: {st.session_state.last_result_path}")
+answer_panel, action_panel = st.columns([8, 3], gap="medium")
 
-st.divider()
+with answer_panel:
+    feedback = st.session_state.get("answer_feedback")
+    feedback_for_current = feedback and feedback.get("question_index") == st.session_state.survey_question_index
+    if feedback_for_current:
+        if feedback.get("is_correct") is False:
+            correct_answer = feedback.get("correct_answer_display", feedback.get("correct_answer", ""))
+            st.error("Incorrect. Please review the correct answer before continuing.")
+            st.info(f"Correct answer: {correct_answer}")
+        else:
+            st.success("Correct.")
+        continue_label = "Finish Survey" if feedback.get("is_last_question") else "Continue"
+        if st.button(continue_label, type="primary"):
+            st.session_state.max_confirmed_question_index = max(
+                st.session_state.max_confirmed_question_index,
+                st.session_state.survey_question_index,
+            )
+            st.session_state.answer_feedback = None
+            if feedback.get("is_last_question"):
+                st.session_state.survey_completed = True
+            else:
+                st.session_state.survey_question_index += 1
+            st.rerun()
+    else:
+        with st.form("survey_answer_form", clear_on_submit=False):
+            key = survey_answer_key(QUESTION)
+            existing = st.session_state.survey_responses.get(QUESTION.get("question_id", ""), {}).get("answer", "")
+            if normalized_answer_type(QUESTION) == "two_choice":
+                options = get_two_choice_options(QUESTION)
+                current_index = options.index(existing) if existing in options else None
+                answer_value = st.radio("Answer:", options, index=current_index, horizontal=True, key=f"{key}_choice")
+            else:
+                answer_col, _ = st.columns([3, 2])
+                with answer_col:
+                    answer_value = st.text_area(
+                        "Answer:",
+                        value=existing,
+                        height=100,
+                        placeholder=QUESTION.get("answer_placeholder", ""),
+                        key=f"{key}_area",
+                    )
+                    answer_hint = answer_hint_for(QUESTION)
+                    if answer_hint:
+                        safe_answer_hint = html.escape(answer_hint)
+                        st.markdown(
+                            '<div style="font-size:0.9rem; line-height:1.4; color:#4b5563; '
+                            'background:#f3f4f6; border-left:3px solid #9ca3af; '
+                            'padding:0.45rem 0.65rem; margin-top:-0.25rem; margin-bottom:0.5rem; '
+                            'border-radius:0 0.3rem 0.3rem 0;">'
+                            f'{safe_answer_hint}</div>',
+                            unsafe_allow_html=True,
+                        )
+            is_last_question = st.session_state.survey_question_index >= len(QUESTION_BANK) - 1
+            button_label = "Confirm Final Answer" if is_last_question else "Confirm Answer"
+            submitted = st.form_submit_button(button_label, type="primary")
+            if submitted:
+                cleaned = (answer_value or "").strip()
+                if not cleaned:
+                    st.error("Please enter an answer before saving.")
+                else:
+                    qid = question_id_for(QUESTION, st.session_state.survey_question_index)
+                    is_correct = answer_is_correct(QUESTION, cleaned)
+                    st.session_state.survey_responses[qid] = current_trial_record(QUESTION, cleaned, is_correct)
+                    path = save_survey_results()
+                    st.session_state.scratch_pad = ""
+                    st.session_state.answer_feedback = {
+                        "question_index": st.session_state.survey_question_index,
+                        "question_id": qid,
+                        "answer": cleaned,
+                        "correct_answer": QUESTION.get("answer", ""),
+                        "correct_answer_display": format_answer_for_feedback(QUESTION),
+                        "is_correct": is_correct,
+                        "is_last_question": is_last_question,
+                    }
+                    st.rerun()
 
-col_ctrl, col_map, col_io = st.columns([4, 5, 4], gap="medium")
+with action_panel:
+    st.subheader("Help")
+    st.session_state.setdefault("definitions_open", False)
+    st.session_state.setdefault("tools_guide_open", False)
+
+    definitions_open = st.session_state["definitions_open"]
+    tools_guide_open = st.session_state["tools_guide_open"]
+    help_cols = st.columns(2)
+    if help_cols[0].button(("▾ Definitions" if definitions_open else "▸ Definitions"), key="toggle_definitions", use_container_width=True):
+        st.session_state["definitions_open"] = not definitions_open
+        st.rerun()
+    if help_cols[1].button(("▾ How to use tools" if tools_guide_open else "▸ How to use tools"), key="toggle_tools_guide", use_container_width=True):
+        st.session_state["tools_guide_open"] = not tools_guide_open
+        st.rerun()
+    if st.session_state["definitions_open"]:
+        st.markdown(DEFINITIONS_TEXT)
+    if st.session_state["tools_guide_open"]:
+        st.markdown(TOOLS_GUIDE_TEXT)
+
+    st.subheader("Quick actions")
+    qcols = st.columns(2)
+    if qcols[0].button("↩ Undo last move", use_container_width=True,
+                       disabled=not st.session_state.undo_stack):
+        undo_last()
+    if qcols[1].button("Clear all", use_container_width=True):
+        for k in ["annotations", "lines", "angles", "named_edges", "unions",
+                  "union_consumed", "undo_stack", "program", "log", "tool_calls"]:
+            st.session_state[k] = []
+        st.session_state.point_names = {}
+        st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+        st.rerun()
+
+col_ctrl, col_map, col_io = st.columns([3, 5, 3], gap="medium")
 
 # ----------------------------------------------------------------------------
-# LEFT PANEL — TOOLS + current selection + active tool config + RUN
+# LEFT PANEL — selection + tools + active tool config + RUN
 # ----------------------------------------------------------------------------
 with col_ctrl:
+    st.markdown(
+        """
+        <style>
+        div.stButton > button {
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 6px;
+            justify-content: flex-start;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # --- SELECTION ---
+    st.subheader("Selection")
+    st.session_state.setdefault("selection_filter", "Region")
+    select_mode = st.radio(
+        "Select from diagram:",
+        ["Region", "Angle", "Vertex", "Edge"],
+        horizontal=True,
+        key="selection_filter",
+        label_visibility="collapsed",
+    )
+    if st.button("Select FRAME", use_container_width=True):
+        push_undo()
+        add_to_selection("frame")
+        st.rerun()
+
+    if st.session_state.selection:
+        st.markdown(_SELECTION_ROW_CSS, unsafe_allow_html=True)
+        for i, o in enumerate(st.session_state.selection):
+            row = st.container(key=f"sel_row_{i}")
+            rcols = row.columns([9, 1])
+            rcols[0].markdown(f"- {describe(o)}")
+            if rcols[1].button("✕", key=f"sel_remove_{i}", help="Remove from selection"):
+                push_undo()
+                remove_selection_item(i)
+                st.rerun()
+
     st.subheader("Tools")
 
     # The active tool's button gets a soft mint-green shade (no checkmark).
@@ -1527,25 +2203,9 @@ with col_ctrl:
     tool = st.session_state.active_tool
     modes = {}
 
-    # --- SELECTION ---
-    st.subheader("Selection")
-    if st.session_state.selection:
-        st.markdown(_SELECTION_ROW_CSS, unsafe_allow_html=True)
-        for i, o in enumerate(st.session_state.selection):
-            row = st.container(key=f"sel_row_{i}")
-            rcols = row.columns([9, 1])
-            rcols[0].markdown(f"- {describe(o)}")
-            if rcols[1].button("✕", key=f"sel_remove_{i}", help="Remove from selection"):
-                push_undo()
-                remove_selection_item(i)
-                st.rerun()
-    else:
-        st.caption("(click the map to select regions, points, or edges)")
-
     if tool:
         display = TOOL_LABELS.get(tool, tool)
         st.markdown(f"### {display}")
-        st.info(INSTRUCTIONS[tool])
 
         s = sel_sig()
 
@@ -1565,7 +2225,8 @@ with col_ctrl:
                     "Which corner?",
                     ["all", "leftmost", "rightmost", "topmost", "bottommost",
                      "sharpest", "widest"],
-                    horizontal=True, key="rad_vtx_corner")
+                    horizontal=True,
+                    key="rad_vtx_corner")
 
         elif tool == "neighbors":
             if s["edges"] and not s["regions"] and not s["vertices"]:
@@ -1639,8 +2300,7 @@ with col_ctrl:
                 if s["angles"]:
                     st.caption(f"{len(s['angles'])} angle(s) selected — each will be measured.")
                 else:
-                    st.caption("Pick saved angles (a1, a2…) from the map panel, or make one: "
-                               "click a corner → 📐 Angle here → region.")
+                    st.caption("Use Select: Angle above the map, then click an angle arc.")
 
         elif tool == "sort":
             opts = []   # (label, internal_value)
@@ -1669,8 +2329,6 @@ with col_ctrl:
         if st.button("▶ RUN", type="primary", disabled=not ready, use_container_width=True):
             push_undo()
             run_tool(tool, modes)
-    else:
-        st.caption("Pick a tool above to begin.")
 
 # ----------------------------------------------------------------------------
 # MIDDLE PANEL — DIAGRAM + selection-building buttons + saved objects
@@ -1679,101 +2337,73 @@ with col_map:
     display_img = render().resize((DISPLAY_SIDE, DISPLAY_SIDE), Image.Resampling.LANCZOS)
 
     # encode the rendered map + serialize hover geometry, then hand both to the
-    # custom canvas component. Hovering is painted in the browser; clicks come
-    # back as {x, y} exactly like the old streamlit_image_coordinates call.
+    # custom canvas component. The browser only paints the selected object type.
     _buf = BytesIO()
     display_img.save(_buf, format="PNG")
     _img_b64 = base64.b64encode(_buf.getvalue()).decode()
-    coords = geo_canvas(_img_b64, build_hover_shapes(), DISPLAY_SIDE, key="map_click")
+    coords = geo_canvas(
+        _img_b64,
+        build_hover_shapes(),
+        DISPLAY_SIDE,
+        select_type=select_mode.lower(),
+        key="map_click",
+    )
+
+    if tool:
+        st.info(INSTRUCTIONS[tool])
 
     if coords is not None and coords != st.session_state.last_click:
         st.session_state.last_click = coords
-        st.session_state.click_targets = hit_test(coords["x"], coords["y"])
-        st.session_state.pending_angle_vertex = None
-
-    targets = st.session_state.click_targets
-    candidate_buttons = []
-    if targets and any(targets):
-        v, f, e = targets
-        if v:
-            nm = point_name(v, create=False)
-            lbl = nm if nm else f"({v.p.x:.2f},{v.p.y:.2f})"
-            candidate_buttons.append((f"📍 Point {lbl}", "vertex", v))
-            candidate_buttons.append(("📐 Angle here…", "angle", v))
-        if f:
-            candidate_buttons.append((f"⬛ Region {f.letter}", "region", f))
-        if e:
-            for opt in edge_options(e):
-                candidate_buttons.append((f"➖ {opt.text}", "edge", opt))
-
-    if candidate_buttons:
-        st.caption("You clicked near — add to selection:")
-        ccols = st.columns(2)
-        for i, (label, kind, obj) in enumerate(candidate_buttons):
-            if ccols[i % 2].button(label, key=f"cand_{i}", use_container_width=True):
-                push_undo()
-                if kind == "angle":
-                    st.session_state.pending_angle_vertex = obj
-                elif kind == "edge":
-                    if edge_name(obj) is None:
-                        st.session_state.named_edges.append((next_name("e"), obj))
-                    add_to_selection(obj)
-                    st.session_state.click_targets = None
-                else:
-                    meta = None
-                    if kind == "vertex":
-                        _name, meta = point_name_with_meta(obj)
-                    add_to_selection(obj, meta)
-                    st.session_state.click_targets = None
-                st.rerun()
-
-    pav = st.session_state.pending_angle_vertex
-    if pav is not None:
-        st.caption("Angle of which region?")
-        regs = T.neighbors(pav)          # regions meeting at this point
-        # If any of those regions has been merged, offer the angle of the UNION
-        # rather than the now-hidden constituent region.
-        cmap = _consumed_to_union_map()
-        seen_u, regs2 = set(), []
-        for rg in regs:
-            rg = cmap.get(id(rg), rg)
-            if id(rg) not in seen_u:
-                seen_u.add(id(rg))
-                regs2.append(rg)
-        regs = regs2
-        acols = st.columns(2)
-        for i, rg in enumerate(regs):
-            if acols[i % 2].button(f"angle of Region {rg.letter}",
-                                   key=f"ang_{rg.letter}", use_container_width=True):
-                push_undo()
-                a_sel = AngleSel(pav, rg)
-                aname = next_name("a")
-                angle_entry = (aname, a_sel)
-                st.session_state.angles.append(angle_entry)
-                ann = {"kind": "angle", "vertex": pav, "face": rg, "label": aname}
-                st.session_state.annotations.append(ann)
-                add_to_selection(a_sel, {"kind": "angle", "angle_entry": angle_entry,
-                                         "annotation_ref": ann})
-                st.session_state.pending_angle_vertex = None
-                st.session_state.click_targets = None
-                st.rerun()
-
-    # --- frame / clear ---
-    ucols = st.columns(2)
-    if ucols[0].button("Select FRAME", use_container_width=True):
-        push_undo()
-        add_to_selection("frame")
-        st.rerun()
-    if ucols[1].button("Clear selection", use_container_width=True):
-        push_undo()
-        clear_selection()
         st.session_state.click_targets = None
         st.session_state.pending_angle_vertex = None
-        st.rerun()
+        st.session_state.pending_edge_options = []
+        kind, obj = hit_test_by_mode(coords["x"], coords["y"], select_mode)
+        if obj is not None:
+            push_undo()
+            if kind == "vertex":
+                _name, meta = point_name_with_meta(obj)
+                add_to_selection(obj, meta)
+                st.rerun()
+            elif kind == "region":
+                add_to_selection(obj)
+                st.rerun()
+            elif kind == "angle":
+                aname = next_name("a")
+                angle_entry = (aname, obj)
+                st.session_state.angles.append(angle_entry)
+                ann = {"kind": "angle", "vertex": obj.vertex, "face": obj.face, "label": aname}
+                st.session_state.annotations.append(ann)
+                add_to_selection(obj, {"kind": "angle", "angle_entry": angle_entry,
+                                       "annotation_ref": ann})
+                st.rerun()
+            elif kind == "edge":
+                opts = edge_options(obj)
+                if len(opts) == 1:
+                    edge_obj = opts[0]
+                    if edge_name(edge_obj) is None:
+                        st.session_state.named_edges.append((next_name("e"), edge_obj))
+                    add_to_selection(edge_obj)
+                    st.rerun()
+                elif len(opts) > 1:
+                    st.session_state.pending_edge_options = opts
+                    st.rerun()
+
+    pending_edges = st.session_state.get("pending_edge_options", [])
+    if pending_edges:
+        st.caption("Which side of this edge?")
+        ecols = st.columns(2)
+        for i, edge_obj in enumerate(pending_edges):
+            if ecols[i % 2].button(edge_obj.text, key=f"edge_side_{i}", use_container_width=True):
+                push_undo()
+                if edge_name(edge_obj) is None:
+                    st.session_state.named_edges.append((next_name("e"), edge_obj))
+                add_to_selection(edge_obj)
+                st.session_state.pending_edge_options = []
+                st.rerun()
 
     # --- SAVED OBJECTS BUFFER (angles + edges) ---
     # Unions are NOT listed here: a merged region is selected by clicking it
-    # directly on the map (it shows up as "Region U1").
+    # directly on the map (it shows up as "Region U").
     saved = []
     for aname, a_sel in st.session_state.angles:
         saved.append((f"Select {aname} (angle, Region {a_sel.face.letter})", a_sel))
@@ -1789,46 +2419,17 @@ with col_map:
                 st.rerun()
 
 # ----------------------------------------------------------------------------
-# RIGHT PANEL — quick actions, scratch pad, then program trace + output log
-# (scratch pad + actions on top so they're visible without scrolling; the
-#  longer-growing Program/Output sit underneath in fixed-height scrollers.)
+# RIGHT PANEL — scratch pad and output log
 # ----------------------------------------------------------------------------
 with col_io:
-    st.subheader("Quick actions")
-    qcols = st.columns(2)
-    if qcols[0].button("↩ Undo last move", use_container_width=True,
-                       disabled=not st.session_state.undo_stack):
-        undo_last()
-    if qcols[1].button("Clear drawings & program", use_container_width=True):
-        for k in ["annotations", "lines", "angles", "named_edges", "unions",
-                  "union_consumed", "undo_stack", "program", "log"]:
-            st.session_state[k] = []
-        st.session_state.point_names = {}
-        st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
-        st.rerun()
-    if qcols[0].button("Clear output log", use_container_width=True):
-        st.session_state.log = []
-        st.rerun()
-    # if qcols[1].button("New random map", use_container_width=True):
-    #     for k in list(st.session_state.keys()):
-    #         del st.session_state[k]
-
-    st.subheader("📝 Scratch pad")
-    st.text_area("scratch", key="scratch_pad", height=120,
+    st.subheader("Sketch pad")
+    st.text_area("scratch", key="scratch_pad", height=150,
                  label_visibility="collapsed",
-                 placeholder="Free-form notes / answers. Kept until you load a new map.")
-
-    st.subheader("Program")
-    if st.session_state.program:
-        with st.container(height=200):
-            st.code("\n".join(st.session_state.program), language="python")
-    else:
-        st.caption("(your actions become code here)")
+                 placeholder="Use this space for notes or rough work. Your final answer must be entered in the answer box.")
 
     st.subheader("Output")
     if not st.session_state.log:
         st.caption("(results will appear here)")
     else:
-        with st.container(height=220):
-            for entry in reversed(st.session_state.log[-25:]):
-                st.markdown(entry)
+        for entry in reversed(st.session_state.log[-25:]):
+            st.markdown(entry)
