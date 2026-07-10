@@ -1,7 +1,7 @@
 {
   "dataset_version": "demo_24_v1",
   "dataset_role": "internal_demo",
-  "generated_at": "2026-06-23 17:32:37",
+  "generated_at": "2026-07-05 11:21:43",
   "total_pairs": 24,
   "region_count_quota": {
     "3": 2,
@@ -55,53 +55,161 @@
   ],
   "items": [
     {
-      "pair_id": "pair_004",
-      "region_count": 3,
-      "diagram_complexity": "easy",
-      "seed": 160127876,
-      "image_path": "images_color/pair_004_regions_3_seed_160127876_color.png",
+      "pair_id": "pair_019",
+      "region_count": 11,
+      "diagram_complexity": "hard",
+      "seed": 861839602,
+      "image_path": "images_color/pair_019_regions_11_seed_861839602_color.png",
       "question": {
-        "question_id": 26,
-        "question_text": "How many regions are there in total?",
-        "answer": "3",
+        "question_id": 15,
+        "question_text": "Let U be the union of regions J and I. Which regions share an edge with U?\n\nA region that touches U only at a vertex does not count.\nEnter \"None\" if there are none.\n",
+        "answer": "{C, E, F}",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_023",
+      "region_count": 8,
+      "diagram_complexity": "medium",
+      "seed": 656830641,
+      "image_path": "images_color/pair_023_regions_8_seed_656830641_color.png",
+      "question": {
+        "question_id": 12,
+        "question_text": "Let e₁ be the edge of A that meets region G. Extend e₁ in both directions to form straight line L1. Which distinct regions’ interiors does L1 pass through?\n\nDo not include a region if the line only coincides with its boundary without entering its interior.\nEnter \"None\" if there are none.\n",
+        "answer": "{B}",
         "answer_type": "fill_in_the_blank"
       }
     },
     {
       "pair_id": "pair_001",
-      "region_count": 5,
-      "diagram_complexity": "easy",
-      "seed": 902672044,
-      "image_path": "images_color/pair_001_regions_5_seed_902672044_color.png",
+      "region_count": 12,
+      "diagram_complexity": "hard",
+      "seed": 6181927,
+      "image_path": "images_color/pair_001_regions_12_seed_6181927_color.png",
       "question": {
-        "question_id": 9,
-        "question_text": "How many edges does region A have?",
-        "answer": "4",
+        "question_id": 23,
+        "question_text": "Which pairs of regions share a vertex that is the leftmost vertex of one region and the rightmost vertex of the other?\n\nEnter \"None\" if there are none.\n",
+        "answer": "{(E, J)}",
         "answer_type": "fill_in_the_blank"
       }
     },
     {
-      "pair_id": "pair_020",
-      "region_count": 6,
+      "pair_id": "pair_010",
+      "region_count": 8,
       "diagram_complexity": "medium",
-      "seed": 213131625,
-      "image_path": "images_color/pair_020_regions_6_seed_213131625_color.png",
+      "seed": 887627510,
+      "image_path": "images_color/pair_010_regions_8_seed_887627510_color.png",
       "question": {
-        "question_id": 10,
-        "question_text": "Let v₁ be the leftmost vertex of A. Let v₂ be the bottom right vertex of D. Let v₃ be the leftmost vertex of E. Let v₄ be the vertex of F with the sharpest angle. \nSort v₂, v₃, v₄ in increasing order of distance from v₁.",
-        "answer": "[v₃, v₄, v₂]",
+        "question_id": 5,
+        "question_text": "Which pairs of regions share a vertex but do not share an edge?\n\nEnter \"None\" if there are none.\n",
+        "answer": "{(A, G), (D, H), (F, G)}",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_012",
+      "region_count": 9,
+      "diagram_complexity": "medium",
+      "seed": 285211244,
+      "image_path": "images_color/pair_012_regions_9_seed_285211244_color.png",
+      "question": {
+        "question_id": 16,
+        "question_text": "Let U be the union of regions H and A. Order regions U, G, and D from smallest to largest by area.\n",
+        "answer": "[G, D, U]",
         "answer_type": "fill_in_the_blank"
       }
     },
     {
       "pair_id": "pair_017",
-      "region_count": 12,
-      "diagram_complexity": "hard",
-      "seed": 4781753,
-      "image_path": "images_color/pair_017_regions_12_seed_4781753_color.png",
+      "region_count": 5,
+      "diagram_complexity": "easy",
+      "seed": 45455951,
+      "image_path": "images_color/pair_017_regions_5_seed_45455951_color.png",
+      "question": {
+        "question_id": 9,
+        "question_text": "How many edges does region B have?",
+        "answer": "3",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_002",
+      "region_count": 9,
+      "diagram_complexity": "medium",
+      "seed": 789836143,
+      "image_path": "images_color/pair_002_regions_9_seed_789836143_color.png",
+      "question": {
+        "question_id": 20,
+        "question_text": "Let v₁ be the bottommost vertex of F. Let v₂ be the vertex at the bottom right of the overall diagram. Let v₃ be the leftmost vertex of G. \nOrder v₁, v₂, and v₃ from left to right.",
+        "answer": "[v₁, v₃, v₂]",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_007",
+      "region_count": 6,
+      "diagram_complexity": "medium",
+      "seed": 918006635,
+      "image_path": "images_color/pair_007_regions_6_seed_918006635_color.png",
+      "question": {
+        "question_id": 27,
+        "question_text": "Which region has the largest area?",
+        "answer": "A",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_008",
+      "region_count": 8,
+      "diagram_complexity": "medium",
+      "seed": 534749268,
+      "image_path": "images_color/pair_008_regions_8_seed_534749268_color.png",
+      "question": {
+        "question_id": 11,
+        "question_text": "Region C has 4 interior angles, labeled as follows: (1) a₁ is the angle at the rightmost vertex of C; (2) a₂ is the angle at the topmost vertex of C; (3) a₃ is the angle at the leftmost vertex of C; and (4) a₄ is the angle at the vertex not on the frame where regions C and G meet and no other labeled region meets. Order angles a₁, a₂, a₃, and a₄ from smallest to largest.",
+        "answer": "[a₃, a₁, a₂, a₄]",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_009",
+      "region_count": 4,
+      "diagram_complexity": "easy",
+      "seed": 726574521,
+      "image_path": "images_color/pair_009_regions_4_seed_726574521_color.png",
+      "question": {
+        "question_id": 8,
+        "question_text": "Which regions have 5 edges?\n\nEnter \"None\" if there are none.\n",
+        "answer": "{B}",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_004",
+      "region_count": 7,
+      "diagram_complexity": "medium",
+      "seed": 237230862,
+      "image_path": "images_color/pair_004_regions_7_seed_237230862_color.png",
+      "question": {
+        "question_id": 21,
+        "question_text": "Let v₁ be the vertex at the bottom left of the overall diagram. Let v₂ be the vertex at the top left of the overall diagram. Let v₃ be the vertex at the top right of the overall diagram. Following the cycle v₁ → v₂ → v₃ → v₁, is the direction clockwise or counterclockwise?",
+        "answer": "clockwise",
+        "answer_type": "two_choice",
+        "choices": [
+          "Clockwise",
+          "Counterclockwise"
+        ]
+      }
+    },
+    {
+      "pair_id": "pair_022",
+      "region_count": 7,
+      "diagram_complexity": "medium",
+      "seed": 431965149,
+      "image_path": "images_color/pair_022_regions_7_seed_431965149_color.png",
       "question": {
         "question_id": 28,
-        "question_text": "Is region C above or below region L?",
+        "question_text": "Is region A entirely above or entirely below region C?",
         "answer": "above",
         "answer_type": "two_choice",
         "choices": [
@@ -111,96 +219,27 @@
       }
     },
     {
-      "pair_id": "pair_012",
-      "region_count": 8,
-      "diagram_complexity": "medium",
-      "seed": 188003174,
-      "image_path": "images_color/pair_012_regions_8_seed_188003174_color.png",
-      "question": {
-        "question_id": 18,
-        "question_text": "Let v₁ be the vertex of D with the sharpest angle. Let v₂ be the vertex at the top right of the overall diagram. If you travel in a straight line from v₁ to v₂, what regions do you pass through in the interior, in sequence?\nDo not include a region if the line only coincides with its boundary without entering its interior.\nIf the line enters and exits a region more than once, list it multiple times.\n",
-        "answer": "[F, B]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_021",
-      "region_count": 8,
-      "diagram_complexity": "medium",
-      "seed": 310109896,
-      "image_path": "images_color/pair_021_regions_8_seed_310109896_color.png",
-      "question": {
-        "question_id": 14,
-        "question_text": "Let U be the union of regions A and G. How many edges does U have? \n",
-        "answer": "7",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_019",
-      "region_count": 3,
-      "diagram_complexity": "easy",
-      "seed": 301060240,
-      "image_path": "images_color/pair_019_regions_3_seed_301060240_color.png",
-      "question": {
-        "question_id": 4,
-        "question_text": "Let v₁ be the topmost vertex of B. Suppose you start at v₁ and go counterclockwise around B until you have returned to v₁. What regions do you pass through on your right in sequence?\nFor this question, treat the area outside the frame as a valid region and label it as \"Outside\".\n",
-        "answer": "[C, Outside, A]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
       "pair_id": "pair_018",
-      "region_count": 11,
+      "region_count": 12,
       "diagram_complexity": "hard",
-      "seed": 833890587,
-      "image_path": "images_color/pair_018_regions_11_seed_833890587_color.png",
+      "seed": 36320900,
+      "image_path": "images_color/pair_018_regions_12_seed_36320900_color.png",
       "question": {
-        "question_id": 24,
-        "question_text": "Which region is closer to G: E or F? \nConsider the distance between two regions to be the distance between their closest points.\n",
-        "answer": "F",
-        "answer_type": "two_choice",
-        "choices": [
-          "E",
-          "F"
-        ]
-      }
-    },
-    {
-      "pair_id": "pair_023",
-      "region_count": 9,
-      "diagram_complexity": "medium",
-      "seed": 394922262,
-      "image_path": "images_color/pair_023_regions_9_seed_394922262_color.png",
-      "question": {
-        "question_id": 12,
-        "question_text": "Let e1 be the edge of G that meets region F. Suppose e1 is extended in both directions along straight line L1. Which distinct regions does the line L1 pass through in the interior?\nDo not include a region if the line only coincides with its boundary without entering its interior.\nIf there is not any, input \"None\".\n",
-        "answer": "{C, E}",
+        "question_id": 19,
+        "question_text": "Let v₁ be the vertex not on the frame where regions I and D meet and no other labeled region meets. Starting at v₁, travel vertically downward until you reach the bottom edge of the frame. List the regions whose interiors you pass through, in the order encountered.\n\nDo not include a region if the line only coincides with its boundary without entering its interior.\nIf the line enters and exits a region more than once, list it multiple times.\n",
+        "answer": "[I]",
         "answer_type": "fill_in_the_blank"
       }
     },
     {
-      "pair_id": "pair_008",
-      "region_count": 4,
-      "diagram_complexity": "easy",
-      "seed": 220280451,
-      "image_path": "images_color/pair_008_regions_4_seed_220280451_color.png",
-      "question": {
-        "question_id": 13,
-        "question_text": "Let v₁ be the leftmost vertex of A. Which regions meet at v₁?",
-        "answer": "{A, D}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_006",
-      "region_count": 9,
+      "pair_id": "pair_011",
+      "region_count": 6,
       "diagram_complexity": "medium",
-      "seed": 261199759,
-      "image_path": "images_color/pair_006_regions_9_seed_261199759_color.png",
+      "seed": 400788404,
+      "image_path": "images_color/pair_011_regions_6_seed_400788404_color.png",
       "question": {
         "question_id": 25,
-        "question_text": "Does region H share an edge with the frame?",
+        "question_text": "Does any edge of region B lie on the frame?\n\nTouching the frame only at a vertex does not count.",
         "answer": "Yes",
         "answer_type": "two_choice",
         "choices": [
@@ -210,31 +249,83 @@
       }
     },
     {
-      "pair_id": "pair_000",
-      "region_count": 12,
-      "diagram_complexity": "hard",
-      "seed": 450968731,
-      "image_path": "images_color/pair_000_regions_12_seed_450968731_color.png",
+      "pair_id": "pair_006",
+      "region_count": 3,
+      "diagram_complexity": "easy",
+      "seed": 34402817,
+      "image_path": "images_color/pair_006_regions_3_seed_34402817_color.png",
       "question": {
-        "question_id": 21,
-        "question_text": "Suppose that someone travels from v₁ to v₂ to v₃ back to v₁. Is this cycle clockwise or counterclockwise?",
-        "answer": "counterclockwise",
+        "question_id": 18,
+        "question_text": "Let v₁ be the vertex not on the frame where regions C and B meet and no other labeled region meets. Let v₂ be the vertex at the top left of the overall diagram. Consider the straight line segment from v₁ to v₂. List, in order, the regions whose interiors the segment passes through.\n\nIf the segment only touches or runs along a region’s boundary without entering its interior, do not include that region. If it enters the same region more than once, list that region each time.\n",
+        "answer": "[C, A]",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_021",
+      "region_count": 9,
+      "diagram_complexity": "medium",
+      "seed": 241812139,
+      "image_path": "images_color/pair_021_regions_9_seed_241812139_color.png",
+      "question": {
+        "question_id": 4,
+        "question_text": "Let v₁ be the rightmost vertex of G. Starting at v₁, trace the boundary of region G clockwise until you return to v₁. List, in order, the regions on the other side of G’s boundary.\n\nTreat the area outside the frame as a region labeled “Outside”.\n",
+        "answer": "[Outside, D, E, H]",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_013",
+      "region_count": 7,
+      "diagram_complexity": "medium",
+      "seed": 299805,
+      "image_path": "images_color/pair_013_regions_7_seed_299805_color.png",
+      "question": {
+        "question_id": 13,
+        "question_text": "Let v₁ be the bottommost vertex of C. Which regions meet at v₁?",
+        "answer": "{A, B, C, E, G}",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_005",
+      "region_count": 10,
+      "diagram_complexity": "hard",
+      "seed": 876187947,
+      "image_path": "images_color/pair_005_regions_10_seed_876187947_color.png",
+      "question": {
+        "question_id": 24,
+        "question_text": "Which region is closer to I: E or A?\n\nThe distance between two regions is defined as the distance between their closest points.\n",
+        "answer": "A",
         "answer_type": "two_choice",
         "choices": [
-          "Clockwise",
-          "Counterclockwise"
+          "E",
+          "A"
         ]
       }
     },
     {
-      "pair_id": "pair_014",
-      "region_count": 10,
-      "diagram_complexity": "hard",
-      "seed": 8993690,
-      "image_path": "images_color/pair_014_regions_10_seed_8993690_color.png",
+      "pair_id": "pair_003",
+      "region_count": 5,
+      "diagram_complexity": "easy",
+      "seed": 141214201,
+      "image_path": "images_color/pair_003_regions_5_seed_141214201_color.png",
       "question": {
-        "question_id": 2,
-        "question_text": "Do region A and region J have the same number of edges?\n",
+        "question_id": 10,
+        "question_text": "Let v₁ be the rightmost vertex of C. Let v₂ be the leftmost vertex of A. Let v₃ be the vertex at the top right of the overall diagram. Let v₄ be the leftmost vertex of B. \nOrder v₂, v₃, and v₄ from closest to farthest from v₁.",
+        "answer": "[v₃, v₂, v₄]",
+        "answer_type": "fill_in_the_blank"
+      }
+    },
+    {
+      "pair_id": "pair_014",
+      "region_count": 4,
+      "diagram_complexity": "easy",
+      "seed": 868633815,
+      "image_path": "images_color/pair_014_regions_4_seed_868633815_color.png",
+      "question": {
+        "question_id": 22,
+        "question_text": "Let v₁ be the bottommost vertex of B. Let v₂ be the vertex at the bottom left of the overall diagram. Let v₃ be the rightmost vertex of B. Let v₄ be the vertex of C with the widest angle. \nDoes the line segment between v₁ and v₂ cross the line segment between v₃ and v₄?",
         "answer": "No",
         "answer_type": "two_choice",
         "choices": [
@@ -244,14 +335,14 @@
       }
     },
     {
-      "pair_id": "pair_002",
-      "region_count": 10,
+      "pair_id": "pair_000",
+      "region_count": 11,
       "diagram_complexity": "hard",
-      "seed": 195523503,
-      "image_path": "images_color/pair_002_regions_10_seed_195523503_color.png",
+      "seed": 795104374,
+      "image_path": "images_color/pair_000_regions_11_seed_795104374_color.png",
       "question": {
-        "question_id": 22,
-        "question_text": "Let v₁ be the vertex of I with the widest angle. Let v₂ be the bottom left vertex of A. Let v₃ be the meeting point of regions I, B, and A. Let v₄ be the meeting point of regions F and G. \nDoes the line segment between v₁ and v₂ cross the line segment between v₃ and v₄?",
+        "question_id": 2,
+        "question_text": "Do region J and region C have the same number of edges?\n",
         "answer": "Yes",
         "answer_type": "two_choice",
         "choices": [
@@ -261,132 +352,41 @@
       }
     },
     {
-      "pair_id": "pair_009",
-      "region_count": 8,
-      "diagram_complexity": "medium",
-      "seed": 979665693,
-      "image_path": "images_color/pair_009_regions_8_seed_979665693_color.png",
+      "pair_id": "pair_016",
+      "region_count": 3,
+      "diagram_complexity": "easy",
+      "seed": 342770875,
+      "image_path": "images_color/pair_016_regions_3_seed_342770875_color.png",
       "question": {
-        "question_id": 5,
-        "question_text": "Which pairs of regions, if any, share a vertex but not along an edge?\nIf there is not any, input \"None\".\n",
-        "answer": "{(C, H)}",
+        "question_id": 26,
+        "question_text": "How many labeled regions are there in the diagram?",
+        "answer": "3",
         "answer_type": "fill_in_the_blank"
       }
     },
     {
-      "pair_id": "pair_010",
+      "pair_id": "pair_020",
       "region_count": 6,
       "diagram_complexity": "medium",
-      "seed": 125874454,
-      "image_path": "images_color/pair_010_regions_6_seed_125874454_color.png",
+      "seed": 377007424,
+      "image_path": "images_color/pair_020_regions_6_seed_377007424_color.png",
       "question": {
-        "question_id": 1,
-        "question_text": "Which regions border region C? Bordering along an edge is not the same as bordering along a vertex.\nIf there is not any, input \"None\".\n",
-        "answer": "{A, B}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_022",
-      "region_count": 7,
-      "diagram_complexity": "medium",
-      "seed": 151906676,
-      "image_path": "images_color/pair_022_regions_7_seed_151906676_color.png",
-      "question": {
-        "question_id": 27,
-        "question_text": "Which region has the largest area?",
-        "answer": "C",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_013",
-      "region_count": 7,
-      "diagram_complexity": "medium",
-      "seed": 884313272,
-      "image_path": "images_color/pair_013_regions_7_seed_884313272_color.png",
-      "question": {
-        "question_id": 19,
-        "question_text": "Let v₁ be the leftmost vertex of G. Suppose that you travel in a horizontal line to the right from v₁ until you reach the right side of the frame. What regions do you pass through in the interior, in sequence?\nDo not include a region if the line only coincides with its boundary without entering its interior.\nIf the line enters and exits a region more than once, list it multiple times.\n",
-        "answer": "[G, E, A, D]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_016",
-      "region_count": 5,
-      "diagram_complexity": "easy",
-      "seed": 19984353,
-      "image_path": "images_color/pair_016_regions_5_seed_19984353_color.png",
-      "question": {
-        "question_id": 23,
-        "question_text": "Which pairs of regions, if any, share a vertex that is the bottom vertex for one region and the top vertex of the other?\nIf there is not any, input \"None\".\n",
-        "answer": "None",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_007",
-      "region_count": 11,
-      "diagram_complexity": "hard",
-      "seed": 439170535,
-      "image_path": "images_color/pair_007_regions_11_seed_439170535_color.png",
-      "question": {
-        "question_id": 8,
-        "question_text": "Which regions have 4 edges?\nIf there is not any, input \"None\".\n",
-        "answer": "{G, E, F, I, C, D, K}",
+        "question_id": 14,
+        "question_text": "Let U be the union of regions D and B. How many edges does U have? \n",
+        "answer": "5",
         "answer_type": "fill_in_the_blank"
       }
     },
     {
       "pair_id": "pair_015",
-      "region_count": 4,
-      "diagram_complexity": "easy",
-      "seed": 484296064,
-      "image_path": "images_color/pair_015_regions_4_seed_484296064_color.png",
+      "region_count": 10,
+      "diagram_complexity": "hard",
+      "seed": 413187270,
+      "image_path": "images_color/pair_015_regions_10_seed_413187270_color.png",
       "question": {
-        "question_id": 16,
-        "question_text": "Sort regions [B, D, A, C] in order of increasing area. \n",
-        "answer": "[C, D, A, B]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_005",
-      "region_count": 6,
-      "diagram_complexity": "medium",
-      "seed": 297620520,
-      "image_path": "images_color/pair_005_regions_6_seed_297620520_color.png",
-      "question": {
-        "question_id": 20,
-        "question_text": "Let v₁ be the vertex at the bottom left of the overall diagram. Let v₂ be the rightmost vertex of E. Let v₃ be the vertex of E with the widest angle. \nOrder v₁, v₂, and v₃ in order bottom to top.",
-        "answer": "[v₁, v₃, v₂]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_011",
-      "region_count": 9,
-      "diagram_complexity": "medium",
-      "seed": 633329409,
-      "image_path": "images_color/pair_011_regions_9_seed_633329409_color.png",
-      "question": {
-        "question_id": 15,
-        "question_text": "Let U be the union of regions H and F. Which regions share an edge with the union U? \nBordering along an edge is not the same as bordering along a vertex.\nIf there is not any, input \"None\".\n",
-        "answer": "{G, C, B}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_003",
-      "region_count": 7,
-      "diagram_complexity": "medium",
-      "seed": 916658842,
-      "image_path": "images_color/pair_003_regions_7_seed_916658842_color.png",
-      "question": {
-        "question_id": 11,
-        "question_text": "Region B has 3 vertices, numbered as follows:\n (1) the bottommost vertex of B;\n(2) the meeting point of B, A, E, and D;\n(3) the top left vertex of B.\nSort these in increasing order by the size of the interior angle at each corner.\n",
-        "answer": "[1, 2, 3]",
+        "question_id": 1,
+        "question_text": "Which regions share an edge with region B?\n\nA region that touches region B only at a vertex does not count.\nEnter \"None\" if there are none.\n",
+        "answer": "{E, G, H}",
         "answer_type": "fill_in_the_blank"
       }
     }
