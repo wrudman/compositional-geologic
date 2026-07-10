@@ -1,4 +1,5 @@
 import os
+import html
 import math
 import base64
 import tempfile
@@ -22,10 +23,30 @@ import map_helpers
 import tools_human as T
 from sel_types import AngleSel, EdgeSel
 
-st.set_page_config(layout="wide", page_title="Geometry Reasoning Survey")
+st.set_page_config(layout="wide")
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-top: 3.5rem;
+        padding-bottom: 2.5rem;
+    }
+    div[data-testid="stVerticalBlock"] {
+        gap: 0.65rem;
+    }
+    div[data-testid="stForm"] {
+        padding: 0.65rem 0.85rem 0.5rem;
+    }
+    .st-key-diagram_panel {
+        transform: translateY(-7px);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 # st.title("Geologic Region Explorer")
 
-DISPLAY_SIDE = 500          # map render size; clicks are mapped back through this
+DISPLAY_SIDE = 460          # map render size; clicks are mapped back through this
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "compositional_questions_v1"
@@ -38,7 +59,7 @@ ANSWER_HINTS_HUMAN = {
     "region_set": "List all matching regions in any order, separated by commas, e.g. A, B, C. If none, write None.",
     "region_sequence": "List the regions in order, separated by commas, e.g. A, B, C.",
     "region_pairs": "List each pair in parentheses, in any order, e.g. (A, B), (C, D). If none, write None.",
-    "ordered_items": "List the named objects in order, separated by commas, e.g. a1, a2, a3.",
+    "ordered_items": "List the named objects in order, separated by commas.",
     "number_sequence": "List the item numbers in order, separated by commas, e.g. 1, 2, 3.",
 }
 
@@ -66,7 +87,7 @@ QUESTION_HINT_TYPES = {
 }
 
 DEFINITIONS_TEXT = """
-**Vertex:** a point where two or more edges meet.
+**Vertex:** a location where two or more edges meet.
 
 **Edge:** a line segment that forms part of a region boundary.
 
@@ -126,6 +147,31 @@ FALLBACK_QUESTION_BANK = [
     },
 ]
 
+ATTENTION_CHECK_QUESTION = {
+    "question_id": "attention_check_select_2",
+    "pair_id": "attention_check",
+    "seed": 42,
+    "num_regions": 8,
+    "diagram_complexity": "attention_check",
+    "question_text": (
+        "Regardless of the diagram shown below, please select option 2 "
+        "for this question."
+    ),
+    "answer": "2",
+    "answer_type": "multiple_choice",
+    "answer_placeholder": "",
+    "choices": ["1", "2", "3", "4", "5"],
+    "is_attention_check": True,
+}
+
+def add_attention_check(questions):
+    questions = list(questions)
+    if any(q.get("is_attention_check") for q in questions):
+        return questions
+    insert_index = min(max(1, len(questions) // 2), len(questions))
+    questions.insert(insert_index, dict(ATTENTION_CHECK_QUESTION))
+    return questions
+
 def _safe_id(value):
     safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in str(value))
     return safe[:80] or DEFAULT_PARTICIPANT_ID
@@ -174,12 +220,12 @@ def normalize_dataset_item(item, item_index):
 def load_question_bank(participant_id):
     dataset_path = find_dataset_path()
     if not dataset_path:
-        return FALLBACK_QUESTION_BANK, ""
+        return add_attention_check(FALLBACK_QUESTION_BANK), ""
     try:
         with open(dataset_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
     except Exception:
-        return FALLBACK_QUESTION_BANK, ""
+        return add_attention_check(FALLBACK_QUESTION_BANK), ""
     raw_items = payload.get("items", payload if isinstance(payload, list) else [])
     normalized = [
         normalize_dataset_item(item, idx)
@@ -190,10 +236,11 @@ def load_question_bank(participant_id):
         if item.get("question_text") and item.get("seed") is not None
     ]
     if not normalized:
-        return FALLBACK_QUESTION_BANK, dataset_path
+        return add_attention_check(FALLBACK_QUESTION_BANK), dataset_path
     sampler = random.Random(participant_id)
     sampler.shuffle(normalized)
-    return normalized[: min(SURVEY_QUESTION_COUNT, len(normalized))], dataset_path
+    selected = normalized[: min(SURVEY_QUESTION_COUNT, len(normalized))]
+    return add_attention_check(selected), dataset_path
 
 def _answer_matches_choices(answer, choices):
     answer_norm = str(answer).strip().lower()
@@ -223,12 +270,33 @@ def get_two_choice_options(question):
 def normalized_answer_type(question):
     return "two_choice" if get_two_choice_options(question) else "fill_in_the_blank"
 
+
+def ordered_items_answer_hint(question):
+    question_text = str(question.get("question_text", ""))
+    match = re.search(r"\b([va])(_?\d+|[₀-₉]+)", question_text, flags=re.IGNORECASE)
+    base_hint = ANSWER_HINTS_HUMAN["ordered_items"]
+    if not match:
+        return base_hint
+
+    prefix, index_text = match.groups()
+    if index_text.startswith("_"):
+        examples = [f"{prefix}_{i}" for i in range(1, 4)]
+    elif re.fullmatch(r"[₀-₉]+", index_text):
+        subscript_digits = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+        examples = [f"{prefix}{str(i).translate(subscript_digits)}" for i in range(1, 4)]
+    else:
+        examples = [f"{prefix}{i}" for i in range(1, 4)]
+    return f"{base_hint[:-1]}, e.g. {', '.join(examples)}."
+
+
 def answer_hint_for(question):
     if normalized_answer_type(question) == "two_choice":
         return ""
     qid = str(question.get("question_id", ""))
     hint_type = QUESTION_HINT_TYPES.get(qid)
     if hint_type:
+        if hint_type == "ordered_items":
+            return ordered_items_answer_hint(question)
         return ANSWER_HINTS_HUMAN.get(hint_type, "")
 
     answer = str(question.get("answer", "")).strip()
@@ -242,15 +310,28 @@ def answer_hint_for(question):
         return ANSWER_HINTS_HUMAN["region_set"]
     if answer.startswith("["):
         if re.search(r"v[₀-₉0-9]|a[₀-₉0-9]", answer):
-            return ANSWER_HINTS_HUMAN["ordered_items"]
+            return ordered_items_answer_hint(question)
         if re.search(r"\d", answer):
             return ANSWER_HINTS_HUMAN["number_sequence"]
         return ANSWER_HINTS_HUMAN["region_sequence"]
     return ""
 
 
+_SUBSCRIPT_DIGIT_TRANSLATION = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
+
+
+def _normalize_answer_notation(value):
+    text = str(value or "").translate(_SUBSCRIPT_DIGIT_TRANSLATION)
+    return re.sub(
+        r"\b([va])_?(?=\d)",
+        lambda match: match.group(1).lower(),
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
 def _answer_tokens(value):
-    text = str(value or "").strip()
+    text = _normalize_answer_notation(value).strip()
     if not text:
         return []
     if text.lower() == "none":
@@ -316,10 +397,10 @@ def format_answer_for_feedback(question):
     return answer
 
 def answer_is_correct(question, answer):
-    correct = str(question.get("answer", "")).strip()
+    correct = _normalize_answer_notation(question.get("answer", "")).strip()
     if not correct:
         return None
-    submitted = str(answer or "").strip()
+    submitted = _normalize_answer_notation(answer).strip()
     if normalized_answer_type(question) == "two_choice":
         return submitted.lower() == correct.lower()
     hint_type = _answer_hint_type(question)
@@ -339,6 +420,7 @@ def answer_is_correct(question, answer):
 PARTICIPANT_ID = get_participant_id()
 if "question_bank" not in st.session_state or "dataset_path" not in st.session_state:
     st.session_state.question_bank, st.session_state.dataset_path = load_question_bank(PARTICIPANT_ID)
+st.session_state.question_bank = add_attention_check(st.session_state.question_bank)
 QUESTION_BANK = st.session_state.question_bank
 DATASET_PATH = st.session_state.dataset_path
 
@@ -361,26 +443,58 @@ BLUE = (0, 0, 255, 255)
 # Each selection row is rendered inside st.container(key=f"sel_row_{i}"),
 # which Streamlit tags with a CSS class "st-key-sel_row_<i>". This rule
 # matches that class by substring, so it scopes ONLY to selection rows —
-# nothing else in the app is touched. The remove (✕) button stays faintly
-# visible by default (so it's always clickable, even without hover/on
-# touch devices) and brightens to full opacity on row hover.
+# nothing else in the app is touched. The remove (✕) button uses a persistent
+# red treatment so it remains easy to discover without relying on hover.
 # ============================================================
 _SELECTION_ROW_CSS = """
 <style>
 div[class*="st-key-sel_row_"]{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) auto;
+    align-items:center;
+    gap:6px;
     border-radius:6px;
     padding:1px 4px;
     transition:background-color .15s ease;
+}
+div[class*="st-key-sel_row_"] > div[data-testid="stElementContainer"]:has([data-testid="stMarkdownContainer"]){
+    grid-column:1;
+    grid-row:1;
+    min-width:0;
+    width:auto !important;
+}
+div[class*="st-key-sel_row_"] > div[data-testid="stElementContainer"]:has([data-testid="stButton"]){
+    grid-column:2;
+    grid-row:1;
+    justify-self:end;
+    width:auto !important;
+}
+div[class*="st-key-sel_row_"] [data-testid="stMarkdown"],
+div[class*="st-key-sel_row_"] [data-testid="stButton"]{
+    width:auto !important;
+}
+div[class*="st-key-sel_row_"] [data-testid="stMarkdownContainer"] p{
+    margin:0;
 }
 div[class*="st-key-sel_row_"]:hover{
     background-color:rgba(150,150,150,0.15);
 }
 div[class*="st-key-sel_row_"] button{
-    opacity:0.25;
-    transition:opacity .15s ease;
+    opacity:1;
+    color:#b42318;
+    background-color:#fff5f5;
+    border-color:#efb7b2;
+    font-size:18px;
+    font-weight:700;
+    justify-content:center;
+    min-height:2rem;
+    padding:0.1rem 0.4rem;
+    transition:background-color .15s ease,border-color .15s ease;
 }
 div[class*="st-key-sel_row_"]:hover button{
-    opacity:1;
+    color:#8f1d14;
+    background-color:#fee4e2;
+    border-color:#d92d20;
 }
 </style>
 """
@@ -573,16 +687,16 @@ def render_timer():
             font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
         ">
           <div id="survey-timer" style="
-              min-width:150px;
+              min-width:130px;
               border:1px solid #d7dee8;
               border-radius:8px;
-              padding:9px 12px;
+              padding:6px 9px;
               background:linear-gradient(180deg,#ffffff 0%,#f6f8fb 100%);
               box-shadow:0 1px 2px rgba(15,23,42,0.06);
               text-align:right;
           ">
             <div style="
-                font-size:0.68rem;
+                font-size:0.62rem;
                 font-weight:650;
                 letter-spacing:0.08em;
                 text-transform:uppercase;
@@ -591,7 +705,7 @@ def render_timer():
             <div id="survey-timer-value" style="
                 margin-top:2px;
                 font-variant-numeric:tabular-nums;
-                font-size:1.35rem;
+                font-size:1.15rem;
                 font-weight:750;
                 color:#1f2937;
                 line-height:1.15;
@@ -616,7 +730,7 @@ def render_timer():
         }}, 1000);
         </script>
         """,
-        height=76,
+        height=60,
     )
 
 def reset_tool_state_for_question(question):
@@ -947,7 +1061,6 @@ def draw_union_solid(draw, union, font_big):
     for e in fu.edges:
         draw.line([DrawGraph.V2P(e.tail.p), DrawGraph.V2P(e.head.p)],
                   fill=(0, 0, 0, 255), width=6)
-    draw_union_label(draw, union["label_xy"], union["name"], font_big)
 
 def _face_label_lp_d(face):
     """Stable label position for a face (uses the locked cache when available)."""
@@ -957,7 +1070,7 @@ def _face_label_lp_d(face):
         return cache[idx]
     return Graph.LetterPointFace(face)
 
-def highlight_region_solid(odraw, face, fill=GRAY_SOLID):
+def highlight_region_solid(odraw, face, fill=GRAY_SOLID, draw_label=True):
     """Opaque recolor of a region (new solid color, not a translucent film).
     Keeps the black outline and the region letter readable on top."""
     pts = [DrawGraph.V2P(v.p) for v in face.vertices]
@@ -965,11 +1078,12 @@ def highlight_region_solid(odraw, face, fill=GRAY_SOLID):
     for e in face.edges:
         odraw.line([DrawGraph.V2P(e.tail.p), DrawGraph.V2P(e.head.p)],
                    fill=(0, 0, 0, 255), width=4)
-    lp, d = _face_label_lp_d(face)
-    coords = DrawGraph.V2P(lp)
-    font = DrawGraph.GetSystemFont(80 if d > 0.06 else 45)
-    odraw.text(coords, face.letter, fill=(0, 0, 0, 255), font=font, anchor="mm",
-               stroke_width=2, stroke_fill=(255, 255, 255, 255))
+    if draw_label:
+        lp, d = _face_label_lp_d(face)
+        coords = DrawGraph.V2P(lp)
+        font = DrawGraph.GetSystemFont(80 if d > 0.06 else 45)
+        odraw.text(coords, face.letter, fill=(0, 0, 0, 255), font=font, anchor="mm",
+                   stroke_width=2, stroke_fill=(255, 255, 255, 255))
 
 # ============================================================
 # 5. RENDERING
@@ -988,16 +1102,29 @@ def render():
 
     overlay = Image.new("RGBA", img_size, (255, 255, 255, 0))
     odraw = ImageDraw.Draw(overlay)
+    union_face_ids = {id(union["face"]) for union in st.session_state.unions}
 
     # ---- PASS 1: region fills go UNDERNEATH points/lines/angles, so a
     # reference point is never hidden under a highlight. The unbounded outer
     # face is never filled (it would blanket the whole canvas).
     for ann in st.session_state.annotations:
         if ann["kind"] == "region" and getattr(ann["obj"], "bounded", False):
-            highlight_region_solid(odraw, ann["obj"], ann.get("color", GRAY_SOLID))
+            face = ann["obj"]
+            highlight_region_solid(
+                odraw, face, ann.get("color", GRAY_SOLID),
+                draw_label=id(face) not in union_face_ids,
+            )
     for o in st.session_state.selection:
         if o != "frame" and is_region(o) and getattr(o, "bounded", False):
-            highlight_region_solid(odraw, o, GRAY_SOLID)
+            highlight_region_solid(
+                odraw, o, GRAY_SOLID,
+                draw_label=id(o) not in union_face_ids,
+            )
+
+    # Union labels are drawn once, after any region highlight. Drawing them in
+    # both the base union and the highlight layer produces a displaced ghost U.
+    for union in st.session_state.unions:
+        draw_union_label(odraw, union["label_xy"], union["name"], font_big)
 
     # ---- PASS 2: markers (points, lines, angles, edges) on top of fills.
     for ann in st.session_state.annotations:
@@ -1315,8 +1442,8 @@ TOOL_LABELS = {
 
 INSTRUCTIONS = {
     "vertex": (
-        "- **Select ONE Region** → select all vertices or pick a vertex with a given property: leftmost / rightmost, topmost / bottommost, point with the smallest / largest angle.\n"
-        "- **Select Region(s)** → find their meeting point(s)\n"
+        "- **Select ONE Region** → select all vertices or pick a vertex with a given property: leftmost / rightmost, topmost / bottommost, vertex with the smallest / largest angle.\n"
+        "- **Select Region(s)** → find their meeting vertex/vertices\n"
         "- **Select the Frame** → a frame corner"
     ),
     "neighbors": (
@@ -1326,7 +1453,7 @@ INSTRUCTIONS = {
         "- **Select ONE Region + ONE Vertex** → draws a cycle starting at that vertex (clockwise / counter-clockwise) and return a sequence of neighbors in order."
     ),
     "draw line": (
-        "- **Select TWO Vertices** → draw a line segment or a full line that passes through both points. \n"
+        "- **Select TWO Vertices** → draw a line segment or a full line that passes through both vertices. \n"
         "- **Select ONE Vertex** → draw a ray starting at that vertex that extends up / down / left /right.\n"
         "- **Select ONE Edge** → draw a line that extends the edge in both directions.\n"
     ),
@@ -1339,14 +1466,14 @@ INSTRUCTIONS = {
     ),
     "measure": (
         "- **Select Angle(s)** → return the value of the selected angle(s).\n"
-        "- **Select ONE Region** → return the area or the number of sides or the total area of the selected region.\n"
-        "- **Select TWO Vertices** → return the distance between the two points.\n"
+        "- **Select ONE Region** → return the area or the number of edges of the selected region.\n"
+        "- **Select TWO Vertices** → return the distance between the two vertices.\n"
         "- **Select ONE Drawn Line** → return the length of the drawn line.\n"
     ),
     "sort": (
-        "**All Objects are Sorted smallest → largest** \n"
+        "**All Objects are Sorted smallest → largest **"
         "- **Select Region(s)** → order the regions by area.\n"
-        "- **Select Vertices** → order by left→right, bottom→top, or distance from the point that was selected first.\n"
+        "- **Select Vertices** → order by left→right, bottom→top, or distance from the vertex that was selected first.\n"
         "- **Select ONE Region** → order the angles of the selected region."
     ),
 }
@@ -1364,7 +1491,7 @@ def validate(tool, modes):
         if nR == 1:                        return (True, "")
         if nR >= 2:                        return (True, "")
         return (False, "Select 1 region, the FRAME, or 2+ regions. "
-                        "(Points already in your buffer are kept.)")
+                        "(Vertices already in your buffer are kept.)")
 
     if tool == "neighbors":
         # one or more POINTS (and nothing else) → regions meeting at any of them
@@ -1375,13 +1502,13 @@ def validate(tool, modes):
         if nR == 1 and s["n"] == 1:                    return (True, "")
         # a region + one of its corners → walking order
         if nR == 1 and nV == 1 and s["n"] == 2:        return (True, "")
-        return (False, "Select point(s), edge(s), 1 region, or 1 region + 1 of its corners.")
+        return (False, "Select vertex/vertices, edge(s), 1 region, or 1 region + 1 of its corners.")
 
     if tool == "draw line":
         if modes.get("style") == "ray":
-            return (s["n"] == 1 and nV == 1, "Ray needs exactly 1 point.")
+            return (s["n"] == 1 and nV == 1, "Ray needs exactly 1 vertex.")
         ok = (s["n"] == 2 and nV == 2) or (s["n"] == 1 and nE == 1)
-        return (ok, "Need 2 points, or 1 edge, or 1 point + ray.")
+        return (ok, "Need 2 vertices, or 1 edge, or 1 vertex + ray.")
 
     if tool == "intersect":
         return (len(st.session_state.lines) > 0, "Draw a line first.")
@@ -1395,7 +1522,7 @@ def validate(tool, modes):
         if w == "length":
             if nV == 2 and s["n"] == 2:        return (True, "")   # two points
             if modes.get("line") is not None:  return (True, "")   # a drawn segment
-            return (False, "Select two points, or pick a drawn segment.")
+            return (False, "Select two vertices, or pick a drawn segment.")
         if w == "angle":
             # one or more saved angles, nothing else mixed in
             return (nA >= 1 and nA == s["n"], "Select one or more saved angles (a1, a2…).")
@@ -1412,10 +1539,10 @@ def validate(tool, modes):
         if by == "area":
             return (nR >= 2 and nR == s["n"], "Select 2+ regions.")
         if by in ("left_right", "bottom_top"):
-            return (nV >= 2 and nV == s["n"], "Select 2+ points.")
+            return (nV >= 2 and nV == s["n"], "Select 2+ vertices.")
         if by == "distance":
             return (nV >= 3 and nV == s["n"],
-                    "Select the reference point FIRST, then 2+ more points.")
+                    "Select the reference vertex FIRST, then 2+ more vertices.")
         return (False, "")
     return (False, "")
 
@@ -1554,8 +1681,8 @@ def finish_vertex(call_str, result, assign_prefix="v"):
            multiple meeting points) into the buffer too — skipping anything
            already there, so re-running on the same selection doesn't pile
            up duplicate buffer entries.
-    The buffer now only ever clears for Vertex when you press the explicit
-    "Clear selection" button.
+    Retained vertices remain until they are removed with their per-item ✕
+    controls or the survey advances to another question.
     """
     keep_sel, keep_meta, seen_ids = [], [], set()
     for o, m in zip(st.session_state.selection, st.session_state.selection_meta):
@@ -1873,6 +2000,7 @@ def current_trial_record(question, answer, is_correct=None):
         "question_index": st.session_state.survey_question_index,
         "question": question,
         "answer": answer,
+        "scratch_pad": st.session_state.get("scratch_pad", ""),
         "correct_answer": question.get("answer", ""),
         "is_correct": is_correct,
         "question_started_at": st.session_state.get("question_started_at"),
@@ -1905,7 +2033,6 @@ def save_survey_results():
     return path
 
 if st.session_state.survey_completed:
-    st.title("Geometry Reasoning Survey")
     st.success("Survey complete. Thank you.")
     if st.session_state.last_result_path:
         st.caption(f"Saved result file: {st.session_state.last_result_path}")
@@ -1913,112 +2040,168 @@ if st.session_state.survey_completed:
 
 # ============================================================
 # 9. LAYOUT  (LEFT: tools/selection/run | MIDDLE: diagram+selection+saved |
-#             RIGHT: quick actions + scratch pad + program + output)
+#             RIGHT: quick actions + scratch pad + output)
 # ============================================================
 question_number = st.session_state.survey_question_index + 1
-st.title("Geometry Reasoning Survey")
-top_left, top_right = st.columns([3, 1])
+top_left, top_right = st.columns([3, 1], gap="small")
 with top_left:
-    st.subheader(f"Question {question_number} of {len(QUESTION_BANK)}")
-    st.write(QUESTION.get("question_text", ""))
-    if DATASET_PATH:
-        st.caption(f"Dataset: {os.path.basename(DATASET_PATH)}")
-    else:
-        st.caption("Using fallback questions.")
+    st.caption(f"Question {question_number} of {len(QUESTION_BANK)}")
+    question_text = html.escape(str(QUESTION.get("question_text", "")))
+    st.markdown(
+        f'<div style="font-size:18px; font-weight:600; line-height:1.35; '
+        f'margin:0.1rem 0 0.9rem 0;">{question_text}</div>',
+        unsafe_allow_html=True,
+    )
 with top_right:
-    st.caption(f"Participant: {PARTICIPANT_ID}")
-    st.caption(f"Seed: {QUESTION.get('seed', '')}; regions: {QUESTION.get('num_regions', '')}")
     if st.session_state.timer_hidden:
         if st.button("Show timer", use_container_width=True):
             st.session_state.timer_hidden = False
             st.rerun()
     else:
-        render_timer()
-        if st.button("Hide timer", use_container_width=True):
-            st.session_state.timer_hidden = True
-            st.rerun()
-
-feedback = st.session_state.get("answer_feedback")
-feedback_for_current = feedback and feedback.get("question_index") == st.session_state.survey_question_index
-if feedback_for_current:
-    if feedback.get("is_correct") is False:
-        correct_answer = feedback.get("correct_answer_display", feedback.get("correct_answer", ""))
-        st.error("Incorrect. Please review the correct answer before continuing.")
-        st.info(f"Correct answer: {correct_answer}")
-    else:
-        st.success("Correct.")
-    continue_label = "Finish Survey" if feedback.get("is_last_question") else "Continue"
-    if st.button(continue_label, type="primary"):
-        st.session_state.max_confirmed_question_index = max(
-            st.session_state.max_confirmed_question_index,
-            st.session_state.survey_question_index,
-        )
-        st.session_state.answer_feedback = None
-        if feedback.get("is_last_question"):
-            st.session_state.survey_completed = True
-        else:
-            st.session_state.survey_question_index += 1
-        st.rerun()
-else:
-    with st.form("survey_answer_form", clear_on_submit=False):
-        key = survey_answer_key(QUESTION)
-        existing = st.session_state.survey_responses.get(QUESTION.get("question_id", ""), {}).get("answer", "")
-        if normalized_answer_type(QUESTION) == "two_choice":
-            options = get_two_choice_options(QUESTION)
-            current_index = options.index(existing) if existing in options else None
-            answer_value = st.radio("Answer:", options, index=current_index, horizontal=True, key=f"{key}_choice")
-        else:
-            answer_value = st.text_input(
-                "Answer:",
-                value=existing,
-                placeholder=QUESTION.get("answer_placeholder", ""),
-                key=f"{key}_text",
-            )
-            answer_hint = answer_hint_for(QUESTION)
-            if answer_hint:
-                st.caption(answer_hint)
-        is_last_question = st.session_state.survey_question_index >= len(QUESTION_BANK) - 1
-        button_label = "Confirm Final Answer" if is_last_question else "Confirm Answer"
-        submitted = st.form_submit_button(button_label, type="primary")
-        if submitted:
-            cleaned = (answer_value or "").strip()
-            if not cleaned:
-                st.error("Please enter an answer before saving.")
-            else:
-                qid = question_id_for(QUESTION, st.session_state.survey_question_index)
-                is_correct = answer_is_correct(QUESTION, cleaned)
-                st.session_state.survey_responses[qid] = current_trial_record(QUESTION, cleaned, is_correct)
-                path = save_survey_results()
-                st.session_state.answer_feedback = {
-                    "question_index": st.session_state.survey_question_index,
-                    "question_id": qid,
-                    "answer": cleaned,
-                    "correct_answer": QUESTION.get("answer", ""),
-                    "correct_answer_display": format_answer_for_feedback(QUESTION),
-                    "is_correct": is_correct,
-                    "is_last_question": is_last_question,
-                }
+        timer_col, hide_timer_col = st.columns([3, 1], vertical_alignment="center")
+        with timer_col:
+            render_timer()
+        with hide_timer_col:
+            if st.button("Hide", help="Hide timer", use_container_width=True):
+                st.session_state.timer_hidden = True
                 st.rerun()
 
-if st.session_state.last_result_path:
-    st.caption(f"Last saved: {st.session_state.last_result_path}")
+answer_panel, action_panel = st.columns([8, 3], gap="small")
 
+with answer_panel:
+    feedback = st.session_state.get("answer_feedback")
+    feedback_for_current = feedback and feedback.get("question_index") == st.session_state.survey_question_index
+    if feedback_for_current:
+        if feedback.get("is_correct") is False:
+            correct_answer = feedback.get("correct_answer_display", feedback.get("correct_answer", ""))
+            st.error("Incorrect. Please review the correct answer before continuing.")
+            st.info(f"Correct answer: {correct_answer}")
+        else:
+            st.success("Correct.")
+        continue_label = "Finish Survey" if feedback.get("is_last_question") else "Continue"
+        if st.button(continue_label, type="primary"):
+            st.session_state.max_confirmed_question_index = max(
+                st.session_state.max_confirmed_question_index,
+                st.session_state.survey_question_index,
+            )
+            st.session_state.answer_feedback = None
+            if feedback.get("is_last_question"):
+                st.session_state.survey_completed = True
+            else:
+                st.session_state.survey_question_index += 1
+            st.rerun()
+    else:
+        with st.form("survey_answer_form", clear_on_submit=False):
+            key = survey_answer_key(QUESTION)
+            existing = st.session_state.survey_responses.get(QUESTION.get("question_id", ""), {}).get("answer", "")
+            if normalized_answer_type(QUESTION) == "two_choice":
+                options = get_two_choice_options(QUESTION)
+                current_index = options.index(existing) if existing in options else None
+                answer_value = st.radio("Answer:", options, index=current_index, horizontal=True, key=f"{key}_choice")
+            else:
+                answer_col, _ = st.columns([3, 2])
+                with answer_col:
+                    answer_value = st.text_area(
+                        "Answer:",
+                        value=existing,
+                        height=68,
+                        placeholder=QUESTION.get("answer_placeholder", ""),
+                        key=f"{key}_area",
+                    )
+                    answer_hint = answer_hint_for(QUESTION)
+                    if answer_hint:
+                        safe_answer_hint = html.escape(answer_hint)
+                        st.markdown(
+                            '<div style="font-size:0.9rem; line-height:1.4; color:#4b5563; '
+                            'background:#f3f4f6; border-left:3px solid #9ca3af; '
+                            'padding:0.3rem 0.5rem; margin-top:-0.2rem; margin-bottom:0.5rem; '
+                            'border-radius:0 0.3rem 0.3rem 0;">'
+                            f'{safe_answer_hint}</div>',
+                            unsafe_allow_html=True,
+                        )
+            is_last_question = st.session_state.survey_question_index >= len(QUESTION_BANK) - 1
+            button_label = "Confirm Final Answer" if is_last_question else "Confirm Answer"
+            submitted = st.form_submit_button(button_label, type="primary")
+            if submitted:
+                cleaned = (answer_value or "").strip()
+                if not cleaned:
+                    st.error("Please enter an answer before saving.")
+                else:
+                    qid = question_id_for(QUESTION, st.session_state.survey_question_index)
+                    is_correct = answer_is_correct(QUESTION, cleaned)
+                    st.session_state.survey_responses[qid] = current_trial_record(QUESTION, cleaned, is_correct)
+                    path = save_survey_results()
+                    st.session_state.scratch_pad = ""
+                    st.session_state.answer_feedback = {
+                        "question_index": st.session_state.survey_question_index,
+                        "question_id": qid,
+                        "answer": cleaned,
+                        "correct_answer": QUESTION.get("answer", ""),
+                        "correct_answer_display": format_answer_for_feedback(QUESTION),
+                        "is_correct": is_correct,
+                        "is_last_question": is_last_question,
+                    }
+                    st.rerun()
 
-st.divider()
+    left_workspace = st.container()
 
-col_ctrl, col_map, col_io = st.columns([4, 5, 4], gap="medium")
+with action_panel:
+    st.markdown(
+        '<div style="font-size:1.25rem; font-weight:600; margin:0 0 0.25rem 0;">Help</div>',
+        unsafe_allow_html=True,
+    )
+    st.session_state.setdefault("definitions_open", False)
+    st.session_state.setdefault("tools_guide_open", False)
+
+    definitions_open = st.session_state["definitions_open"]
+    tools_guide_open = st.session_state["tools_guide_open"]
+    help_cols = st.columns(2)
+    if help_cols[0].button(("▾ Definitions" if definitions_open else "▸ Definitions"), key="toggle_definitions", use_container_width=True):
+        st.session_state["definitions_open"] = not definitions_open
+        st.rerun()
+    if help_cols[1].button(("▾ How to use tools" if tools_guide_open else "▸ How to use tools"), key="toggle_tools_guide", use_container_width=True):
+        st.session_state["tools_guide_open"] = not tools_guide_open
+        st.rerun()
+    if st.session_state["definitions_open"]:
+        st.markdown(DEFINITIONS_TEXT)
+    if st.session_state["tools_guide_open"]:
+        st.markdown(TOOLS_GUIDE_TEXT)
+
+    st.markdown(
+        '<div style="font-size:1.25rem; font-weight:600; margin:0.4rem 0 0.25rem 0;">Quick actions</div>',
+        unsafe_allow_html=True,
+    )
+    qcols = st.columns(2)
+    if qcols[0].button("↩ Undo", help="Undo last move", use_container_width=True,
+                       disabled=not st.session_state.undo_stack):
+        undo_last()
+    if qcols[1].button("Clear all", use_container_width=True):
+        for k in ["annotations", "lines", "angles", "named_edges", "unions",
+                  "union_consumed", "undo_stack", "program", "log", "tool_calls"]:
+            st.session_state[k] = []
+        st.session_state.point_names = {}
+        st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+        st.rerun()
+
+    right_workspace = st.container()
+
+with left_workspace:
+    col_ctrl, col_map = st.columns([3, 5], gap="small")
+col_io = right_workspace
 
 # ----------------------------------------------------------------------------
-# LEFT PANEL — TOOLS + current selection + active tool config + RUN
+# LEFT PANEL — tools + active tool config + RUN + selection
 # ----------------------------------------------------------------------------
 with col_ctrl:
     st.markdown(
         """
         <style>
         div.stButton > button {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
-            border-radius: 6px;
+            border-radius: 5px;
+            min-height: 2.2rem;
+            padding: 0.25rem 0.55rem;
             justify-content: flex-start;
         }
         </style>
@@ -2026,24 +2209,10 @@ with col_ctrl:
         unsafe_allow_html=True,
     )
 
-    st.session_state.setdefault("definitions_open", False)
-    st.session_state.setdefault("tools_guide_open", False)
-
-    definitions_open = st.session_state["definitions_open"]
-    if st.button(("▾ Definitions" if definitions_open else "▸ Definitions"), key="toggle_definitions", use_container_width=True):
-        st.session_state["definitions_open"] = not definitions_open
-        st.rerun()
-    if st.session_state["definitions_open"]:
-        st.markdown(DEFINITIONS_TEXT)
-
-    tools_guide_open = st.session_state["tools_guide_open"]
-    if st.button(("▾ Tool guide" if tools_guide_open else "▸ Tool guide"), key="toggle_tools_guide", use_container_width=True):
-        st.session_state["tools_guide_open"] = not tools_guide_open
-        st.rerun()
-    if st.session_state["tools_guide_open"]:
-        st.markdown(TOOLS_GUIDE_TEXT)
-
-    st.subheader("Tools")
+    st.markdown(
+        '<div style="font-size:1.25rem; font-weight:600; margin:0 0 0.35rem 0;">Tools</div>',
+        unsafe_allow_html=True,
+    )
 
     # The active tool's button gets a soft mint-green shade (no checkmark).
     # Streamlit tags each keyed button's wrapper with class "st-key-<key>",
@@ -2070,36 +2239,47 @@ with col_ctrl:
         </style>
         """, unsafe_allow_html=True)
 
-    tcols = st.columns(2)
-    for i, t_name in enumerate(TOOLS):
-        display = TOOL_LABELS.get(t_name, t_name)
-        if tcols[i % 2].button(display, key=f"tool_{t_name.replace(' ', '_')}",
-                               use_container_width=True):
-            st.session_state.active_tool = t_name
-            st.rerun()
+    st.markdown(
+        """
+        <style>
+        .st-key-tool_button_grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.3rem 0.65rem;
+        }
+        .st-key-tool_button_grid > div[data-testid="stElementContainer"] {
+            margin: 0;
+            width: 100% !important;
+        }
+        .st-key-tool_button_grid div[data-testid="stButton"] {
+            width: 100% !important;
+        }
+        div[data-testid="stColumn"]:has(.st-key-tool_button_grid) > div[data-testid="stVerticalBlock"] {
+            gap: 0.45rem;
+        }
+        div[data-testid="stColumn"]:has(.st-key-tool_button_grid) [data-testid="stRadio"] {
+            margin-top: -0.1rem;
+            margin-bottom: -0.1rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="tool_button_grid"):
+        for t_name in TOOLS:
+            display = TOOL_LABELS.get(t_name, t_name)
+            if st.button(display, key=f"tool_{t_name.replace(' ', '_')}",
+                         use_container_width=True):
+                st.session_state.active_tool = t_name
+                st.rerun()
 
     tool = st.session_state.active_tool
     modes = {}
-
-    # --- SELECTION ---
-    st.subheader("Selection")
-    if st.session_state.selection:
-        st.markdown(_SELECTION_ROW_CSS, unsafe_allow_html=True)
-        for i, o in enumerate(st.session_state.selection):
-            row = st.container(key=f"sel_row_{i}")
-            rcols = row.columns([9, 1])
-            rcols[0].markdown(f"- {describe(o)}")
-            if rcols[1].button("✕", key=f"sel_remove_{i}", help="Remove from selection"):
-                push_undo()
-                remove_selection_item(i)
-                st.rerun()
-    else:
-        st.caption("(click the map to select regions, points, or edges)")
+    run_slot = st.empty()
 
     if tool:
         display = TOOL_LABELS.get(tool, tool)
-        st.markdown(f"### {display}")
-        st.info(INSTRUCTIONS[tool])
+        st.markdown(f"**{display} settings**")
 
         s = sel_sig()
 
@@ -2111,7 +2291,7 @@ with col_ctrl:
                     horizontal=True, key="rad_vtx_frame")
             elif len(s["regions"]) >= 2:
                 modes["on_frame"] = st.radio(
-                    "Is the meeting point on the frame?", [False, True],
+                    "Is the meeting vertex on the frame?", [False, True],
                     format_func=lambda b: "Yes" if b else "No",
                     horizontal=True, key="rad_vtx_onframe")
             else:
@@ -2129,7 +2309,7 @@ with col_ctrl:
                            "(dropping each edge's own region).")
             elif s["vertices"] and not s["regions"]:
                 n = len(s["vertices"])
-                st.caption(f"{n} point(s) selected → every region meeting at any of them.")
+                st.caption(f"{n} vertex/vertices selected → every region meeting at any of them.")
             elif s["regions"] and s["vertices"]:
                 modes["kind"] = "ordered"
                 modes["ccw"] = st.radio(
@@ -2176,10 +2356,11 @@ with col_ctrl:
         elif tool == "measure":
             modes["what"] = st.radio("Measure what?",
                                      ["length", "angle", "area", "sides"],
+                                     format_func=lambda value: "number of edges" if value == "sides" else value,
                                      index=None, horizontal=True, key="rad_measure")
             if modes["what"] == "length":
                 if len(s["vertices"]) >= 2:
-                    st.caption("Will measure the distance between the two selected points.")
+                    st.caption("Will measure the distance between the two selected vertices.")
                 else:
                     segs = [(nm, ln) for nm, ln in st.session_state.lines
                             if ln.get("type") == "segment"]
@@ -2189,7 +2370,7 @@ with col_ctrl:
                                            key="sel_len_line")
                         modes["line"] = segs[idx]
                     else:
-                        st.caption("Draw a segment first, or select two points.")
+                        st.caption("Draw a segment first, or select two vertices.")
             elif modes["what"] == "angle":
                 if s["angles"]:
                     st.caption(f"{len(s['angles'])} angle(s) selected — each will be measured.")
@@ -2205,40 +2386,64 @@ with col_ctrl:
             elif len(s["vertices"]) >= 2 and len(s["vertices"]) == s["n"]:
                 opts = [("Left → right", "left_right"), ("Bottom → top", "bottom_top")]
                 if len(s["vertices"]) >= 3:
-                    opts.append(("Distance from the first point", "distance"))
+                    opts.append(("Distance from the first vertex", "distance"))
             if opts:
                 label2val = dict(opts)
                 choice = st.radio("Order how?", [o[0] for o in opts], key="rad_sort")
                 modes["by"] = label2val[choice]
             else:
-                st.caption("Select 2+ points, 2+ regions, or one region (for its corners).")
+                st.caption("Select 2+ vertices, 2+ regions, or one region (for its corners).")
 
         # 'merge' has no modes.
 
         ready, msg = validate(tool, modes)
         if tool == "intersect" and modes.get("target") is None:
             ready = False
-        if not ready:
-            st.warning(msg)
-        if st.button("▶ RUN", type="primary", disabled=not ready, use_container_width=True):
+        if run_slot.button("▶ RUN", type="primary", disabled=not ready, use_container_width=True):
             push_undo()
             run_tool(tool, modes)
-    else:
-        st.caption("Pick a tool above to begin.")
+
+    # --- SELECTION ---
+    st.markdown(
+        '<div style="font-size:1.25rem; font-weight:600; margin:0.5rem 0 0.35rem 0;">Selection</div>',
+        unsafe_allow_html=True,
+    )
+    st.session_state.setdefault("selection_filter", "Region")
+    select_mode = st.radio(
+        "Select from diagram:",
+        ["Region", "Angle", "Vertex", "Edge"],
+        horizontal=True,
+        key="selection_filter",
+        label_visibility="collapsed",
+    )
+    if st.button("Select FRAME", use_container_width=True):
+        push_undo()
+        add_to_selection("frame")
+        st.rerun()
+
+    if st.session_state.selection:
+        st.markdown(_SELECTION_ROW_CSS, unsafe_allow_html=True)
+        selection_list = (
+            st.container(height=120)
+            if len(st.session_state.selection) > 3
+            else st.container()
+        )
+        with selection_list:
+            for i, o in enumerate(st.session_state.selection):
+                row = st.container(key=f"sel_row_{i}")
+                with row:
+                    st.markdown(f"- {describe(o)}")
+                    if st.button("✕", key=f"sel_remove_{i}", help="Remove from selection"):
+                        push_undo()
+                        remove_selection_item(i)
+                        st.rerun()
 
 # ----------------------------------------------------------------------------
 # MIDDLE PANEL — DIAGRAM + selection-building buttons + saved objects
 # ----------------------------------------------------------------------------
-with col_map:
+diagram_panel = col_map.container(key="diagram_panel")
+with diagram_panel:
     display_img = render().resize((DISPLAY_SIDE, DISPLAY_SIDE), Image.Resampling.LANCZOS)
-
-    st.session_state.setdefault("selection_filter", "Region")
-    select_mode = st.radio(
-        "Select:",
-        ["Region", "Angle", "Vertex", "Edge"],
-        horizontal=True,
-        key="selection_filter",
-    )
 
     # encode the rendered map + serialize hover geometry, then hand both to the
     # custom canvas component. The browser only paints the selected object type.
@@ -2252,6 +2457,9 @@ with col_map:
         select_type=select_mode.lower(),
         key="map_click",
     )
+
+    if tool:
+        st.info(INSTRUCTIONS[tool])
 
     if coords is not None and coords != st.session_state.last_click:
         st.session_state.last_click = coords
@@ -2292,29 +2500,14 @@ with col_map:
     pending_edges = st.session_state.get("pending_edge_options", [])
     if pending_edges:
         st.caption("Which side of this edge?")
-        ecols = st.columns(2)
         for i, edge_obj in enumerate(pending_edges):
-            if ecols[i % 2].button(edge_obj.text, key=f"edge_side_{i}", use_container_width=True):
+            if st.button(edge_obj.text, key=f"edge_side_{i}", use_container_width=True):
                 push_undo()
                 if edge_name(edge_obj) is None:
                     st.session_state.named_edges.append((next_name("e"), edge_obj))
                 add_to_selection(edge_obj)
                 st.session_state.pending_edge_options = []
                 st.rerun()
-
-    # --- frame / clear ---
-    ucols = st.columns(2)
-    if ucols[0].button("Select FRAME", use_container_width=True):
-        push_undo()
-        add_to_selection("frame")
-        st.rerun()
-    if ucols[1].button("Clear selection", use_container_width=True):
-        push_undo()
-        clear_selection()
-        st.session_state.click_targets = None
-        st.session_state.pending_angle_vertex = None
-        st.session_state.pending_edge_options = []
-        st.rerun()
 
     # --- SAVED OBJECTS BUFFER (angles + edges) ---
     # Unions are NOT listed here: a merged region is selected by clicking it
@@ -2326,54 +2519,30 @@ with col_map:
         saved.append((f"Select {ename} ({e_sel.text})", e_sel))
     if saved:
         st.caption("Saved objects:")
-        scols = st.columns(2)
         for i, (label, obj) in enumerate(saved):
-            if scols[i % 2].button(label, key=f"saved_{i}", use_container_width=True):
+            if st.button(label, key=f"saved_{i}", use_container_width=True):
                 push_undo()
                 add_to_selection(obj)
                 st.rerun()
 
 # ----------------------------------------------------------------------------
-# RIGHT PANEL — quick actions, scratch pad, then program trace + output log
-# (scratch pad + actions on top so they're visible without scrolling; the
-#  longer-growing Program/Output sit underneath in fixed-height scrollers.)
+# RIGHT PANEL — scratch pad and output log
 # ----------------------------------------------------------------------------
 with col_io:
-    st.subheader("Quick actions")
-    qcols = st.columns(2)
-    if qcols[0].button("↩ Undo last move", use_container_width=True,
-                       disabled=not st.session_state.undo_stack):
-        undo_last()
-    if qcols[1].button("Clear drawings & program", use_container_width=True):
-        for k in ["annotations", "lines", "angles", "named_edges", "unions",
-                  "union_consumed", "undo_stack", "program", "log", "tool_calls"]:
-            st.session_state[k] = []
-        st.session_state.point_names = {}
-        st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
-        st.rerun()
-    if qcols[0].button("Clear output log", use_container_width=True):
-        st.session_state.log = []
-        st.rerun()
-    # if qcols[1].button("New random map", use_container_width=True):
-    #     for k in list(st.session_state.keys()):
-    #         del st.session_state[k]
-
-    st.subheader("Sketch pad")
-    st.text_area("scratch", key="scratch_pad", height=120,
+    st.markdown(
+        '<div style="font-size:1.25rem; font-weight:600; margin:0 0 0.35rem 0;">Sketch pad</div>',
+        unsafe_allow_html=True,
+    )
+    st.text_area("scratch", key="scratch_pad", height=110,
                  label_visibility="collapsed",
                  placeholder="Use this space for notes or rough work. Your final answer must be entered in the answer box.")
 
-    st.subheader("Program")
-    if st.session_state.program:
-        with st.container(height=200):
-            st.code("\n".join(st.session_state.program), language="python")
-    else:
-        st.caption("(your actions become code here)")
-
-    st.subheader("Output")
+    st.markdown(
+        '<div style="font-size:1.25rem; font-weight:600; margin:0.45rem 0 0.25rem 0;">Output</div>',
+        unsafe_allow_html=True,
+    )
     if not st.session_state.log:
         st.caption("(results will appear here)")
     else:
-        with st.container(height=220):
-            for entry in reversed(st.session_state.log[-25:]):
-                st.markdown(entry)
+        for entry in reversed(st.session_state.log[-25:]):
+            st.markdown(entry)
