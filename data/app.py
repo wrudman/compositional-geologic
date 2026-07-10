@@ -1224,6 +1224,13 @@ def reset_tool_state_for_question(question):
     st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
     st.session_state.loaded_question_id = question.get("question_id", "")
 
+def bind_current_map_helpers():
+    """Keep helper modules pointed at the current diagram across Streamlit reruns."""
+    res_map = st.session_state.get("res_map")
+    if res_map is not None:
+        map_helpers.use_map(res_map)
+        T.setup(res_map)
+
 # ============================================================
 # 1. SESSION INIT
 # ============================================================
@@ -1309,6 +1316,7 @@ if (
     or st.session_state.get("loaded_question_id") != QUESTION.get("question_id", "")
 ):
     reset_tool_state_for_question(QUESTION)
+bind_current_map_helpers()
 if not IS_PRACTICE:
     init_survey_timer()
 if "tool_calls" not in st.session_state:
@@ -2252,7 +2260,7 @@ def validate(tool, modes):
             return (False, "Select two vertices or two regions.")
         if w == "length":
             if modes.get("line") is not None:  return (True, "")   # a drawn segment
-            return (False, "Draw a segment first, then pick it here.")
+            return (False, "Draw a line first, then pick it here.")
         if w == "angle":
             return (nA == 1 and s["n"] == 1, "Select ONE angle.")
         if w in ("area", "sides"):
@@ -3257,7 +3265,7 @@ with col_ctrl:
                                        key="sel_len_line")
                     modes["line"] = segs[idx]
                 else:
-                    st.caption("Draw a segment first.")
+                    st.caption("Draw a line first.")
             elif modes["what"] == "angle":
                 if s["angles"]:
                     n = len(s["angles"])
@@ -3267,6 +3275,16 @@ with col_ctrl:
                         st.caption("Select only 1 angle for this tool.")
                 else:
                     st.caption("Use Select: Angle above the map, then click an angle arc.")
+            elif modes["what"] == "area":
+                if len(s["regions"]) == 1 and s["n"] == 1:
+                    st.caption("1 region selected — its area will be measured.")
+                else:
+                    st.caption("Select ONE region to measure its area.")
+            elif modes["what"] == "sides":
+                if len(s["regions"]) == 1 and s["n"] == 1:
+                    st.caption("1 region selected — its edge count will be measured.")
+                else:
+                    st.caption("Select ONE region to measure its edge count.")
             elif modes["what"] == "regions":
                 st.caption("Select FRAME to count all regions in the diagram.")
             elif modes["what"] == "orientation":
