@@ -6,6 +6,7 @@ import tempfile
 import json
 import pickle
 import random
+
 import re
 import time
 import uuid
@@ -114,9 +115,11 @@ DEFINITIONS_TEXT = """
 
 **Region:** one enclosed area of the diagram.
 
-**Interior angle:** the angle inside a region at a vertex, formed by the two edges that meet there.
+**Angle:** the angle inside a region at a vertex, formed by the two edges that meet there.
 
-**Outside of the frame:** the area outside the diagram frame. When a question asks you to treat it as a region, label it as "Outside of the frame".
+**Frame:** the diagram's outer boundary.
+
+**Outside of the frame:** the area outside the diagram frame.
 
 **Clockwise:** movement around a circle in the top, right, bottom, left direction.
 
@@ -132,7 +135,21 @@ PRACTICE_CORE_DEFINITIONS_TEXT = """
 
 **Region:** one enclosed area of the diagram.
 
-**Interior angle:** the angle inside a region at a vertex, formed by the two edges that meet there.
+**Angle:** the angle inside a region at a vertex, formed by the two edges that meet there.
+"""
+
+PRACTICE_DIRECTION_DEFINITIONS_TEXT = PRACTICE_CORE_DEFINITIONS_TEXT + """
+
+**Clockwise:** movement around a circle in the top, right, bottom, left direction.
+
+**Counterclockwise:** movement around a circle in the top, left, bottom, right direction.
+"""
+
+PRACTICE_FRAME_DEFINITIONS_TEXT = PRACTICE_CORE_DEFINITIONS_TEXT + """
+
+**Frame:** the diagram's outer boundary.
+
+**Outside of the frame:** the area outside the diagram frame.
 """
 
 PRACTICE_TOOL_GUIDE_TEXT = """
@@ -140,33 +157,85 @@ Now practice using a tool. We will use **Find Vertex** as an example.
 
 Some questions may ask you to find a vertex with a particular property, such as the rightmost vertex of a region.
 
-Try this: select **Region A**, choose **rightmost** under Find Vertex settings, then click **RUN**. The tool will label the vertex it finds.
+The **rightmost vertex of Region A** is the vertex of Region A that is farthest to the right in the diagram. The same idea applies to leftmost, topmost, and bottommost: compare only the vertices of the selected region.
+
+**Try this:** Select **Region A**, choose **rightmost** under Find Vertex settings, then click **RUN**. The tool will label the vertex it finds.
 """
 
 PRACTICE_TOOL_AFTER_SUCCESS_TEXT = """
 Good. Find Vertex can also label meeting points of regions.
 
-Next, click **Clear all**, select **Region A**, **Region D**, and **Region E**, keep **Is the meeting vertex on the frame?** as **No**, then click **RUN**.
+Next, select **Region A**, **Region D**, and **Region E**, keep **Is the meeting vertex on the frame?** as **No**, then click **RUN**.
 """
 
 PRACTICE_NEIGHBORS_GUIDE_TEXT = """
 Good. Now practice one more tool: **Neighbors**.
 
-Some questions ask which regions are next to a selected object. Try this: click **Clear all**, choose **Neighbors**, select **Region A**, keep **Neighbor type** as **Share an edge**, then click **RUN**.
+We now want to find all regions that share an edge with **Region A**.
+
+Choose **Neighbors**, select **Region A**, keep **Neighbor type** as **Share an edge**, then click **RUN**.
 """
 
 PRACTICE_MERGE_GUIDE_TEXT = """
-Very good. Region A shares an edge with Regions B, D, and E, which you can see in the **Output** section on the right.
+Very good. Now try one final tool: **Merge**. We use this tool to combine two neighboring regions into one larger region, called a **union**.
 
-Now try one more tool: **Merge**. Click **Clear all**, choose **Merge**, select **Region A** and **Region E**, then click **RUN**.
+Select **Region A** and **Region E**, then click **RUN**.
+"""
+
+PRACTICE_DRAW_LINE_GUIDE_TEXT = """
+Very good. Now use **Draw Line** to draw a line segment.
+
+Select the **leftmost vertex of Region B**, then the **rightmost vertex of Region D**. You can select each vertex either by clicking it directly with **Selection → Vertex** or by using **Find Vertex** to locate it. Both methods work.
+
+Choose **Draw Line**, keep the line style as **segment**, then click **RUN**.
+"""
+
+PRACTICE_INTERSECT_GUIDE_TEXT = """
+Good. The segment you drew is saved as a line.
+
+Choose **Intersect**, select **Which regions does it pass through?**, then click **RUN** to see which regions the line crosses.
+"""
+
+PRACTICE_MEASURE_AREA_GUIDE_TEXT = """
+Good. Now practice **Measure** with a basic property.
+
+Select **Region B**, choose **area** under Measure settings, then click **RUN**.
+"""
+
+PRACTICE_MEASURE_ORIENTATION_GUIDE_TEXT = """
+Good. Measure can also identify the direction of a cycle.
+
+Choose **Vertex** under Selection and click these three vertices in order:
+
+1. The leftmost vertex of Region B.
+2. The interior vertex where exactly Regions A, B, C, and D meet.
+3. The interior vertex where exactly Regions A, D, and E meet.
+
+You may click these vertices directly with **Selection → Vertex**, or use **Find Vertex** to locate them.
+
+Choose **cycle orientation** under Measure settings, then click **RUN**. The output will be clockwise or counterclockwise.
+"""
+
+PRACTICE_SORT_ANGLES_GUIDE_TEXT = """
+Good. Now practice **Sort**.
+
+Choose **Angle** under Selection and select these three interior angles:
+
+1. Region B's angle at its leftmost vertex.
+2. Region A's angle at its rightmost vertex on the frame.
+3. Region D's angle at its rightmost vertex.
+
+Choose **By angle size**, then click **RUN**. The output lists them from smallest to largest.
 """
 
 PRACTICE_TOOL_FINAL_TEXT = """
-Very good. You have now tried Find Vertex, Neighbors, and Merge.
+Please review the **Definitions** on the right before moving on. You can also open **Tool Guide** to see all the useful things you can do with the tools. Both will remain available during the survey.
 
-Feel free to play with these tools as long as you would like before moving on to the official survey. You can measure a region’s area, sort different angles, draw a line to see which regions it intersects, and more.
+This survey is **not a test of your ability to operate the tools**. You can answer the questions without them, but the tools can make many questions substantially easier, so we recommend becoming comfortable with them.
 
-Read the instructions under the diagram to figure out what each tool is used for.
+Feel free to keep practicing before starting the survey. For example, **try drawing a full line or a ray, extending an edge, measuring a distance or edge count, finding the neighbors of a vertex or edge, or sorting regions and vertices**.
+
+Read the instructions under the diagram to see what else each tool can do.
 """
 
 TUTORIAL_TEXT = """
@@ -1279,7 +1348,17 @@ if IS_PRACTICE:
     st.session_state.setdefault("practice_rightmost_vertex_done", False)
     st.session_state.setdefault("practice_meeting_vertex_done", False)
     st.session_state.setdefault("practice_neighbors_done", False)
+    st.session_state.setdefault("practice_draw_line_done", False)
+    st.session_state.setdefault("practice_intersect_done", False)
+    st.session_state.setdefault("practice_measure_area_done", False)
+    st.session_state.setdefault("practice_measure_orientation_done", False)
+    st.session_state.setdefault("practice_sort_angles_done", False)
     st.session_state.setdefault("practice_merge_done", False)
+    st.session_state.setdefault("practice_entities_feedback_acknowledged", False)
+    st.session_state.setdefault("practice_frame_review_done", False)
+    st.session_state.setdefault("practice_pending_feedback", None)
+    st.session_state.setdefault("practice_guided_complete", False)
+    st.session_state.setdefault("practice_final_definitions_shown", False)
 else:
     st.session_state.pop("practice_step", None)
 PRACTICE_STEP = st.session_state.get("practice_step", "select")
@@ -1483,6 +1562,61 @@ def practice_selection_checklist_html(selected):
         )
     return "".join(rows)
 
+def practice_last_output(tool, input_contains=None):
+    """Return the participant-facing output from the latest matching practice call."""
+    for call in reversed(st.session_state.get("tool_calls", [])):
+        if not isinstance(call, dict) or call.get("tool") != tool:
+            continue
+        if input_contains and input_contains not in str(call.get("input", "")):
+            continue
+        return str(call.get("output_text", "")).strip()
+    return ""
+
+def continue_after_practice_feedback(stage):
+    """Move to the next guided tool only after the participant reads feedback."""
+    next_step = {
+        "rightmost": ("vertex", "Region"),
+        "meeting": ("neighbors", "Region"),
+        "neighbors": ("draw line", "Vertex"),
+        "draw": ("intersect", "Vertex"),
+        "intersect": ("measure", "Region"),
+        "area": ("measure", "Vertex"),
+        "orientation": ("sort", "Angle"),
+        "sort": ("merge", "Region"),
+    }
+    clear_selection()
+
+    # Start each new page clean. Draw → Intersect is the one exception: the
+    # saved line and its annotation must remain available to Intersect.
+    if stage == "draw":
+        st.session_state.annotations = [
+            ann for ann in st.session_state.annotations if ann.get("kind") == "line"
+        ]
+        st.session_state.angles = []
+        st.session_state.named_edges = []
+        st.session_state.point_names = {}
+    else:
+        st.session_state.annotations = []
+        st.session_state.lines = []
+        st.session_state.angles = []
+        st.session_state.named_edges = []
+        st.session_state.point_names = {}
+        st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+    st.session_state.program = []
+    st.session_state.log = []
+    st.session_state.tool_calls = []
+
+    st.session_state.practice_pending_feedback = None
+    if stage == "merge":
+        st.session_state.practice_guided_complete = True
+        st.session_state.definitions_open = True
+        st.session_state.tool_guide_open = True
+    else:
+        active_tool, selection_filter = next_step[stage]
+        st.session_state.active_tool = active_tool
+        st.session_state.selection_filter = selection_filter
+    st.rerun()
+
 def practice_rightmost_vertex_done():
     if st.session_state.get("practice_rightmost_vertex_done"):
         return True
@@ -1529,6 +1663,8 @@ def practice_neighbors_done():
     return False
 
 def practice_merge_done():
+    if not st.session_state.get("practice_sort_angles_done", False):
+        return False
     if st.session_state.get("practice_merge_done"):
         return True
     for call in st.session_state.get("tool_calls", []):
@@ -1547,13 +1683,14 @@ def practice_merge_done():
 
 def practice_question_text_for_step(step):
     if step == "select":
-        return (
-            "Practice 1 of 2: select one region, one angle, one vertex, and one edge "
-            "in the diagram. Use the Selection choices to switch what you are selecting."
-        )
-    return (
-        "Practice 2 of 2: practice using a tool."
-    )
+        if practice_selected_entity_types() == set(PRACTICE_REQUIRED_SELECTIONS):
+            if not st.session_state.get("practice_entities_feedback_acknowledged", False):
+                return "Review the four kinds of objects you selected."
+            if not st.session_state.get("practice_frame_review_done", False):
+                return "Review the frame and outside of the frame."
+            return "Review clockwise and counterclockwise movement in the diagram."
+        return "Practice 1 of 2: learn the diagram objects by selecting each one."
+    return "Practice 2 of 2: practice using the tools."
 
 # ---- selection add/clear/remove (keep selection + selection_meta in lockstep) ----
 def add_to_selection(obj, meta=None):
@@ -1741,12 +1878,29 @@ def draw_union_label(draw, xy, name, font_big):
               anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
 
 def draw_union_solid(draw, union, font_big):
-    fu = union["face"]
-    pts = [DrawGraph.V2P(v.p) for v in fu.vertices]
-    draw.polygon(pts, fill=UNION_PURPLE)
-    for e in fu.edges:
-        draw.line([DrawGraph.V2P(e.tail.p), DrawGraph.V2P(e.head.p)],
-                  fill=(0, 0, 0, 255), width=6)
+    # Paint the two source regions directly. This is more robust than relying
+    # on the helper's pseudo-face vertex walk, which can collapse to only one
+    # side of a union when a practice-map boundary has split half-edges.
+    pair = union.get("pair", ())
+    faces = pair if pair else (union["face"],)
+    for face in faces:
+        pts = [DrawGraph.V2P(v.p) for v in face.vertices]
+        draw.polygon(pts, fill=UNION_PURPLE)
+
+    # Draw only the outside boundary. A segment occurring in both source
+    # regions is their shared edge and must disappear inside the union.
+    segments = {}
+    for face in faces:
+        for edge in face.edges:
+            a = (round(edge.tail.p.x, 9), round(edge.tail.p.y, 9))
+            b = (round(edge.head.p.x, 9), round(edge.head.p.y, 9))
+            key = tuple(sorted((a, b)))
+            segments.setdefault(key, []).append(edge)
+    for occurrences in segments.values():
+        if len(occurrences) == 1:
+            edge = occurrences[0]
+            draw.line([DrawGraph.V2P(edge.tail.p), DrawGraph.V2P(edge.head.p)],
+                      fill=(0, 0, 0, 255), width=6)
 
 def _face_label_lp_d(face):
     """Stable label position for a face (uses the locked cache when available)."""
@@ -1807,7 +1961,15 @@ def draw_circular_practice_faces(draw):
             )
 
 def render():
-    img = Image.new("RGBA", img_size, (255, 255, 255, 255))
+    frame_review = (
+        IS_PRACTICE
+        and PRACTICE_STEP == "select"
+        and practice_selected_entity_types() == set(PRACTICE_REQUIRED_SELECTIONS)
+        and st.session_state.get("practice_entities_feedback_acknowledged", False)
+        and not st.session_state.get("practice_frame_review_done", False)
+    )
+    background = (235, 238, 242, 255) if frame_review else (255, 255, 255, 255)
+    img = Image.new("RGBA", img_size, background)
     draw = ImageDraw.Draw(img)
     if IS_PRACTICE:
         draw_circular_practice_faces(draw)
@@ -1824,18 +1986,28 @@ def render():
     overlay = Image.new("RGBA", img_size, (255, 255, 255, 0))
     odraw = ImageDraw.Draw(overlay)
     union_face_ids = {id(union["face"]) for union in st.session_state.unions}
+    direction_demo = (
+        IS_PRACTICE
+        and PRACTICE_STEP == "select"
+        and practice_selected_entity_types() == set(PRACTICE_REQUIRED_SELECTIONS)
+        and st.session_state.get("practice_entities_feedback_acknowledged", False)
+        and st.session_state.get("practice_frame_review_done", False)
+    )
+    concept_review = frame_review or direction_demo
+    visible_annotations = [] if concept_review else st.session_state.annotations
+    visible_selection = [] if concept_review else st.session_state.selection
 
     # ---- PASS 1: region fills go UNDERNEATH points/lines/angles, so a
     # reference point is never hidden under a highlight. The unbounded outer
     # face is never filled (it would blanket the whole canvas).
-    for ann in st.session_state.annotations:
+    for ann in visible_annotations:
         if ann["kind"] == "region" and getattr(ann["obj"], "bounded", False):
             face = ann["obj"]
             highlight_region_solid(
                 odraw, face, ann.get("color", GRAY_SOLID),
                 draw_label=id(face) not in union_face_ids,
             )
-    for o in st.session_state.selection:
+    for o in visible_selection:
         if o != "frame" and is_region(o) and getattr(o, "bounded", False):
             highlight_region_solid(
                 odraw, o, GRAY_SOLID,
@@ -1848,7 +2020,7 @@ def render():
         draw_union_label(odraw, union["label_xy"], union["name"], font_big)
 
     # ---- PASS 2: markers (points, lines, angles, edges) on top of fills.
-    for ann in st.session_state.annotations:
+    for ann in visible_annotations:
         kind = ann["kind"]
         if kind == "point":
             highlight_vertex_x(odraw, ann["p"])
@@ -1868,11 +2040,29 @@ def render():
             draw_interior_arc_x(odraw, ann["vertex"], ann["face"],
                                 label=ann.get("label"))
 
-    # live selection markers — angle/edge checks FIRST
-    for o in st.session_state.selection:
+    # live selection markers — angle/edge checks FIRST. Once the four selection
+    # tasks are complete, replace their mixed highlights with a clean direction
+    # demonstration on the same diagram.
+    for o in visible_selection:
         if o == "frame":
-            p_bl, p_tr = DrawGraph.V2P(Graph.Vector(0, 0)), DrawGraph.V2P(Graph.Vector(maxX, maxY))
-            odraw.rectangle([p_bl[0], p_tr[1], p_tr[0], p_bl[1]], outline=TEAL, width=10)
+            # Highlight the map's actual outer boundary, not its rectangular
+            # coordinate bounds. The practice map has an octagonal frame.
+            seen_frame_segments = set()
+            for edge in res_map.edges:
+                left = getattr(edge, "leftFace", None)
+                right = getattr(getattr(edge, "reverse", None), "leftFace", None)
+                if not (
+                    getattr(left, "bounded", False)
+                    != getattr(right, "bounded", False)
+                ):
+                    continue
+                a = DrawGraph.V2P(edge.tail.p)
+                b = DrawGraph.V2P(edge.head.p)
+                key = tuple(sorted((a, b)))
+                if key in seen_frame_segments:
+                    continue
+                seen_frame_segments.add(key)
+                odraw.line([a, b], fill=TEAL, width=10)
         elif is_angle(o):
             draw_interior_arc_x(odraw, o.vertex, o.face, label=angle_name(o),
                                 color=ANGLE_SELECT, width=6)
@@ -1883,6 +2073,82 @@ def render():
             highlight_edge_x(odraw, o.segments[0], label=edge_name(o))
         elif is_vertex(o):
             highlight_vertex_x(odraw, o.p, ring=True)
+
+    if frame_review:
+        seen_frame_segments = set()
+        for edge in res_map.edges:
+            left = getattr(edge, "leftFace", None)
+            right = getattr(getattr(edge, "reverse", None), "leftFace", None)
+            if getattr(left, "bounded", False) == getattr(right, "bounded", False):
+                continue
+            a = DrawGraph.V2P(edge.tail.p)
+            b = DrawGraph.V2P(edge.head.p)
+            key = tuple(sorted((a, b)))
+            if key in seen_frame_segments:
+                continue
+            seen_frame_segments.add(key)
+            odraw.line([a, b], fill=TEAL, width=12)
+        label_font = DrawGraph.GetSystemFont(38)
+        odraw.text(
+            (img_size[0] // 2, 48),
+            "Outside of the frame",
+            fill=(75, 85, 99, 255),
+            font=label_font,
+            anchor="mm",
+        )
+        odraw.text(
+            (img_size[0] // 2, 135),
+            "Frame",
+            fill=TEAL,
+            font=label_font,
+            anchor="mm",
+            stroke_width=2,
+            stroke_fill=(255, 255, 255, 255),
+        )
+
+    if direction_demo:
+        direction = st.session_state.get("practice_direction_target", "Clockwise")
+        cx, cy = maxX / 2, maxY / 2
+        candidates = list(getattr(res_map, "vertices", []))
+        targets = [
+            Graph.Vector(cx, maxY),
+            Graph.Vector(maxX, cy),
+            Graph.Vector(cx, 0),
+            Graph.Vector(0, cy),
+        ]
+        cardinal = [
+            min(candidates, key=lambda v: Graph.vecDist(v.p, target))
+            for target in targets
+        ]
+        if direction == "Counterclockwise":
+            cardinal = [cardinal[0], cardinal[3], cardinal[2], cardinal[1]]
+
+        points = [DrawGraph.V2P(vertex.p) for vertex in cardinal]
+        demo_color = (30, 102, 210, 255)
+        demo_font = DrawGraph.GetSystemFont(42)
+        for index, point in enumerate(points, start=1):
+            x, y = point
+            odraw.ellipse([x - 17, y - 17, x + 17, y + 17], fill=(255, 255, 255, 245),
+                          outline=demo_color, width=7)
+            odraw.text((x + 22, y - 22), str(index), fill=demo_color, font=demo_font,
+                       stroke_width=3, stroke_fill=(255, 255, 255, 255))
+        for start, end in zip(points, points[1:] + points[:1]):
+            sx, sy = start
+            ex, ey = end
+            dx, dy = ex - sx, ey - sy
+            length = max(math.hypot(dx, dy), 1)
+            ux, uy = dx / length, dy / length
+            line_start = (sx + ux * 22, sy + uy * 22)
+            line_end = (ex - ux * 27, ey - uy * 27)
+            odraw.line([line_start, line_end], fill=demo_color, width=7)
+            px, py = -uy, ux
+            tip = line_end
+            base_x, base_y = tip[0] - ux * 18, tip[1] - uy * 18
+            odraw.polygon([
+                tip,
+                (base_x + px * 10, base_y + py * 10),
+                (base_x - px * 10, base_y - py * 10),
+            ], fill=demo_color)
 
     img.alpha_composite(overlay)
     return img
@@ -2176,7 +2442,7 @@ INSTRUCTIONS = {
     "vertex": (
         "- **Select ONE Region** → select all vertices or pick a vertex with a given property: leftmost / rightmost, topmost / bottommost, vertex with the smallest / largest angle.\n"
         "- **Select TWO OR MORE Regions** → find their meeting vertex or vertices.\n"
-        "- **Select the Frame** → a frame corner"
+        "- **Select the FRAME** (the diagram's outer boundary) → label one or all of its vertices."
     ),
     "neighbors": (
         "- **Select ONE Vertex** → find all regions that meet at that vertex.\n"
@@ -2213,6 +2479,51 @@ INSTRUCTIONS = {
     ),
 }
 
+TOOL_GUIDE_TEXT = """
+**Find Vertex**
+
+- Find and label a vertex with a useful property, such as the leftmost, rightmost, topmost, or bottommost vertex, or the vertex with the sharpest or widest angle of a region.
+- Find and label the vertex where exactly the selected regions meet. You can specify whether that vertex is on the frame.
+- Select the FRAME—the diagram's outer boundary—to label one or all of its vertices.
+
+**Neighbors**
+
+- Find the regions next to a selected region, edge, or vertex.
+- Starting from a selected vertex of a region, list the neighboring regions in clockwise or counterclockwise order.
+
+**Draw Line**
+
+- Draw a segment between two vertices or a full line through them.
+- Draw a ray from one vertex in a chosen direction.
+- Extend a selected edge into a full line.
+
+**Intersect**
+
+- Find which regions a drawn line passes through.
+- Check whether two drawn lines cross.
+
+**Merge**
+
+- Combine exactly two neighboring regions into one larger union.
+- In this survey, a union cannot be merged with another region.
+
+**Measure**
+
+- **Distance:** measure the distance between two vertices or two regions.
+- **Length:** measure the length of a line.
+- **Angle:** measure a selected angle in degrees.
+- **Area:** measure the area of one region.
+- **Edge count:** count how many edges form the boundary of one region.
+- **Region count:** count how many regions are in the entire diagram.
+- **Cycle orientation:** determine whether three selected vertices go clockwise or counterclockwise in the order clicked.
+
+**Sort**
+
+- Order selected angles by size.
+- Order selected regions by area.
+- Order selected vertices by position or distance.
+"""
+
 def validate(tool, modes):
     s = sel_sig()
     nR, nV, nE, nA, nF = (len(s["regions"]), len(s["vertices"]),
@@ -2225,8 +2536,11 @@ def validate(tool, modes):
         if nF >= 1:                        return (True, "")
         if nR == 1:                        return (True, "")
         if nR >= 2:                        return (True, "")
+        if IS_PRACTICE:
+            return (False, "Select 1 region or 2+ regions. "
+                           "(Vertices already in your buffer are kept.)")
         return (False, "Select 1 region, the FRAME, or 2+ regions. "
-                        "(Vertices already in your buffer are kept.)")
+                       "(Vertices already in your buffer are kept.)")
 
     if tool == "neighbors":
         # one POINT (and nothing else) → regions meeting at that point
@@ -2249,7 +2563,20 @@ def validate(tool, modes):
         return (len(st.session_state.lines) > 0, "Draw a line first.")
 
     if tool == "merge":
-        return (s["n"] == 2 and nR == 2, "Need exactly 2 regions.")
+        if s["n"] != 2 or nR != 2:
+            return (False, "Select exactly two regions.")
+        union_face_ids = {id(union["face"]) for union in st.session_state.unions}
+        if any(id(region) in union_face_ids for region in s["regions"]):
+            return (False, "Select two original regions. A union cannot be merged again.")
+        if (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and st.session_state.get("practice_sort_angles_done", False)
+            and not st.session_state.get("practice_merge_done", False)
+            and {region.letter for region in s["regions"]} != {"A", "E"}
+        ):
+            return (False, "For this practice step, select Region A and Region E.")
+        return (True, "")
 
     if tool == "measure":
         w = modes.get("what")
@@ -2408,8 +2735,29 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
     if st.session_state.get("practice_step") == "tools":
         if tool == "neighbors" and 'neighbors(A, "edge")' in call_str:
             st.session_state.practice_neighbors_done = True
-            st.session_state.active_tool = "merge"
-            st.session_state.selection_filter = "Region"
+            st.session_state.practice_pending_feedback = "neighbors"
+        elif (
+            tool == "intersect"
+            and st.session_state.get("practice_draw_line_done", False)
+            and 'intersect(' in call_str
+            and '"faces"' in call_str
+        ):
+            st.session_state.practice_intersect_done = True
+            st.session_state.practice_pending_feedback = "intersect"
+        elif (
+            tool == "measure"
+            and st.session_state.get("practice_intersect_done", False)
+            and 'measure(B, what="area")' in call_str
+        ):
+            st.session_state.practice_measure_area_done = True
+            st.session_state.practice_pending_feedback = "area"
+        elif (
+            tool == "measure"
+            and st.session_state.get("practice_measure_area_done", False)
+            and 'what="orientation"' in call_str
+        ):
+            st.session_state.practice_measure_orientation_done = True
+            st.session_state.practice_pending_feedback = "orientation"
     clear_selection()
     st.rerun()
 
@@ -2459,14 +2807,22 @@ def finish_vertex(call_str, result, assign_prefix="v"):
     add_log(f"`{call_str}` → **{output_text}**")
     record_tool_call("vertex", "vertex", call_str, _tool_output(result), output_text)
     if st.session_state.get("practice_step") == "tools":
-        if 'which="rightmost"' in call_str and "A" in call_str:
+        if (
+            not st.session_state.get("practice_rightmost_vertex_done", False)
+            and 'which="rightmost"' in call_str
+            and "A" in call_str
+        ):
             st.session_state.practice_rightmost_vertex_done = True
-        if "on_frame=False" in call_str and "A" in call_str and "D" in call_str and "E" in call_str:
+            st.session_state.practice_pending_feedback = "rightmost"
+        if (
+            not st.session_state.get("practice_meeting_vertex_done", False)
+            and "on_frame=False" in call_str
+            and "A" in call_str
+            and "D" in call_str
+            and "E" in call_str
+        ):
             st.session_state.practice_meeting_vertex_done = True
-            st.session_state.selection = []
-            st.session_state.selection_meta = []
-            st.session_state.active_tool = "neighbors"
-            st.session_state.selection_filter = "Region"
+            st.session_state.practice_pending_feedback = "meeting"
     st.session_state.click_targets = None
     st.session_state.pending_angle_vertex = None
     st.rerun()
@@ -2503,6 +2859,13 @@ def ranking_finish(call_str, result, by, ref):
         ordered,
         "analysis",
     )
+    if (
+        st.session_state.get("practice_step") == "tools"
+        and st.session_state.get("practice_measure_orientation_done", False)
+        and by == "angle"
+    ):
+        st.session_state.practice_sort_angles_done = True
+        st.session_state.practice_pending_feedback = "sort"
     clear_selection()
     st.rerun()
 
@@ -2611,6 +2974,13 @@ def run_tool(tool, modes):
                 name,
                 "annotation",
             )
+            if (
+                st.session_state.get("practice_step") == "tools"
+                and st.session_state.get("practice_neighbors_done", False)
+                and style == "segment"
+            ):
+                st.session_state.practice_draw_line_done = True
+                st.session_state.practice_pending_feedback = "draw"
             clear_selection()
             st.rerun()
 
@@ -2627,14 +2997,31 @@ def run_tool(tool, modes):
 
         # ---- MERGE ---------------------------------------------------------
         elif tool == "merge":
+            if len(s["regions"]) != 2 or s["n"] != 2:
+                st.error("Select exactly two regions.")
+                return
+            union_face_ids = {id(union["face"]) for union in st.session_state.unions}
+            if any(id(region) in union_face_ids for region in s["regions"]):
+                st.error("Select two original regions. A union cannot be merged again.")
+                return
             fa, fb = s["regions"][0], s["regions"][1]
             fu = T.merge(fa, fb)
             uname = next_name("U")
             fu.letter = uname
-            lp, _d = Graph.LetterPointFace(fu)
+            pair_vertices = []
+            seen_pair_vertices = set()
+            for source_face in (fa, fb):
+                for vertex in source_face.vertices:
+                    if id(vertex) not in seen_pair_vertices:
+                        seen_pair_vertices.add(id(vertex))
+                        pair_vertices.append(vertex)
+            label_point = Graph.Vector(
+                sum(vertex.p.x for vertex in pair_vertices) / len(pair_vertices),
+                sum(vertex.p.y for vertex in pair_vertices) / len(pair_vertices),
+            )
             st.session_state.unions.append(
                 {"name": uname, "face": fu, "pair": (fa, fb),
-                 "label_xy": DrawGraph.V2P(lp)})
+                 "label_xy": DrawGraph.V2P(label_point)})
             st.session_state.union_consumed += [fa, fb]
             add_program(f"{uname} = merge({fa.letter}, {fb.letter})")
             add_log(f"`{uname} = merge({fa.letter}, {fb.letter})` → merged region **{uname}**")
@@ -2651,8 +3038,13 @@ def run_tool(tool, modes):
                 uname,
                 "annotation",
             )
-            if st.session_state.get("practice_step") == "tools" and {fa.letter, fb.letter} == {"A", "E"}:
+            if (
+                st.session_state.get("practice_step") == "tools"
+                and st.session_state.get("practice_sort_angles_done", False)
+                and {fa.letter, fb.letter} == {"A", "E"}
+            ):
                 st.session_state.practice_merge_done = True
+                st.session_state.practice_pending_feedback = "merge"
             clear_selection()
             st.rerun()
 
@@ -2822,6 +3214,13 @@ with top_left:
         st.caption("Practice")
     else:
         st.caption(f"Question {question_number} of {len(QUESTION_BANK)}")
+    if (
+        IS_PRACTICE
+        and PRACTICE_STEP == "select"
+        and practice_selected_entity_types() == set(PRACTICE_REQUIRED_SELECTIONS)
+        and not st.session_state.get("practice_entities_feedback_acknowledged", False)
+    ):
+        st.success("Great — you identified all four kinds of objects.")
     raw_question_text = (
         practice_question_text_for_step(PRACTICE_STEP)
         if IS_PRACTICE
@@ -2856,30 +3255,23 @@ with top_right:
 
 answer_panel, action_panel = st.columns([8, 3], gap="small")
 
-with answer_panel:
+if IS_PRACTICE and PRACTICE_STEP == "tools":
+    st.markdown(
+        """
+        <style>
+        .st-key-answer_panel_content {
+            min-height: 24rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with answer_panel.container(key="answer_panel_content"):
     if IS_PRACTICE and PRACTICE_STEP == "select":
-        selected_types = practice_selected_entity_types()
-        st.markdown(
-            '<div style="border:1px solid #d1d5db; border-radius:0.5rem; '
-            'padding:0.85rem 1rem; margin-bottom:0.8rem;">'
-            '<div style="font-weight:650; margin-bottom:0.35rem;">Select each kind of object once:</div>'
-            f'{practice_selection_checklist_html(selected_types)}'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        ready = all(label in selected_types for label in PRACTICE_REQUIRED_SELECTIONS)
-        if not ready:
-            st.info("Use the Selection choices below, then click the diagram to select each object type.")
-        if st.button("Continue", type="primary", disabled=not ready):
-            clear_selection()
-            st.session_state.practice_step = "tools"
-            st.session_state.active_tool = "vertex"
-            st.session_state.selection_filter = "Region"
-            st.session_state.practice_rightmost_vertex_done = False
-            st.session_state.practice_meeting_vertex_done = False
-            st.session_state.practice_neighbors_done = False
-            st.session_state.practice_merge_done = False
-            st.rerun()
+        # The first practice instructions live beside the diagram below so the
+        # diagram stays visible in the first viewport.
+        pass
     else:
         practice_rightmost_done = (
             IS_PRACTICE
@@ -2896,14 +3288,43 @@ with answer_panel:
             and PRACTICE_STEP == "tools"
             and practice_neighbors_done()
         )
+        practice_draw_done = (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and st.session_state.get("practice_draw_line_done", False)
+        )
+        practice_intersection_done = (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and st.session_state.get("practice_intersect_done", False)
+        )
+        practice_area_done = (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and st.session_state.get("practice_measure_area_done", False)
+        )
+        practice_orientation_done = (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and st.session_state.get("practice_measure_orientation_done", False)
+        )
+        practice_angle_sort_done = (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and st.session_state.get("practice_sort_angles_done", False)
+        )
         practice_merge_complete = (
             IS_PRACTICE
             and PRACTICE_STEP == "tools"
             and practice_merge_done()
         )
         if IS_PRACTICE and PRACTICE_STEP == "tools":
-            if practice_merge_complete:
-                st.success("Very good — now you know how to use Find Vertex, Neighbors, and Merge.")
+            pending_feedback = st.session_state.get("practice_pending_feedback")
+            if st.session_state.get("practice_guided_complete", False):
+                if not st.session_state.get("practice_final_definitions_shown", False):
+                    st.session_state.definitions_open = True
+                    st.session_state.tool_guide_open = True
+                    st.session_state.practice_final_definitions_shown = True
                 st.markdown(PRACTICE_TOOL_FINAL_TEXT)
                 if st.button("Start Survey", type="primary"):
                     st.session_state.tutorial_completed = True
@@ -2912,18 +3333,65 @@ with answer_panel:
                     st.session_state.scratch_pad = ""
                     st.session_state.survey_started_at = time.time()
                     st.rerun()
+            elif pending_feedback:
+                if pending_feedback == "rightmost":
+                    output = practice_last_output("vertex", 'which="rightmost"') or "The labeled vertex"
+                    message = f"Great — {output} is the rightmost vertex of Region A."
+                elif pending_feedback == "meeting":
+                    output = practice_last_output("vertex", "on_frame=False") or "The labeled vertex"
+                    message = (
+                        f"Very good — {output} marks the point where Regions A, D, and E meet. "
+                        "This vertex is not on the frame, and no other labeled region meets there."
+                    )
+                elif pending_feedback == "neighbors":
+                    output = practice_last_output("neighbors", 'neighbors(A, "edge")')
+                    message = f"Very good — {output} are the regions that share an edge with Region A."
+                elif pending_feedback == "draw":
+                    output = practice_last_output("draw line") or "The labeled line"
+                    message = f"Very good — {output} is the line segment connecting the two selected vertices."
+                elif pending_feedback == "intersect":
+                    output = practice_last_output("intersect", '"faces"') or "the listed regions"
+                    message = f"Very good — the line segment crosses these regions: {output}."
+                elif pending_feedback == "area":
+                    output = practice_last_output("measure", 'what="area"')
+                    message = f"Very good — Measure found that Region B has area {output}."
+                elif pending_feedback == "orientation":
+                    output = practice_last_output("measure", 'what="orientation"')
+                    message = (
+                        f"Very good — the three vertices form a {output} cycle when followed "
+                        "in the order in which you clicked them."
+                    )
+                elif pending_feedback == "sort":
+                    output = practice_last_output("sort") or "the selected angles"
+                    message = f"Very good — the result {output} lists the selected angles from smallest to largest."
+                else:  # merge
+                    output = practice_last_output("merge") or "U"
+                    message = (
+                        f"Very good — Merge created Region {output}, the union of Regions A and E. "
+                        "The two neighboring regions are now treated as one larger region."
+                    )
+                st.success(message)
+                if st.button("Continue", type="primary"):
+                    continue_after_practice_feedback(pending_feedback)
             elif practice_neighbor_done:
-                st.success("Very good — now you know how to use Neighbors.")
-                st.markdown(PRACTICE_MERGE_GUIDE_TEXT)
+                if practice_angle_sort_done:
+                    st.markdown(PRACTICE_MERGE_GUIDE_TEXT)
+                elif practice_orientation_done:
+                    st.markdown(PRACTICE_SORT_ANGLES_GUIDE_TEXT)
+                elif practice_area_done:
+                    st.markdown(PRACTICE_MEASURE_ORIENTATION_GUIDE_TEXT)
+                elif practice_intersection_done:
+                    st.markdown(PRACTICE_MEASURE_AREA_GUIDE_TEXT)
+                elif practice_draw_done:
+                    st.markdown(PRACTICE_INTERSECT_GUIDE_TEXT)
+                else:
+                    st.markdown(PRACTICE_DRAW_LINE_GUIDE_TEXT)
             elif practice_meeting_done:
-                st.success("Very good — now you know two ways to label vertices with Find Vertex.")
                 st.markdown(PRACTICE_NEIGHBORS_GUIDE_TEXT)
             elif practice_rightmost_done:
-                st.success("Great — now you know how to label a vertex using a tool.")
                 st.markdown(PRACTICE_TOOL_AFTER_SUCCESS_TEXT)
             else:
                 st.markdown(PRACTICE_TOOL_GUIDE_TEXT)
-                st.info("After you click RUN for the rightmost vertex of Region A, the next tool practice step will appear.")
         if IS_PRACTICE and PRACTICE_STEP == "tools":
             pass
         else:
@@ -3020,35 +3488,88 @@ with action_panel:
         '<div style="font-size:1.25rem; font-weight:600; margin:0 0 0.25rem 0;">Help</div>',
         unsafe_allow_html=True,
     )
-    st.session_state.setdefault("definitions_open", False)
+    st.session_state.setdefault(
+        "definitions_open",
+        IS_PRACTICE and PRACTICE_STEP == "select",
+    )
 
     definitions_open = st.session_state["definitions_open"]
     if st.button(("▾ Definitions" if definitions_open else "▸ Definitions"), key="toggle_definitions", use_container_width=True):
         st.session_state["definitions_open"] = not definitions_open
         st.rerun()
     if st.session_state["definitions_open"]:
-        st.markdown(DEFINITIONS_TEXT)
+        if IS_PRACTICE and PRACTICE_STEP == "select":
+            if practice_selected_entity_types() != set(PRACTICE_REQUIRED_SELECTIONS):
+                practice_definitions = PRACTICE_CORE_DEFINITIONS_TEXT
+            elif not st.session_state.get("practice_entities_feedback_acknowledged", False):
+                practice_definitions = PRACTICE_CORE_DEFINITIONS_TEXT
+            elif not st.session_state.get("practice_frame_review_done", False):
+                practice_definitions = PRACTICE_FRAME_DEFINITIONS_TEXT
+            else:
+                practice_definitions = PRACTICE_DIRECTION_DEFINITIONS_TEXT
+            st.markdown(practice_definitions)
+        else:
+            st.markdown(DEFINITIONS_TEXT)
+
+    st.session_state.setdefault("tool_guide_open", False)
+    tool_guide_open = st.session_state["tool_guide_open"]
+    if st.button(
+        ("▾ Tool Guide" if tool_guide_open else "▸ Tool Guide"),
+        key="toggle_tool_guide",
+        use_container_width=True,
+    ):
+        st.session_state["tool_guide_open"] = not tool_guide_open
+        st.rerun()
+    if st.session_state["tool_guide_open"]:
+        st.markdown(TOOL_GUIDE_TEXT)
 
     st.markdown(
         '<div style="font-size:1.25rem; font-weight:600; margin:0.4rem 0 0.25rem 0;">Quick actions</div>',
         unsafe_allow_html=True,
     )
-    qcols = st.columns(2)
-    if qcols[0].button("↩ Undo", help="Undo last move", use_container_width=True,
-                       disabled=not st.session_state.undo_stack):
-        undo_last()
-    if qcols[1].button("Clear all", use_container_width=True):
-        clear_selection()
-        record_selection_event("clear_all")
-        for k in ["annotations", "lines", "angles", "named_edges", "unions",
-                  "union_consumed", "undo_stack", "program", "log", "tool_calls"]:
-            st.session_state[k] = []
-        st.session_state.pending_angle_vertex = None
-        st.session_state.pending_edge_options = []
-        st.session_state.click_targets = None
-        st.session_state.point_names = {}
-        st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
-        st.rerun()
+    st.markdown(
+        """
+        <style>
+        div[class*="st-key-quick_action_buttons"] button {
+            justify-content: center !important;
+            min-height: 2.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="quick_action_buttons"):
+        qcols = st.columns(2)
+        if qcols[0].button("↩ Undo", help="Undo last move", use_container_width=True,
+                           disabled=not st.session_state.undo_stack):
+            undo_last()
+        if qcols[1].button("Clear all", use_container_width=True):
+            clear_selection()
+            record_selection_event("clear_all")
+            for k in ["annotations", "lines", "angles", "named_edges", "unions",
+                      "union_consumed", "undo_stack", "program", "log", "tool_calls"]:
+                st.session_state[k] = []
+            st.session_state.pending_angle_vertex = None
+            st.session_state.pending_edge_options = []
+            st.session_state.click_targets = None
+            st.session_state.point_names = {}
+            st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+            st.rerun()
+    show_practice_action_hint = (
+        IS_PRACTICE
+        and PRACTICE_STEP == "tools"
+    )
+    if show_practice_action_hint:
+        st.markdown(
+            '<div style="background:#eff6ff; color:#1e3a8a; '
+            'border:1px solid #bfdbfe; border-radius:0.5rem; '
+            'padding:0.55rem 0.7rem; margin:0.75rem 0 0.5rem; font-size:0.9rem;">'
+            'If you make a mistake, use <strong>Undo</strong> to reverse your '
+            'most recent action. Use <strong>Clear all</strong> to reset the '
+            'practice workspace.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
     right_workspace = st.container()
 
@@ -3061,6 +3582,28 @@ col_io = right_workspace
 # ----------------------------------------------------------------------------
 with col_ctrl:
     SHOW_TOOLS = not (IS_PRACTICE and PRACTICE_STEP == "select")
+    PRACTICE_OBJECTS_READY = (
+        IS_PRACTICE
+        and PRACTICE_STEP == "select"
+        and practice_selected_entity_types() == set(PRACTICE_REQUIRED_SELECTIONS)
+    )
+    PRACTICE_ENTITIES_FEEDBACK = (
+        PRACTICE_OBJECTS_READY
+        and not st.session_state.get("practice_entities_feedback_acknowledged", False)
+    )
+    PRACTICE_FRAME_REVIEW = (
+        PRACTICE_OBJECTS_READY
+        and st.session_state.get("practice_entities_feedback_acknowledged", False)
+        and not st.session_state.get("practice_frame_review_done", False)
+    )
+    PRACTICE_DIRECTION_DEMO = (
+        PRACTICE_OBJECTS_READY
+        and st.session_state.get("practice_entities_feedback_acknowledged", False)
+        and st.session_state.get("practice_frame_review_done", False)
+    )
+    PRACTICE_CONCEPT_REVIEW = (
+        PRACTICE_ENTITIES_FEEDBACK or PRACTICE_FRAME_REVIEW or PRACTICE_DIRECTION_DEMO
+    )
     if not SHOW_TOOLS:
         st.session_state.active_tool = None
 
@@ -3288,7 +3831,7 @@ with col_ctrl:
             elif modes["what"] == "regions":
                 st.caption("Select FRAME to count all regions in the diagram.")
             elif modes["what"] == "orientation":
-                st.caption("Select exactly three vertices in travel order: v₁, then v₂, then v₃.")
+                st.caption("Click exactly three vertices in sequence: first v₁, then v₂, then v₃.")
 
         elif tool == "sort":
             opts = []   # (label, internal_value)
@@ -3312,32 +3855,107 @@ with col_ctrl:
         ready, msg = validate(tool, modes)
         if tool == "intersect" and modes.get("target") is None:
             ready = False
+        if not ready and msg:
+            st.caption(msg)
         if st.button("▶ RUN", type="primary", disabled=not ready,
                      use_container_width=True, key="run_active_tool"):
             push_undo()
             run_tool(tool, modes)
 
     # --- SELECTION ---
-    st.markdown(
-        '<div style="font-size:1.25rem; font-weight:600; margin:0.5rem 0 0.35rem 0;">Selection</div>',
-        unsafe_allow_html=True,
-    )
+    if (
+        IS_PRACTICE
+        and PRACTICE_STEP == "tools"
+        and st.session_state.get("practice_measure_orientation_done", False)
+        and not st.session_state.get("practice_sort_angles_done", False)
+        and not st.session_state.get("practice_pending_feedback")
+    ):
+        st.session_state.selection_filter = "Angle"
     st.session_state.setdefault("selection_filter", "Region")
-    select_mode = st.radio(
-        "Select from diagram:",
-        ["Region", "Angle", "Vertex", "Edge"],
-        horizontal=True,
-        key="selection_filter",
-        label_visibility="collapsed",
-    )
-    if not (IS_PRACTICE and PRACTICE_STEP == "select") and st.button("Select FRAME", use_container_width=True):
+    if PRACTICE_ENTITIES_FEEDBACK:
+        select_mode = "none"
+        st.caption("The diagram shows the region, angle, vertex, and edge you selected.")
+        if st.button("Continue", type="primary", use_container_width=True,
+                     key="continue_entities_feedback"):
+            st.session_state.practice_entities_feedback_acknowledged = True
+            st.rerun()
+    elif PRACTICE_FRAME_REVIEW:
+        select_mode = "none"
+        st.markdown(
+            "The **frame** is the diagram's outer boundary.  \n"
+            "The **outside of the frame** is the area beyond that boundary."
+        )
+        if st.button("Continue", type="primary", use_container_width=True,
+                     key="continue_frame_review"):
+            st.session_state.practice_frame_review_done = True
+            st.rerun()
+    elif PRACTICE_DIRECTION_DEMO:
+        select_mode = "none"
+        st.session_state.setdefault("practice_direction_target", "Clockwise")
+        st.session_state.setdefault("practice_direction_answered", False)
+        st.session_state.setdefault("practice_direction_correct", None)
+        st.markdown(
+            "**Clockwise** follows the direction of a clock's hands: "
+            "top → right → bottom → left.  \n"
+            "**Counterclockwise** goes in the opposite direction: "
+            "top → left → bottom → right."
+        )
+        st.markdown("**Which direction do the numbered vertices and arrows show?**")
+        direction_answer = st.radio(
+            "Choose one:",
+            ["Clockwise", "Counterclockwise"],
+            index=None,
+            horizontal=True,
+            key="practice_direction_answer",
+            disabled=st.session_state.practice_direction_answered,
+        )
+        if not st.session_state.practice_direction_answered:
+            if st.button("Check answer", type="primary", use_container_width=True,
+                         disabled=direction_answer is None):
+                st.session_state.practice_direction_correct = (
+                    direction_answer == st.session_state.practice_direction_target
+                )
+                st.session_state.practice_direction_answered = True
+                st.rerun()
+        elif st.session_state.practice_direction_correct:
+            st.success("Correct — the arrows move clockwise.")
+        else:
+            st.error(
+                "Not quite — the arrows move clockwise: "
+                "top → right → bottom → left."
+            )
+    else:
+        st.markdown(
+            '<div style="font-size:1.25rem; font-weight:600; margin:0.5rem 0 0.35rem 0;">Selection</div>',
+            unsafe_allow_html=True,
+        )
+        select_mode = st.radio(
+            "Select from diagram:",
+            ["Region", "Angle", "Vertex", "Edge"],
+            horizontal=True,
+            key="selection_filter",
+            label_visibility="collapsed",
+        )
+        if IS_PRACTICE and PRACTICE_STEP == "select":
+            selected_types = practice_selected_entity_types()
+            st.markdown(
+                '<div style="border:1px solid #d1d5db; border-radius:0.4rem; '
+                'padding:0.55rem 0.7rem; margin:0.35rem 0;">'
+                f'{practice_selection_checklist_html(selected_types)}'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Click the diagram to select each object. Refer to Definitions on the right if needed.")
+    if not IS_PRACTICE and st.button("Select FRAME", use_container_width=True):
         push_undo()
         add_to_selection("frame")
         record_selection_event("select", "frame")
         st.rerun()
 
-    if st.session_state.selection:
+    if st.session_state.selection and not PRACTICE_CONCEPT_REVIEW:
         st.markdown(_SELECTION_ROW_CSS, unsafe_allow_html=True)
+        if IS_PRACTICE and PRACTICE_STEP == "tools":
+            st.caption("Click **✕** next to a selected item to remove only that item.")
         selection_list = (
             st.container(height=120)
             if len(st.session_state.selection) > 3
@@ -3352,6 +3970,41 @@ with col_ctrl:
                         push_undo()
                         remove_selection_item(i)
                         st.rerun()
+
+    if IS_PRACTICE and PRACTICE_STEP == "select" and PRACTICE_DIRECTION_DEMO:
+        direction_answered = st.session_state.get("practice_direction_answered", False)
+        if st.button("Continue", type="primary",
+                     disabled=not (PRACTICE_DIRECTION_DEMO and direction_answered),
+                     use_container_width=True):
+            clear_selection()
+            st.session_state.annotations = []
+            st.session_state.lines = []
+            st.session_state.angles = []
+            st.session_state.named_edges = []
+            st.session_state.point_names = {}
+            st.session_state.program = []
+            st.session_state.log = []
+            st.session_state.tool_calls = []
+            st.session_state.undo_stack = []
+            st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
+            st.session_state.practice_step = "tools"
+            st.session_state.active_tool = "vertex"
+            st.session_state.selection_filter = "Region"
+            st.session_state.definitions_open = False
+            st.session_state.practice_rightmost_vertex_done = False
+            st.session_state.practice_meeting_vertex_done = False
+            st.session_state.practice_neighbors_done = False
+            st.session_state.practice_draw_line_done = False
+            st.session_state.practice_intersect_done = False
+            st.session_state.practice_measure_area_done = False
+            st.session_state.practice_measure_orientation_done = False
+            st.session_state.practice_sort_angles_done = False
+            st.session_state.practice_merge_done = False
+            st.session_state.practice_pending_feedback = None
+            st.session_state.practice_guided_complete = False
+            st.session_state.practice_direction_answered = False
+            st.session_state.practice_direction_correct = None
+            st.rerun()
 
 # ----------------------------------------------------------------------------
 # MIDDLE PANEL — DIAGRAM + selection-building buttons + saved objects
@@ -3378,9 +4031,16 @@ with diagram_panel:
     )
 
     if tool:
-        st.info(INSTRUCTIONS[tool])
+        instruction_text = INSTRUCTIONS[tool]
+        if IS_PRACTICE and tool == "vertex":
+            instruction_text = "\n".join(instruction_text.splitlines()[:2])
+        st.info(instruction_text)
 
-    if coords is not None and coords != st.session_state.last_click:
+    if (
+        not PRACTICE_CONCEPT_REVIEW
+        and coords is not None
+        and coords != st.session_state.last_click
+    ):
         st.session_state.last_click = coords
         st.session_state.click_targets = None
         st.session_state.pending_angle_vertex = None
@@ -3441,7 +4101,7 @@ with diagram_panel:
         saved.append((f"Select {aname} (angle, Region {a_sel.face.letter})", a_sel))
     for ename, e_sel in st.session_state.named_edges:
         saved.append((f"Select {ename} ({e_sel.text})", e_sel))
-    if saved:
+    if saved and not PRACTICE_CONCEPT_REVIEW:
         st.caption("Saved objects:")
         for i, (label, obj) in enumerate(saved):
             if st.button(label, key=f"saved_{i}", use_container_width=True):
@@ -3470,6 +4130,15 @@ with col_io:
         '<div style="font-size:1.25rem; font-weight:600; margin:0.45rem 0 0.25rem 0;">Output</div>',
         unsafe_allow_html=True,
     )
+    if show_practice_action_hint:
+        st.markdown(
+            '<div style="background:#eff6ff; color:#1e3a8a; '
+            'border:1px solid #bfdbfe; border-radius:0.5rem; '
+            'padding:0.55rem 0.7rem; margin:0.55rem 0 0.7rem; font-size:0.9rem;">'
+            'After you click <strong>RUN</strong>, the result will appear here.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
     if not st.session_state.log:
         st.caption("(results will appear here)")
     else:
