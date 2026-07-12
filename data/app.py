@@ -6,7 +6,6 @@ import tempfile
 import json
 import pickle
 import random
-
 import re
 import time
 import uuid
@@ -153,13 +152,9 @@ PRACTICE_FRAME_DEFINITIONS_TEXT = PRACTICE_CORE_DEFINITIONS_TEXT + """
 """
 
 PRACTICE_TOOL_GUIDE_TEXT = """
-Now practice using a tool. We will use **Find Vertex** as an example.
+We’ll start with **Find Vertex**. Some questions may ask for a vertex with a property, such as the **rightmost vertex of a region**.
 
-Some questions may ask you to find a vertex with a particular property, such as the rightmost vertex of a region.
-
-The **rightmost vertex of Region A** is the vertex of Region A that is farthest to the right in the diagram. The same idea applies to leftmost, topmost, and bottommost: compare only the vertices of the selected region.
-
-**Try this:** Select **Region A**, choose **rightmost** under Find Vertex settings, then click **RUN**. The tool will label the vertex it finds.
+**Try this:** Select **Region A**, choose **rightmost**, then click **RUN**. The tool will label the vertex it finds.
 """
 
 PRACTICE_TOOL_AFTER_SUCCESS_TEXT = """
@@ -169,7 +164,7 @@ Next, select **Region A**, **Region D**, and **Region E**, keep **Is the meeting
 """
 
 PRACTICE_NEIGHBORS_GUIDE_TEXT = """
-Good. Now practice one more tool: **Neighbors**.
+Good. Next, practice **Neighbors**.
 
 We now want to find all regions that share an edge with **Region A**.
 
@@ -858,6 +853,7 @@ DATASET_PATH = st.session_state.dataset_path
 GOLD_FILL = (255, 215, 0, 230)
 GOLD_OUTLINE = (184, 134, 11, 255)
 TEAL = (0, 255, 204, 255)
+PRACTICE_FRAME_TEAL = (20, 184, 166, 255)
 ANGLE_SELECT = (203, 32, 107, 255)   # deep rose: readable + aesthetic for selected angles
 CYAN_EDGE = (0, 255, 255, 235)
 YELLOW_REGION = (255, 255, 0, 100)
@@ -2087,7 +2083,7 @@ def render():
             if key in seen_frame_segments:
                 continue
             seen_frame_segments.add(key)
-            odraw.line([a, b], fill=TEAL, width=12)
+            odraw.line([a, b], fill=PRACTICE_FRAME_TEAL, width=9)
         label_font = DrawGraph.GetSystemFont(38)
         odraw.text(
             (img_size[0] // 2, 48),
@@ -2099,7 +2095,7 @@ def render():
         odraw.text(
             (img_size[0] // 2, 135),
             "Frame",
-            fill=TEAL,
+            fill=PRACTICE_FRAME_TEAL,
             font=label_font,
             anchor="mm",
             stroke_width=2,
@@ -3511,17 +3507,19 @@ with action_panel:
         else:
             st.markdown(DEFINITIONS_TEXT)
 
-    st.session_state.setdefault("tool_guide_open", False)
-    tool_guide_open = st.session_state["tool_guide_open"]
-    if st.button(
-        ("▾ Tool Guide" if tool_guide_open else "▸ Tool Guide"),
-        key="toggle_tool_guide",
-        use_container_width=True,
-    ):
-        st.session_state["tool_guide_open"] = not tool_guide_open
-        st.rerun()
-    if st.session_state["tool_guide_open"]:
-        st.markdown(TOOL_GUIDE_TEXT)
+    show_tool_guide = not (IS_PRACTICE and PRACTICE_STEP == "select")
+    if show_tool_guide:
+        st.session_state.setdefault("tool_guide_open", False)
+        tool_guide_open = st.session_state["tool_guide_open"]
+        if st.button(
+            ("▾ Tool Guide" if tool_guide_open else "▸ Tool Guide"),
+            key="toggle_tool_guide",
+            use_container_width=True,
+        ):
+            st.session_state["tool_guide_open"] = not tool_guide_open
+            st.rerun()
+        if st.session_state["tool_guide_open"]:
+            st.markdown(TOOL_GUIDE_TEXT)
 
     st.markdown(
         '<div style="font-size:1.25rem; font-weight:600; margin:0.4rem 0 0.25rem 0;">Quick actions</div>',
