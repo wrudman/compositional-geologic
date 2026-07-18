@@ -21,7 +21,18 @@ class EdgeSel:
         self.text = text
     def __eq__(self, other):
         return (type(other).__name__ == "EdgeSel"
-                and other.text == self.text
-                and len(other.segments) == len(self.segments))
+                and other.owner is self.owner
+                and self._segment_keys() == other._segment_keys())
     def __hash__(self):
-        return hash(("edge", self.text, tuple(id(s) for s in self.segments)))
+        return hash(("edge", id(self.owner), self._segment_keys()))
+
+    def _segment_keys(self):
+        """Identity of the underlying undirected geometric segments.
+
+        A click can reach the same physical edge through either half-edge
+        orientation, so each segment is keyed together with its reverse.
+        """
+        return frozenset(
+            frozenset((id(segment), id(segment.reverse)))
+            for segment in self.segments
+        )
