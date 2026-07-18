@@ -2,3 +2,4 @@ streamlit
 pillow
 numpy
 streamlit-image-coordinates
+psycopg[binary]>=3.2,<4

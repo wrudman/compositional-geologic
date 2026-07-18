@@ -23,6 +23,13 @@ import map_helpers
 import tools_human as T
 from sel_types import AngleSel, EdgeSel
 
+try:
+    import psycopg
+    from psycopg.types.json import Jsonb
+except ImportError:
+    psycopg = None
+    Jsonb = None
+
 st.set_page_config(layout="wide")
 st.markdown(
     """
@@ -73,6 +80,7 @@ DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "compositional_questions_v1"
 SURVEY_QUESTION_COUNT = 24
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 ANSWER_HINTS_HUMAN = {
     "number": "Enter a number.",
@@ -532,8 +540,89 @@ def participant_result_path(participant_id):
         f"compositional_survey_{_safe_id(participant_id)}.json",
     )
 
+def _database_connection():
+    """Open a short-lived Postgres connection when DATABASE_URL is configured."""
+    if not DATABASE_URL:
+        return None
+    if psycopg is None:
+        raise RuntimeError(
+            "DATABASE_URL is configured, but psycopg is not installed. "
+            "Add psycopg[binary]>=3.2,<4 to requirements.txt."
+        )
+    return psycopg.connect(DATABASE_URL)
+
+def _ensure_survey_responses_table(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.survey_responses (
+                participant_id TEXT NOT NULL,
+                survey_version TEXT NOT NULL,
+                payload JSONB NOT NULL,
+                survey_completed BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (participant_id, survey_version)
+            )
+            """
+        )
+
+def _load_saved_survey_postgres(participant_id):
+    with _database_connection() as conn:
+        _ensure_survey_responses_table(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT payload
+                FROM public.survey_responses
+                WHERE participant_id = %s AND survey_version = %s
+                """,
+                (participant_id, SURVEY_VERSION),
+            )
+            row = cur.fetchone()
+    return row[0] if row else {}
+
+def _save_survey_postgres(payload):
+    json_payload = json.loads(json.dumps(payload, ensure_ascii=False, default=str))
+    with _database_connection() as conn:
+        _ensure_survey_responses_table(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO public.survey_responses (
+                    participant_id,
+                    survey_version,
+                    payload,
+                    survey_completed
+                )
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (participant_id, survey_version)
+                DO UPDATE SET
+                    payload = EXCLUDED.payload,
+                    survey_completed = EXCLUDED.survey_completed,
+                    updated_at = NOW()
+                """,
+                (
+                    payload["participant_id"],
+                    payload["survey_version"],
+                    Jsonb(json_payload),
+                    bool(payload.get("survey_completed")),
+                ),
+            )
+
 def load_saved_survey(participant_id):
     """Load this participant's saved question order and confirmed progress."""
+    if DATABASE_URL:
+        payload = _load_saved_survey_postgres(participant_id)
+        if not isinstance(payload, dict):
+            return {}
+        if _safe_id(payload.get("participant_id", "")) != participant_id:
+            return {}
+        if payload.get("survey_version") != SURVEY_VERSION:
+            return {}
+        return payload
+
+    # Local development fallback when no database has been configured.
     path = participant_result_path(participant_id)
     if not os.path.exists(path):
         return {}
@@ -3187,16 +3276,20 @@ def save_survey_results():
         "questions": QUESTION_BANK,
         "responses": st.session_state.get("survey_responses", {}),
     }
-    path = result_file_path()
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
-    st.session_state.last_result_path = path
-    return path
+    if DATABASE_URL:
+        _save_survey_postgres(payload)
+        destination = "Postgres"
+    else:
+        destination = result_file_path()
+        with open(destination, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
+    st.session_state.last_result_path = destination
+    return destination
 
 if st.session_state.survey_completed:
     st.success("Survey complete. Thank you.")
     if st.session_state.last_result_path:
-        st.caption(f"Saved result file: {st.session_state.last_result_path}")
+        st.caption("Your responses have been saved.")
     st.stop()
 
 # ============================================================
