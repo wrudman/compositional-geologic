@@ -22,7 +22,8 @@ THE SEVEN VERBS
     draw        make a line             (segment, full line, or ray)
     intersect   ask a line what it hits (which regions, or another line)
     merge       join two bordering regions into one
-    measure     ONE thing -> ONE number (length, angle, area, or sides)
+    measure     inspect selected geometry (length, angle, area, sides,
+                regions, or cycle orientation)
     sort        SEVERAL things -> them, ordered smallest -> largest
 
 Everything in / everything out is a plain object (a Point, a Region, a Line, a
@@ -83,7 +84,8 @@ def neighbors(obj, kind="edge", start=None, go_counterclockwise=True):
     Returns the regions related to the selection.
 
     A POINT                  -> every region that meets at that point.
-    AN EDGE                  -> the bounded regions on either side of the edge.
+    AN EDGE                  -> the labeled regions inside the frame on either
+                                side of the edge.
     A REGION, kind="edge"    -> regions sharing a full edge (a border).
     A REGION, kind="vertex"  -> regions touching only at a corner.
     A REGION, kind="ordered" -> the bordering regions in walking order;
@@ -180,25 +182,35 @@ def measure(*args, what):
     Measure a single thing and get back a single number.
 
     what:
-        "length"  a drawn line -> its length
-                  (or two points -> the straight-line distance between them)
+        "distance" a drawn line -> its length
+                   (or two points -> the straight-line distance between them)
+                   (or two regions -> the distance between their closest points)
         "angle"   a corner (its point + the region it belongs to)
                   -> the interior angle there, in degrees
         "area"    a region -> its area
         "sides"   a region -> how many sides it has
+        "regions" the frame -> how many bounded regions are in the diagram
+        "orientation" three ordered vertices -> clockwise or counterclockwise
 
     Examples:
-        measure(L1, what="length")
-        measure(p, q, what="length")      # distance between two points
+        measure(L1, what="distance")
+        measure(p, q, what="distance")    # distance between two points
+        measure(A, B, what="distance")    # distance between two regions
         measure(p, A, what="angle")       # angle at corner p inside region A
         measure(A, what="area")
         measure(A, what="sides")
+        measure("frame", what="regions")
+        measure(v1, v2, v3, what="orientation")
     """
     items = list(args)
 
-    if what == "length":
+    if what in ("distance", "length"):
         if len(items) == 1 and isinstance(items[0], dict):   # a drawn line
             return _line_len(items[0])
+        if len(items) == 2 and _is_region(items[0]) and _is_region(items[1]):
+            return _engine.region_dist(items[0], items[1])
+        if len(items) != 2:
+            raise ValueError('what="distance" requires a line, two vertices, or two regions.')
         return _engine.dist(items[0], items[1])              # two points
 
     if what == "angle":
@@ -211,7 +223,17 @@ def measure(*args, what):
     if what == "sides":
         return _engine.side_count(items[0])
 
-    raise ValueError('what must be one of: length, angle, area, sides.')
+    if what == "regions":
+        if len(items) != 1 or items[0] != "frame":
+            raise ValueError('what="regions" requires the frame.')
+        return _engine.region_count()
+
+    if what == "orientation":
+        if len(items) != 3:
+            raise ValueError('what="orientation" requires exactly three vertices.')
+        return _engine.orientation(items[0], items[1], items[2])
+
+    raise ValueError('what must be one of: distance, angle, area, sides, regions, orientation.')
 
 
 # ==============================================================================
@@ -224,21 +246,24 @@ def sort(items, by, reference=None):
     Sort only ranks things that have a numeric size.
 
     by:
-        "angle"       the corners (`items`) of a region, by interior angle;
-                      `reference` is that region
+        "angle"       saved angle objects by interior angle
+                      (or corners of a region with `reference` set to that region)
         "area"        regions, by area
         "left_right"  points, left to right
         "bottom_top"  points, bottom to top
         "distance"    points, by distance from `reference` (a point)
 
     Examples:
-        sort(vertex(A, which="all"), by="angle", reference=A)
+        sort([a1, a2, a3, a4], by="angle")
         sort([A, B, C], by="area")
         sort([u, v, w], by="left_right")
         sort([u, v, w], by="distance", reference=p)
     """
     if by == "angle":
-        key = lambda v: _engine.angle_at(v, reference)
+        def key(item):
+            if hasattr(item, "vertex") and hasattr(item, "face"):
+                return _engine.angle_at(item.vertex, item.face)
+            return _engine.angle_at(item, reference)
     elif by == "area":
         key = _engine.area
     elif by == "left_right":

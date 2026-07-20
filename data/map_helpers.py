@@ -41,12 +41,6 @@ angleeps = 0.00001
 smallDist = 0.07
 smallAng = 0.1
 
-# How far (in map units) to step perpendicular to a line when deciding whether
-# it truly enters a region's interior versus merely running along an edge or
-# grazing a corner. See _strictly_inside_face. Small enough never to over-reach
-# a thin region's far side, large enough to beat floating-point noise.
-interiorMargin = 0.0015
-
 # The current diagram. Set this once with use_map(map) before running queries.
 _MAP = None
 
@@ -63,6 +57,25 @@ def use_map(map):
     """
     global _MAP
     _MAP = map
+
+
+def region_count():
+    """Return the number of bounded regions in the current diagram."""
+    if _MAP is None:
+        raise RuntimeError("Call use_map(map) before region_count().")
+    return sum(1 for face in _MAP.faces if face.bounded)
+
+
+def orientation(a, b, c):
+    """Return the direction of the ordered cycle a -> b -> c -> a."""
+    pa = getattr(a, "p", a)
+    pb = getattr(b, "p", b)
+    pc = getattr(c, "p", c)
+    signed_area_twice = ((pb.x - pa.x) * (pc.y - pa.y) -
+                         (pb.y - pa.y) * (pc.x - pa.x))
+    if abs(signed_area_twice) < epsilon:
+        raise ValueError("The three vertices are collinear; orientation is undefined.")
+    return "Counterclockwise" if signed_area_twice > 0 else "Clockwise"
 
 
 # ==============================================================================
@@ -221,34 +234,7 @@ def _faces_crossed_in_order(pa, pb, faces):
     return crossedFaces
 
 
-def _strictly_inside_face(p, face, nx, ny):
-    """True only if the line genuinely passes through `face`'s interior at p —
-    not merely along one of its edges, and not just through a single corner.
-
-    Test: p itself, plus two tiny probe points stepped PERPENDICULAR to the
-    line (interiorMargin to each side), must ALL be inside the face. (nx, ny) is
-    the unit normal to the line.
-
-        * line running ALONG an edge -> the probe on the far side lands outside
-          the face, so the face is rejected (boundary-only contact excluded).
-        * line grazing a single CORNER -> both probes land outside, rejected.
-        * line through the true INTERIOR -> both probes stay inside, accepted.
-
-    This relies only on Graph.pointInsideFace, so it is immune to whatever edge-
-    distance convention Graph.distPointFromEdge happens to use."""
-    if not Graph.pointInsideFace(p, face):
-        return False
-    pL = Graph.Vector(p.x + nx * interiorMargin, p.y + ny * interiorMargin)
-    pR = Graph.Vector(p.x - nx * interiorMargin, p.y - ny * interiorMargin)
-    return Graph.pointInsideFace(pL, face) and Graph.pointInsideFace(pR, face)
-
-
 def _walk_samples(pa, pb, map, steps):
-    dx, dy = pb.x - pa.x, pb.y - pa.y
-    dlen = (dx * dx + dy * dy) ** 0.5
-    if dlen < epsilon:
-        return []
-    nx, ny = -dy / dlen, dx / dlen        # unit normal to the line of travel
     ordered = []
     current = None
     for i in range(steps + 1):
@@ -256,7 +242,7 @@ def _walk_samples(pa, pb, map, steps):
         p = Graph.Vector((1 - t) * pa.x + t * pb.x,
                          (1 - t) * pa.y + t * pb.y)
         f = next((face for face in map.faces
-                  if face.bounded and _strictly_inside_face(p, face, nx, ny)), None)
+                  if face.bounded and Graph.pointInsideFace(p, face)), None)
         if f is not None and f is not current:
             ordered.append(f)
             current = f
@@ -265,22 +251,29 @@ def _walk_samples(pa, pb, map, steps):
 
 def _sample_faces_in_order(pa, pb, map):
     """
-    Ordered region walk from pa to pb. Samples densely along the segment and
-    records each bounded region as the line ENTERS its interior — strictly, via
-    _strictly_inside_face. A region entered, left, and re-entered appears more
-    than once.
-
-    A line that merely coincides with a shared boundary edge, or touches a
-    region only at a vertex, never produces a strictly-interior sample for that
-    region, so it is not reported. (The old "nudge off the boundary" fallback is
-    intentionally gone: nudging would re-introduce exactly the boundary-only
-    contact we now want to exclude.)
+    Robust ordered region walk from pa to pb. Samples points densely along the
+    segment and records each bounded region as it is entered. A region entered,
+    left, and re-entered appears more than once. Unlike the angle-classification
+    path, this never bails out on near-tangent or near-parallel geometry, so it
+    is used for finite segments and rays where that gating was returning nothing.
     """
     d = Graph.vecDist(pa, pb)
     if d < epsilon:
         return []
     steps = max(120, int(800 * d))
-    return _walk_samples(pa, pb, map, steps)
+    ordered = _walk_samples(pa, pb, map, steps)
+    if ordered:
+        return ordered
+    # Fallback: the line may run almost exactly along shared boundaries, so every
+    # sample landed on an edge. Nudge a hair to one side and retry before giving up.
+    nx, ny = -(pb.y - pa.y) / d, (pb.x - pa.x) / d   # unit normal
+    for off in (0.5 * smallDist, -0.5 * smallDist):
+        qa = Graph.Vector(pa.x + nx * off, pa.y + ny * off)
+        qb = Graph.Vector(pb.x + nx * off, pb.y + ny * off)
+        ordered = _walk_samples(qa, qb, map, steps)
+        if ordered:
+            return ordered
+    return ordered
 
 
 def _ray_other_end(p, direction, bounds):
@@ -445,17 +438,8 @@ def _line_endpoints(line):
         if length < epsilon:
             return pa, pb
         ux, uy = dx / length, dy / length
-        maxX, maxY = 0.0, 0.0
-        try:
-            maxX, maxY = _MAP.bounds
-        except Exception:
-            pass
-        # Reach comfortably beyond the frame in both directions. The length*4
-        # floor guarantees the line still extends well past the clicked segment
-        # into neighbouring regions even if _MAP.bounds is missing or degenerate
-        # (without it, a full line drawn ALONG an edge would sample only that
-        # edge and report nothing). Kept modest so the sampler stays fast.
-        far = max((abs(maxX) + abs(maxY)) * 2.0, length * 4.0)
+        maxX, maxY = _MAP.bounds
+        far = (maxX + maxY) * 2  # comfortably beyond the frame in both directions
         back = Graph.Vector(pa.x - ux * far, pa.y - uy * far)
         fwd = Graph.Vector(pb.x + ux * far, pb.y + uy * far)
         return back, fwd
@@ -469,43 +453,23 @@ def _line_endpoints(line):
 
 def vertex_overlap(*regions, on_frame=False):
     """
-    Returns the point(s) where exactly the given regions meet at a shared vertex.
+    Returns the point where exactly the given regions meet at a single shared vertex.
 
     Use this to identify a corner or junction common to several regions. Pass
     on_frame=True if the point also touches the outer frame of the diagram.
 
-    Two regions can touch at more than one place (e.g. they wrap around a third
-    region, or share two separate corners). In that case this returns EVERY such
-    meeting point:
-        * no meeting point   -> None
-        * exactly one        -> that single vertex
-        * two or more        -> a list of all the meeting vertices
-
     Example:
         p = vertex_overlap(E, C, on_frame=True)
-        # the point (or points) where regions E and C meet at the frame boundary
+        # the point where regions E and C meet at the frame boundary
     """
     region_set = set(regions)
-    found = []
-    seen = set()
     for v in regions[0].vertices:
-        if id(v) in seen:                      # f.vertices is a closed ring; its
-            continue                           # first vertex is repeated at the end
         faces_at_v = set(v.faces)
         bounded_faces = {f for f in faces_at_v if f.bounded}
         has_outside = any(not f.bounded for f in faces_at_v)
-        # A meeting point is any corner shared by ALL the given regions. We do NOT
-        # require that *only* they touch it: away from the frame, two regions'
-        # shared corner almost always has a third region touching too, so an
-        # exact-set match would wrongly return nothing there.
-        if region_set <= bounded_faces and has_outside == on_frame:
-            seen.add(id(v))
-            found.append(v)
-    if not found:
-        return None
-    if len(found) == 1:
-        return found[0]
-    return found
+        if bounded_faces == region_set and has_outside == on_frame:
+            return v
+    return None
 
 
 def leftmost(region):
@@ -767,34 +731,25 @@ def regions_at(point):
     return [f for f in point.faces if f.bounded]
 
 
-def _unique_in_order(faces):
-    """Drop repeats while preserving first-seen (travel) order."""
-    out = []
-    for f in faces:
-        if f not in out:
-            out.append(f)
-    return out
-
-
 def regions_crossed(line):
     """
-    Returns the regions whose interior the line passes through, in the order
-    they are entered while travelling along the line, with repeats removed. The
-    line must come from segment(), ray(), or extend(). A region counts only if
-    the line goes through its interior, not merely along its boundary.
+    Returns an unordered set of regions whose interior the line passes through.
+    The line must come from segment(), ray(), or extend(). A region counts only
+    if the line goes through its interior, not merely along its boundary.
     Requires use_map(map) to have been called first.
-
-    (Routes through the same strict-interior sampler as regions_in_order. The
-    older angle-classification engine bailed out entirely — returning nothing
-    for EVERY region — whenever the line ran tangent to any edge, which happens
-    routinely when a full line is drawn along a shared border.)
 
     Example:
         regions_crossed(extend(p, q))
     """
     if _MAP is None:
         raise RuntimeError("Call use_map(map) before using regions_crossed().")
-    return _unique_in_order(regions_in_order(line))
+    if line['type'] == 'ray':
+        faces, _ = _ray_crosses_faces(line['a'], line['direction'], _MAP)
+        return set(faces)
+    pa, pb = line['a'], line['b']
+    infinite = (line['type'] == 'extend')
+    faces, _ = _line_crosses_faces(pa, pb, infinite, _MAP)
+    return set(faces)
 
 
 def regions_in_order(line):
@@ -898,11 +853,11 @@ def crosses(line_a, line_b):
 
 def regions_along_edge(edge):
     """
-    Returns the bounded regions bordering a single edge — one on each side.
+    Returns the bounded regions bordering a single edge.
  
     Used by neighbors() when the selection is an edge rather than a region:
-    it answers "which regions sit on either side of this edge?". The caller
-    decides whether to drop the edge's owning region from the result.
+    it answers "which labeled regions inside the frame sit on either side of
+    this edge?". Frame edges therefore return only their bounded side.
  
     Example:
         regions_along_edge(some_edge)   # -> [region_on_one_side, region_on_other]
