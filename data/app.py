@@ -211,8 +211,8 @@ Good. Measure can also identify the direction of a cycle.
 Choose **Vertex** under Selection and click these three vertices in order:
 
 1. The leftmost vertex of Region B.
-2. The interior vertex where exactly Regions A, B, C, and D meet.
-3. The interior vertex where exactly Regions A, D, and E meet.
+2. The rightmost vertex of Region A.
+3. The leftmost vertex of Region D.
 
 You may click these vertices directly with **Selection → Vertex**, or use **Find Vertex** to locate them.
 
@@ -1434,6 +1434,7 @@ if IS_PRACTICE:
     st.session_state.setdefault("practice_meeting_vertex_done", False)
     st.session_state.setdefault("practice_neighbors_done", False)
     st.session_state.setdefault("practice_draw_line_done", False)
+    st.session_state.setdefault("practice_draw_line_ref", None)
     st.session_state.setdefault("practice_intersect_done", False)
     st.session_state.setdefault("practice_measure_area_done", False)
     st.session_state.setdefault("practice_measure_orientation_done", False)
@@ -1591,6 +1592,8 @@ def answer_like_text(o):
         return nm if nm else o.text
     if isinstance(o, (list, tuple, set)):
         items = list(o)
+        if isinstance(o, set):
+            items.sort(key=lambda item: answer_like_text(item))
         return "None" if not items else ", ".join(answer_like_text(x) for x in items)
     if o is None:
         return "None"
@@ -1700,6 +1703,18 @@ def continue_after_practice_feedback(stage):
         active_tool, selection_filter = next_step[stage]
         st.session_state.active_tool = active_tool
         st.session_state.selection_filter = selection_filter
+        practice_mode_resets = {
+            "rightmost": "rad_vtx_onframe",
+            "meeting": "rad_nbr_kind",
+            "neighbors": "rad_style",
+            "draw": "rad_intersect",
+            "intersect": "rad_measure",
+            "area": "rad_measure",
+            "orientation": "rad_sort",
+        }
+        mode_key = practice_mode_resets.get(stage)
+        if mode_key:
+            st.session_state[mode_key] = None
     st.rerun()
 
 def practice_rightmost_vertex_done():
@@ -1750,6 +1765,12 @@ def practice_neighbors_done():
 def practice_merge_done():
     if not st.session_state.get("practice_sort_angles_done", False):
         return False
+    has_expected_union = any(
+        {face.letter for face in union.get("pair", ())} == {"A", "E"}
+        for union in st.session_state.get("unions", [])
+    )
+    if not has_expected_union:
+        return False
     if st.session_state.get("practice_merge_done"):
         return True
     for call in st.session_state.get("tool_calls", []):
@@ -1776,6 +1797,26 @@ def practice_question_text_for_step(step):
             return "Review clockwise and counterclockwise movement in the diagram."
         return "Practice 1 of 2: learn the diagram objects by selecting each one."
     return "Practice 2 of 2: practice using the tools."
+
+def current_practice_tool_stage():
+    """Return the guided tool step currently awaiting completion."""
+    if not practice_rightmost_vertex_done():
+        return "rightmost"
+    if not practice_meeting_vertex_done():
+        return "meeting"
+    if not practice_neighbors_done():
+        return "neighbors"
+    if not st.session_state.get("practice_draw_line_done", False):
+        return "draw"
+    if not st.session_state.get("practice_intersect_done", False):
+        return "intersect"
+    if not st.session_state.get("practice_measure_area_done", False):
+        return "area"
+    if not st.session_state.get("practice_measure_orientation_done", False):
+        return "orientation"
+    if not st.session_state.get("practice_sort_angles_done", False):
+        return "sort"
+    return "merge"
 
 # ---- selection add/clear/remove (keep selection + selection_meta in lockstep) ----
 def add_to_selection(obj, meta=None):
@@ -1835,9 +1876,7 @@ def clear_selection():
     st.session_state.selection_meta = []
 
 def remove_selection_item(i):
-    """Remove the i-th selection entry (the per-row ✕ button). Vertex
-    labels are persistent, so deselecting a vertex leaves its point label on
-    the map. Newly selected angle arcs are still retracted on deselection."""
+    """Remove one live selection while leaving labeled objects on the map."""
     sel, meta_list = st.session_state.selection, st.session_state.selection_meta
     if i < 0 or i >= len(sel):
         return
@@ -1852,10 +1891,9 @@ def remove_selection_item(i):
             # removes it from the current selection; the label stays visible.
             pass
         elif meta["kind"] == "angle":
-            entry = meta.get("angle_entry")
-            st.session_state.angles = [a for a in st.session_state.angles if a is not entry]
-            ref = meta.get("annotation_ref")
-            st.session_state.annotations = [a for a in st.session_state.annotations if a is not ref]
+            # A labeled angle remains available for direct re-selection, just
+            # like a labeled vertex. Clear all still removes all annotations.
+            pass
     st.session_state.click_targets = None
     st.session_state.pending_angle_vertex = None
 
@@ -2124,6 +2162,23 @@ def render():
         elif kind == "angle":
             draw_interior_arc_x(odraw, ann["vertex"], ann["face"],
                                 label=ann.get("label"))
+
+    # Named edges remain visible after the live selection is cleared. Clicking
+    # the same geometry reuses its existing e-label instead of creating a new one.
+    if not concept_review:
+        consumed_map = _consumed_to_union_map()
+        for edge_label, edge_selection in st.session_state.named_edges:
+            visible_segments = [
+                segment
+                for segment in edge_selection.segments
+                if not _edge_interior_to_union(segment, consumed_map)
+            ]
+            for segment_index, segment in enumerate(visible_segments):
+                highlight_edge_x(
+                    odraw,
+                    segment,
+                    label=edge_label if segment_index == 0 else None,
+                )
 
     # live selection markers — angle/edge checks FIRST. Once the four selection
     # tasks are complete, replace their mixed highlights with a clean direction
@@ -2536,9 +2591,9 @@ INSTRUCTIONS = {
         "- **Select ONE Region + ONE Vertex** → draw a cycle starting at that vertex (clockwise / counter-clockwise) and return a sequence of neighbors in order."
     ),
     "draw line": (
-        "- **Select TWO Vertices** → draw a line segment or a full line that passes through both vertices. \n"
+        "- **Select TWO Vertices** → draw a line segment between them. \n"
         "- **Select ONE Vertex** → draw a ray starting at that vertex that extends up / down / left /right.\n"
-        "- **Select ONE Edge** → draw a line that extends the edge in both directions.\n"
+        "- **Select ONE Edge** → extend the edge in both directions as a full line.\n"
     ),
     "intersect": (
         "- **Select ONE Line** → return all regions this line crosses.\n"
@@ -2550,7 +2605,6 @@ INSTRUCTIONS = {
     "measure": (
         "- **Select TWO Vertices** → return the distance between the two vertices.\n"
         "- **Select TWO Regions** → return the distance between their closest points.\n"
-        "- **Select ONE Drawn Line** → return the length of the drawn line.\n"
         "- **Select ONE Angle** → return the value of the selected angle.\n"
         "- **Select ONE Region** → return the area or edge count of the selected region.\n"
         "- **Select FRAME** → return the region count for the diagram.\n"
@@ -2578,7 +2632,7 @@ TOOL_GUIDE_TEXT = """
 
 **Draw Line**
 
-- Draw a segment between two vertices or a full line through them.
+- Draw a segment between two vertices.
 - Draw a ray from one vertex in a chosen direction.
 - Extend a selected edge into a full line.
 
@@ -2595,7 +2649,6 @@ TOOL_GUIDE_TEXT = """
 **Measure**
 
 - **Distance:** measure the distance between two vertices or two regions.
-- **Length:** measure the length of a line.
 - **Angle:** measure a selected angle in degrees.
 - **Area:** measure the area of one region.
 - **Edge count:** count how many edges form the boundary of one region.
@@ -2618,9 +2671,13 @@ def validate(tool, modes):
         # Vertices already sitting in the buffer — kept there from earlier
         # Vertex-tool calls (see finish_vertex) — don't block a new call.
         # Only the FRAME/region picks you just made actually drive this run.
-        if nF >= 1:                        return (True, "")
-        if nR == 1:                        return (True, "")
-        if nR >= 2:                        return (True, "")
+        if nF >= 1:
+            return (modes.get("which") is not None, "Choose which frame corner to find.")
+        if nR == 1:
+            return (modes.get("which") is not None, "Choose which corner to find.")
+        if nR >= 2:
+            return (modes.get("on_frame") is not None,
+                    "Choose whether the meeting vertex is on the frame.")
         if IS_PRACTICE:
             return (False, "Select 1 region or 2+ regions. "
                            "(Vertices already in your buffer are kept.)")
@@ -2633,19 +2690,74 @@ def validate(tool, modes):
         # one EDGE (and nothing else) → regions on either side of it
         if nE == 1 and s["n"] == 1:                    return (True, "")
         # a single region → its edge / vertex neighbors
-        if nR == 1 and s["n"] == 1:                    return (True, "")
+        if nR == 1 and s["n"] == 1:
+            return (modes.get("kind") is not None, "Choose a neighbor type.")
         # a region + one of its corners → walking order
-        if nR == 1 and nV == 1 and s["n"] == 2:        return (True, "")
+        if nR == 1 and nV == 1 and s["n"] == 2:
+            region, start_vertex = s["regions"][0], s["vertices"][0]
+            vertex_is_on_region = any(
+                candidate is start_vertex
+                or Graph.vecDist(candidate.p, start_vertex.p) < 1e-9
+                for candidate in getattr(region, "vertices", [])
+            )
+            if not vertex_is_on_region:
+                return (
+                    False,
+                    f"The selected starting vertex is not on Region {region.letter}. "
+                    f"Choose a vertex of Region {region.letter}.",
+                )
+            return (True, "")
         return (False, "Select 1 vertex, 1 edge, 1 region, or 1 region + 1 of its corners.")
 
     if tool == "draw line":
-        if modes.get("style") == "ray":
+        style = modes.get("style")
+        if style is None:
+            return (False, "Choose a line style.")
+        if style == "ray":
             return (s["n"] == 1 and nV == 1, "Ray needs exactly 1 vertex.")
-        ok = (s["n"] == 2 and nV == 2) or (s["n"] == 1 and nE == 1)
-        return (ok, "Need 2 vertices, or 1 edge, or 1 vertex + ray.")
+        if style == "full line":
+            return (s["n"] == 1 and nE == 1, "Full line needs exactly 1 edge.")
+        ok = s["n"] == 2 and nV == 2
+        if (
+            ok
+            and IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and st.session_state.get("practice_neighbors_done", False)
+            and not st.session_state.get("practice_draw_line_done", False)
+        ):
+            faces = {
+                face.letter: face
+                for face in res_map.faces
+                if getattr(face, "bounded", False)
+            }
+            expected = [
+                min(faces["B"].vertices, key=lambda vertex: vertex.p.x),
+                max(faces["D"].vertices, key=lambda vertex: vertex.p.x),
+            ]
+            if (
+                modes.get("style") != "segment"
+                or nV != 2
+                or any(actual is not target for actual, target in zip(s["vertices"], expected))
+            ):
+                return (
+                    False,
+                    "For this practice step, select the two specified vertices in the listed order and choose segment.",
+                )
+        return (ok, "Segment needs exactly 2 vertices.")
 
     if tool == "intersect":
-        return (len(st.session_state.lines) > 0, "Draw a line first.")
+        if not st.session_state.lines:
+            return (False, "Draw a line first.")
+        if (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and st.session_state.get("practice_draw_line_done", False)
+            and not st.session_state.get("practice_intersect_done", False)
+            and modes.get("line", (None, None))[1]
+                is not st.session_state.get("practice_draw_line_ref")
+        ):
+            return (False, "For this practice step, select the segment created in the previous step.")
+        return (True, "")
 
     if tool == "merge":
         if s["n"] != 2 or nR != 2:
@@ -2670,9 +2782,6 @@ def validate(tool, modes):
             if nV == 2 and s["n"] == 2:        return (True, "")   # two points
             if nR == 2 and s["n"] == 2:        return (True, "")   # two regions
             return (False, "Select two vertices or two regions.")
-        if w == "length":
-            if modes.get("line") is not None:  return (True, "")   # a drawn segment
-            return (False, "Draw a line first, then pick it here.")
         if w == "angle":
             return (nA == 1 and s["n"] == 1, "Select ONE angle.")
         if w in ("area", "sides"):
@@ -2680,14 +2789,46 @@ def validate(tool, modes):
         if w == "regions":
             return (nF == 1 and s["n"] == 1, "Select FRAME.")
         if w == "orientation":
-            return (nV == 3 and s["n"] == 3,
-                    "Select exactly three vertices in cycle order.")
+            if nV != 3 or s["n"] != 3:
+                return (False, "Select exactly three vertices in cycle order.")
+            if (
+                IS_PRACTICE
+                and PRACTICE_STEP == "tools"
+                and st.session_state.get("practice_measure_area_done", False)
+                and not st.session_state.get("practice_measure_orientation_done", False)
+            ):
+                ring = list(res_map.vertices[:8])
+                expected = [ring[3], ring[0], ring[5]]
+                if any(actual is not target for actual, target in zip(s["vertices"], expected)):
+                    return (
+                        False,
+                        "For this practice step, select the three specified vertices in the listed order.",
+                    )
+            return (True, "")
         return (False, "")
 
     if tool == "sort":
         by = modes.get("by")
         if not by: return (False, "Pick how to order them.")
         if by == "angle":
+            if (
+                IS_PRACTICE
+                and PRACTICE_STEP == "tools"
+                and st.session_state.get("practice_measure_orientation_done", False)
+                and not st.session_state.get("practice_sort_angles_done", False)
+            ):
+                faces = {
+                    face.letter: face
+                    for face in res_map.faces
+                    if getattr(face, "bounded", False)
+                }
+                expected = {
+                    AngleSel(min(faces["B"].vertices, key=lambda vertex: vertex.p.x), faces["B"]),
+                    AngleSel(max(faces["A"].vertices, key=lambda vertex: vertex.p.x), faces["A"]),
+                    AngleSel(max(faces["D"].vertices, key=lambda vertex: vertex.p.x), faces["D"]),
+                }
+                if nA != 3 or set(s["angles"]) != expected:
+                    return (False, "For this practice step, select the three specified angles.")
             return (nA >= 2 and nA == s["n"],
                     "Select 2+ saved angles.")
         if by == "area":
@@ -2705,6 +2846,155 @@ def validate(tool, modes):
 # ============================================================
 def add_program(line): st.session_state.program.append(line)
 def add_log(text):     st.session_state.log.append(text)
+
+def natural_join(items):
+    """Join short labels as natural English without changing their stored values."""
+    labels = [str(item).strip() for item in items if str(item).strip()]
+    if not labels:
+        return ""
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+
+def participant_output_for_tool(tool, call_str, result, output_text=None):
+    """Return a concise, natural-language result for the participant-facing Output."""
+    shown = output_text if output_text is not None else answer_like_text(result)
+    no_result = result is None or (
+        isinstance(result, (list, tuple, set)) and not result
+    )
+    shown_as_list = (
+        natural_join(answer_like_text(item) for item in result)
+        if isinstance(result, (list, tuple, set)) and result
+        else shown
+    )
+    emphasized = f"**{shown}**"
+    emphasized_list = f"**{shown_as_list}**"
+
+    if tool == "vertex":
+        property_match = re.search(r'which="([^"]+)"', call_str)
+        region_match = re.match(r"vertex\(([^,\)]+)", call_str)
+        if property_match and region_match:
+            target = region_match.group(1).strip().strip('"')
+            property_name = property_match.group(1).replace("_", " ")
+            target_text = "the frame" if target == "frame" else f"Region {target}"
+            if no_result:
+                return f"No {property_name} vertex was found for {target_text}."
+            if property_name == "all":
+                return f"Found and labeled all vertices of {target_text}: {emphasized_list}."
+            return f"Found and labeled {emphasized_list} as the {property_name} vertex of {target_text}."
+        meeting_match = re.match(r"vertex\((.+),\s*on_frame=(True|False)\)", call_str)
+        if meeting_match:
+            regions = [part.strip() for part in meeting_match.group(1).split(",")]
+            location = "on the frame" if meeting_match.group(2) == "True" else "not on the frame"
+            region_text = natural_join(regions)
+            if no_result:
+                return f"No vertex was found where Regions {region_text} meet {location}."
+            location_sentence = (
+                "This vertex is on the frame."
+                if meeting_match.group(2) == "True"
+                else "This vertex is not on the frame."
+            )
+            return f"Found and labeled {emphasized_list} where Regions {region_text} meet. {location_sentence}"
+        if no_result:
+            return "No matching vertex was found."
+        return f"Found and labeled vertex {emphasized}."
+
+    if tool == "neighbors":
+        region_match = re.match(r'neighbors\(([A-Z][A-Za-z0-9]*),\s*"(edge|vertex)"\)', call_str)
+        if region_match:
+            region_name = region_match.group(1)
+            if region_match.group(2) == "edge":
+                if no_result:
+                    return f"No regions share an edge with Region {region_name}."
+                return f"Regions that share an edge with Region {region_name}: {emphasized}."
+            if no_result:
+                return f"No regions touch Region {region_name} at a vertex without sharing an edge."
+            return (
+                f"Regions that touch Region {region_name} at a vertex without sharing an edge: "
+                f"{emphasized}."
+            )
+        ordered_match = re.match(
+            r'neighbors\(([A-Z][A-Za-z0-9]*),\s*"ordered",\s*start=([^,]+),\s*go_counterclockwise=(True|False)\)',
+            call_str,
+        )
+        if ordered_match:
+            direction = "counterclockwise" if ordered_match.group(3) == "True" else "clockwise"
+            if no_result:
+                return (
+                    f"The {direction} order from {ordered_match.group(2).strip()} "
+                    "could not be determined. Try a different starting vertex."
+                )
+            return (
+                f"Regions around Region {ordered_match.group(1)}, starting at "
+                f"{ordered_match.group(2).strip()} and moving {direction}: {emphasized}."
+            )
+        single_match = re.match(r"neighbors\(([^\)]+)\)", call_str)
+        if single_match:
+            selected = single_match.group(1).strip()
+            if no_result:
+                return f"No neighboring regions were found for {selected}."
+            if selected.startswith("v"):
+                return f"Regions meeting at {selected}: {emphasized}."
+            if selected.startswith("e"):
+                return f"Regions bordering {selected}: {emphasized}."
+            if selected.startswith("["):
+                return f"Regions neighboring the selected objects: {emphasized}."
+            return f"Regions neighboring {selected}: {emphasized}."
+        if no_result:
+            return "No neighboring regions were found."
+        return f"Neighboring regions: {emphasized}."
+
+    if tool == "intersect":
+        line_match = re.match(r'intersect\(([^,]+),\s*"faces"\)', call_str)
+        if line_match:
+            if no_result:
+                return f"{line_match.group(1).strip()} does not cross any regions."
+            return f"Regions crossed by {line_match.group(1).strip()}: {emphasized}."
+        lines_match = re.match(r"intersect\(([^,]+),\s*([^\)]+)\)", call_str)
+        if lines_match and isinstance(result, bool):
+            first, second = lines_match.group(1).strip(), lines_match.group(2).strip()
+            return f"Do {first} and {second} intersect? **{'Yes' if result else 'No'}**."
+        if no_result:
+            return "No intersection was found."
+        return f"Intersection result: {emphasized}."
+
+    if tool == "measure":
+        what_match = re.search(r'what="([^"]+)"', call_str)
+        what = what_match.group(1) if what_match else "measurement"
+        args = call_str[len("measure("):].split(", what=", 1)[0]
+        if what == "area":
+            return f"Area of Region {args}: {emphasized}."
+        if what == "sides":
+            unit = "edge" if str(shown) == "1" else "edges"
+            return f"Region {args} has {emphasized} {unit}."
+        if what == "regions":
+            unit = "region" if str(shown) == "1" else "regions"
+            return f"The frame contains {emphasized} {unit}."
+        if what == "orientation":
+            vertices = args.replace(", ", " → ")
+            return f"Cycle orientation for {vertices}: {emphasized}."
+        if what == "distance":
+            endpoints = natural_join(part.strip() for part in args.split(","))
+            return f"Distance between {endpoints}: {emphasized}."
+        if what == "angle":
+            return f"Angle measurement for {args} (degrees): {emphasized}."
+        return f"Measurement result: {emphasized}."
+
+    if tool == "sort":
+        by_match = re.search(r'by="([^"]+)"', call_str)
+        by = by_match.group(1) if by_match else "value"
+        lead = {
+            "angle": "Angles from smallest to largest",
+            "area": "Regions from smallest to largest by area",
+            "left_right": "Vertices from left to right",
+            "bottom_top": "Vertices from bottom to top",
+            "distance": "Vertices from nearest to farthest",
+        }.get(by, "Sorted objects")
+        return f"{lead}: {emphasized}."
+
+    return f"Result: {emphasized}."
 
 def _tool_output(value):
     if isinstance(value, (list, tuple, set)):
@@ -2815,7 +3105,7 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
     else:
         add_program(call_str)
     output_text = answer_like_text(result)
-    add_log(f"`{call_str}` → **{output_text}**")
+    add_log(participant_output_for_tool(tool, call_str, result, output_text))
     record_tool_call(tool, call_str.split("(", 1)[0], call_str, _tool_output(result), output_text)
     if st.session_state.get("practice_step") == "tools":
         if tool == "neighbors" and 'neighbors(A, "edge")' in call_str:
@@ -2889,7 +3179,7 @@ def finish_vertex(call_str, result, assign_prefix="v"):
     else:
         add_program(call_str)
     output_text = answer_like_text(result)
-    add_log(f"`{call_str}` → **{output_text}**")
+    add_log(participant_output_for_tool("vertex", call_str, result, output_text))
     record_tool_call("vertex", "vertex", call_str, _tool_output(result), output_text)
     if st.session_state.get("practice_step") == "tools":
         if (
@@ -2930,7 +3220,7 @@ def _rank_fmt(by, v):
 def ranking_finish(call_str, result, by, ref):
     add_program(call_str + "   # smallest → largest")
     ordered = answer_like_text(result)
-    add_log(f"`{call_str}` → **{ordered}**")
+    add_log(participant_output_for_tool("sort", call_str, result, ordered))
     record_tool_call(
         "sort",
         "sort",
@@ -3050,7 +3340,14 @@ def run_tool(tool, modes):
             st.session_state.lines.append((name, line))
             st.session_state.annotations.append({"kind": "line", "line": line, "label": name})
             add_program(f"{name} = {call}")
-            add_log(f"`{name} = {call}` → drawn")
+            if style == "ray":
+                add_log(f"Drew **{name}**, a {d}ward ray from {code_name(sel[0])}.")
+            elif style == "full line":
+                add_log(f"Drew **{name}**, a full line through {code_name(va) if s['edges'] else code_name(sel[0])} and {code_name(vb) if s['edges'] else code_name(sel[1])}.")
+            else:
+                start_name = code_name(va) if s["edges"] else code_name(sel[0])
+                end_name = code_name(vb) if s["edges"] else code_name(sel[1])
+                add_log(f"Drew **{name}**, a segment between {start_name} and {end_name}.")
             record_tool_call(
                 tool,
                 "draw",
@@ -3065,6 +3362,7 @@ def run_tool(tool, modes):
                 and style == "segment"
             ):
                 st.session_state.practice_draw_line_done = True
+                st.session_state.practice_draw_line_ref = line
                 st.session_state.practice_pending_feedback = "draw"
             clear_selection()
             st.rerun()
@@ -3109,7 +3407,7 @@ def run_tool(tool, modes):
                  "label_xy": DrawGraph.V2P(label_point)})
             st.session_state.union_consumed += [fa, fb]
             add_program(f"{uname} = merge({fa.letter}, {fb.letter})")
-            add_log(f"`{uname} = merge({fa.letter}, {fb.letter})` → merged region **{uname}**")
+            add_log(f"Created merged Region **{uname}** from Regions {fa.letter} and {fb.letter}.")
             record_tool_call(
                 tool,
                 "merge",
@@ -3149,12 +3447,6 @@ def run_tool(tool, modes):
                     finish(tool, f'measure({code_name(p)}, {code_name(q)}, what="distance")',
                            round(val, 4))
 
-            elif w == "length":
-                lname, line = modes["line"]
-                val = T.measure(line, what="length")
-                finish(tool, f'measure({lname}, what="length")', round(val, 4),
-                       visualize=False)
-
             elif w == "angle":
                 a = s["angles"][0]
                 val = T.measure(a.vertex, a.face, what="angle")
@@ -3163,7 +3455,7 @@ def run_tool(tool, modes):
                 var = next_name("r")
                 add_program(f"{var} = {call_str}")
                 output_text = f"{round(val, 2)}"
-                add_log(f"`{call_str}` → **{output_text}**")
+                add_log(participant_output_for_tool("measure", call_str, val, output_text))
                 record_tool_call(
                     tool,
                     "measure",
@@ -3223,9 +3515,136 @@ def run_tool(tool, modes):
                     result, "distance", ref)
 
     except Exception as ex:
-        add_log(f"❌ **{tool}** failed: {ex}")
+        tool_name = TOOL_LABELS.get(tool, tool).strip()
+        participant_message = (
+            f"❌ {tool_name} could not complete this operation. "
+            "Check your selection and settings, then try again."
+        )
+        add_log(participant_message)
+        record_tool_call(
+            tool,
+            "error",
+            f"run {tool}",
+            {"type": "error", "message": str(ex)},
+            participant_message,
+            "error",
+        )
         clear_selection()
         st.rerun()
+
+def show_completed_practice_step():
+    """Run the current guided task with its expected inputs and show the normal result."""
+    stage = current_practice_tool_stage()
+    faces = {
+        face.letter: face
+        for face in res_map.faces
+        if getattr(face, "bounded", False)
+    }
+
+    def select(*objects):
+        clear_selection()
+        for obj in objects:
+            add_to_selection(obj)
+
+    if stage == "rightmost":
+        select(faces["A"])
+        run_tool("vertex", {"which": "rightmost"})
+    elif stage == "meeting":
+        select(faces["A"], faces["D"], faces["E"])
+        run_tool("vertex", {"on_frame": False})
+    elif stage == "neighbors":
+        select(faces["A"])
+        run_tool("neighbors", {"kind": "edge"})
+    elif stage == "draw":
+        left_b = min(faces["B"].vertices, key=lambda vertex: vertex.p.x)
+        right_d = max(faces["D"].vertices, key=lambda vertex: vertex.p.x)
+        select(left_b, right_d)
+        run_tool("draw line", {"style": "segment"})
+    elif stage == "intersect":
+        if not st.session_state.lines:
+            left_b = min(faces["B"].vertices, key=lambda vertex: vertex.p.x)
+            right_d = max(faces["D"].vertices, key=lambda vertex: vertex.p.x)
+            line = T.draw(left_b, right_d, kind="segment")
+            st.session_state.lines.append(("L1", line))
+            st.session_state.annotations.append({"kind": "line", "line": line, "label": "L1"})
+            st.session_state.practice_draw_line_ref = line
+        line_entry = st.session_state.lines[0]
+        run_tool("intersect", {"line": line_entry, "target": "faces"})
+    elif stage == "area":
+        select(faces["B"])
+        run_tool("measure", {"what": "area"})
+    elif stage == "orientation":
+        ring = list(res_map.vertices[:8])
+        select(ring[3], ring[0], ring[5])
+        run_tool("measure", {"what": "orientation"})
+    elif stage == "sort":
+        targets = [
+            AngleSel(min(faces["B"].vertices, key=lambda vertex: vertex.p.x), faces["B"]),
+            AngleSel(max(faces["A"].vertices, key=lambda vertex: vertex.p.x), faces["A"]),
+            AngleSel(max(faces["D"].vertices, key=lambda vertex: vertex.p.x), faces["D"]),
+        ]
+        for angle in targets:
+            if not any(saved == angle for _, saved in st.session_state.angles):
+                st.session_state.angles.append((next_name("a"), angle))
+        select(*targets)
+        run_tool("sort", {"by": "angle"})
+    else:  # merge
+        select(faces["A"], faces["E"])
+        run_tool("merge", {})
+
+def remove_merged_region(index):
+    """Remove one union and restore its source regions without clearing other work."""
+    if index < 0 or index >= len(st.session_state.unions):
+        return
+    push_undo()
+    union = st.session_state.unions.pop(index)
+    union_face = union["face"]
+    source_faces = union["pair"]
+    union_name = union.get("name", getattr(union_face, "letter", "U"))
+
+    kept_selection, kept_meta = [], []
+    for obj, meta in zip(st.session_state.selection, st.session_state.selection_meta):
+        if obj is union_face:
+            continue
+        kept_selection.append(obj)
+        kept_meta.append(meta)
+    st.session_state.selection = kept_selection
+    st.session_state.selection_meta = kept_meta
+    st.session_state.annotations = [
+        annotation
+        for annotation in st.session_state.annotations
+        if annotation.get("obj") is not union_face
+    ]
+    st.session_state.union_consumed = [
+        face
+        for remaining_union in st.session_state.unions
+        for face in remaining_union["pair"]
+    ]
+
+    if IS_PRACTICE and PRACTICE_STEP == "tools":
+        st.session_state.practice_merge_done = False
+        if st.session_state.get("practice_pending_feedback") == "merge":
+            st.session_state.practice_pending_feedback = None
+        st.session_state.practice_guided_complete = False
+
+    source_names = [face.letter for face in source_faces]
+    source_text = natural_join(source_names)
+    call_str = f"remove_union({union_name})"
+    add_program(call_str)
+    add_log(f"Removed Region **{union_name}** and restored Regions **{source_text}**.")
+    record_tool_call(
+        "merge",
+        "remove_union",
+        call_str,
+        {
+            "type": "removed_union",
+            "label": union_name,
+            "restored_regions": source_names,
+        },
+        f"Restored Regions {source_text}",
+        "annotation",
+    )
+    st.rerun()
 
 def _ts():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -3577,6 +3996,22 @@ with action_panel:
         '<div style="font-size:1.25rem; font-weight:600; margin:0 0 0.25rem 0;">Help</div>',
         unsafe_allow_html=True,
     )
+    if (
+        IS_PRACTICE
+        and PRACTICE_STEP == "tools"
+        and not st.session_state.get("practice_pending_feedback")
+        and not st.session_state.get("practice_guided_complete", False)
+    ):
+        with st.expander("Having trouble with this step?"):
+            st.caption(
+                "Click below to see this step completed for you. Then click Continue."
+            )
+            if st.button(
+                "Show Completed Example",
+                key="show_completed_practice_step",
+                use_container_width=True,
+            ):
+                show_completed_practice_step()
     st.session_state.setdefault(
         "definitions_open",
         IS_PRACTICE and PRACTICE_STEP == "select",
@@ -3799,6 +4234,7 @@ with col_ctrl:
                 modes["on_frame"] = st.radio(
                     "Is the meeting vertex on the frame?", [False, True],
                     format_func=lambda b: "Yes" if b else "No",
+                    index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
                     horizontal=True, key="rad_vtx_onframe")
             else:
                 vertex_options = [
@@ -3806,9 +4242,7 @@ with col_ctrl:
                     "sharpest", "widest",
                 ]
                 vertex_default_index = (
-                    vertex_options.index("rightmost")
-                    if IS_PRACTICE and PRACTICE_STEP == "tools"
-                    else 0
+                    None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0
                 )
                 modes["which"] = st.radio(
                     "Which corner?",
@@ -3842,10 +4276,12 @@ with col_ctrl:
                     "Neighbor type", ["edge", "vertex"],
                     format_func=lambda k: "Share an edge" if k == "edge"
                     else "Touch only at a corner",
+                    index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
                     horizontal=True, key="rad_nbr_kind")
 
         elif tool == "draw line":
             modes["style"] = st.radio("Line style", ["segment", "full line", "ray"],
+                                      index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
                                       horizontal=True, key="rad_style")
             if modes["style"] == "ray":
                 modes["ray_direction"] = st.radio("Direction", ["up", "down", "left", "right"],
@@ -3859,10 +4295,11 @@ with col_ctrl:
                 modes["line"] = st.session_state.lines[li]
                 choice = st.radio("Question", ["Which regions does it pass through?",
                                                "Does it cross another line?"],
+                                  index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
                                   key="rad_intersect")
-                if choice.startswith("Which"):
+                if choice and choice.startswith("Which"):
                     modes["target"] = "faces"
-                else:
+                elif choice:
                     others = [j for j in range(len(st.session_state.lines)) if j != li]
                     if others:
                         lj = st.selectbox("Other line", others,
@@ -3872,10 +4309,12 @@ with col_ctrl:
                     else:
                         st.warning("Draw a second line first.")
                         modes["target"] = None
+                else:
+                    modes["target"] = None
 
         elif tool == "measure":
             modes["what"] = st.radio("Measure what?",
-                                     ["distance", "length", "angle", "area", "sides", "regions",
+                                     ["distance", "angle", "area", "sides", "regions",
                                       "orientation"],
                                      format_func=lambda value: {
                                          "sides": "edge count",
@@ -3890,16 +4329,6 @@ with col_ctrl:
                     st.caption("Will measure the distance between the two selected vertices.")
                 else:
                     st.caption("Select two vertices or two regions.")
-            elif modes["what"] == "length":
-                segs = [(nm, ln) for nm, ln in st.session_state.lines
-                        if ln.get("type") == "segment"]
-                if segs:
-                    idx = st.selectbox("Which drawn segment?", range(len(segs)),
-                                       format_func=lambda i: segs[i][0],
-                                       key="sel_len_line")
-                    modes["line"] = segs[idx]
-                else:
-                    st.caption("Draw a line first.")
             elif modes["what"] == "angle":
                 if s["angles"]:
                     n = len(s["angles"])
@@ -3936,12 +4365,27 @@ with col_ctrl:
                     opts.append(("Distance from the first vertex", "distance"))
             if opts:
                 label2val = dict(opts)
-                choice = st.radio("Order how?", [o[0] for o in opts], key="rad_sort")
-                modes["by"] = label2val[choice]
+                choice = st.radio(
+                    "Order how?",
+                    [o[0] for o in opts],
+                    index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
+                    key="rad_sort",
+                )
+                modes["by"] = label2val.get(choice)
             else:
                 st.caption("Select 2+ angles, 2+ vertices, or 2+ regions.")
 
-        # 'merge' has no modes.
+        elif tool == "merge" and st.session_state.unions:
+            for remove_union_index, union in enumerate(st.session_state.unions):
+                union_name = union.get("name", "U")
+                if st.button(
+                    f"Remove Region {union_name}",
+                    key=f"remove_union_{remove_union_index}",
+                    use_container_width=True,
+                ):
+                    remove_merged_region(remove_union_index)
+
+        # Merge has no RUN sub-options; the controls above manage existing unions.
 
         ready, msg = validate(tool, modes)
         if tool == "intersect" and modes.get("target") is None:
@@ -4081,11 +4525,13 @@ with col_ctrl:
             st.session_state.practice_step = "tools"
             st.session_state.active_tool = "vertex"
             st.session_state.selection_filter = "Region"
+            st.session_state.rad_vtx_corner = None
             st.session_state.definitions_open = False
             st.session_state.practice_rightmost_vertex_done = False
             st.session_state.practice_meeting_vertex_done = False
             st.session_state.practice_neighbors_done = False
             st.session_state.practice_draw_line_done = False
+            st.session_state.practice_draw_line_ref = None
             st.session_state.practice_intersect_done = False
             st.session_state.practice_measure_area_done = False
             st.session_state.practice_measure_orientation_done = False
@@ -4098,7 +4544,7 @@ with col_ctrl:
             st.rerun()
 
 # ----------------------------------------------------------------------------
-# MIDDLE PANEL — DIAGRAM + selection-building buttons + saved objects
+# MIDDLE PANEL — DIAGRAM + direct object selection
 # ----------------------------------------------------------------------------
 diagram_panel = col_map.container(key="diagram_panel")
 with diagram_panel:
@@ -4149,14 +4595,19 @@ with diagram_panel:
                 record_selection_event("select", obj)
                 st.rerun()
             elif kind == "angle":
-                aname = next_name("a")
-                angle_entry = (aname, obj)
-                st.session_state.angles.append(angle_entry)
-                ann = {"kind": "angle", "vertex": obj.vertex, "face": obj.face, "label": aname}
-                st.session_state.annotations.append(ann)
-                add_to_selection(obj, {"kind": "angle", "angle_entry": angle_entry,
-                                       "annotation_ref": ann})
-                record_selection_event("select", obj)
+                existing_entry = next(
+                    ((name, saved) for name, saved in st.session_state.angles if saved == obj),
+                    None,
+                )
+                if existing_entry is None:
+                    aname = next_name("a")
+                    angle_entry = (aname, obj)
+                    st.session_state.angles.append(angle_entry)
+                    ann = {"kind": "angle", "vertex": obj.vertex, "face": obj.face, "label": aname}
+                    st.session_state.annotations.append(ann)
+                if obj not in st.session_state.selection:
+                    add_to_selection(obj)
+                    record_selection_event("select", obj)
                 st.rerun()
             elif kind == "edge":
                 opts = edge_options(obj)
@@ -4182,27 +4633,6 @@ with diagram_panel:
                 if add_edge_to_selection(edge_obj):
                     record_selection_event("select", edge_obj)
                 st.session_state.pending_edge_options = []
-                st.rerun()
-
-    # --- SAVED OBJECTS BUFFER (angles + edges) ---
-    # Unions are NOT listed here: a merged region is selected by clicking it
-    # directly on the map (it shows up as "Region U").
-    saved = []
-    for aname, a_sel in st.session_state.angles:
-        saved.append((f"Select {aname} (angle, Region {a_sel.face.letter})", a_sel))
-    for ename, e_sel in st.session_state.named_edges:
-        saved.append((f"Select {ename} ({e_sel.text})", e_sel))
-    if saved and not PRACTICE_CONCEPT_REVIEW:
-        st.caption("Saved objects:")
-        for i, (label, obj) in enumerate(saved):
-            if st.button(label, key=f"saved_{i}", use_container_width=True):
-                push_undo()
-                if is_edgesel(obj):
-                    if add_edge_to_selection(obj):
-                        record_selection_event("select", obj)
-                else:
-                    add_to_selection(obj)
-                    record_selection_event("select", obj)
                 st.rerun()
 
 # ----------------------------------------------------------------------------
