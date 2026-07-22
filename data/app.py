@@ -1393,6 +1393,11 @@ if "survey_responses" not in st.session_state:
     st.session_state.survey_responses = (
         saved_responses if isinstance(saved_responses, dict) else {}
     )
+if "post_survey_responses" not in st.session_state:
+    saved_post_survey = SAVED_SURVEY.get("post_survey_responses", {})
+    st.session_state.post_survey_responses = (
+        saved_post_survey if isinstance(saved_post_survey, dict) else {}
+    )
 if "last_result_path" not in st.session_state:
     saved_path = participant_result_path(PARTICIPANT_ID)
     st.session_state.last_result_path = saved_path if SAVED_SURVEY else ""
@@ -1405,6 +1410,10 @@ if "tutorial_completed" not in st.session_state:
         or (isinstance(saved_responses, dict) and bool(saved_responses))
         or st.query_params.get("skip_tutorial") == "1"
         or st.query_params.get("tutorial_done") == "1"
+    )
+if "post_survey_preview_seen" not in st.session_state:
+    st.session_state.post_survey_preview_seen = bool(
+        SAVED_SURVEY.get("post_survey_preview_seen", False)
     )
 if "timer_hidden" not in st.session_state:
     st.session_state.timer_hidden = False
@@ -3694,6 +3703,8 @@ def save_survey_results():
         "survey_completed": st.session_state.get("survey_completed", False),
         "questions": QUESTION_BANK,
         "responses": st.session_state.get("survey_responses", {}),
+        "post_survey_responses": st.session_state.get("post_survey_responses", {}),
+        "post_survey_preview_seen": st.session_state.get("post_survey_preview_seen", False),
     }
     if DATABASE_URL:
         _save_survey_postgres(payload)
@@ -3709,6 +3720,210 @@ if st.session_state.survey_completed:
     st.success("Survey complete. Thank you.")
     if st.session_state.last_result_path:
         st.caption("Your responses have been saved.")
+    st.stop()
+
+# Temporary placement for reviewing the post-survey questionnaire. Once its
+# wording is approved, this page will be moved to the end of the main survey.
+if not st.session_state.tutorial_completed and not st.session_state.post_survey_preview_seen:
+    st.caption("Post-survey questionnaire preview")
+    st.title("Tell us about your experience")
+    st.markdown(
+        "These questions will appear after the main survey. "
+        "For now, they are shown here so the questionnaire can be reviewed."
+    )
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stForm"] div[role="radiogroup"]:has(> label:nth-child(5)) {
+            display: grid !important;
+            grid-template-columns: repeat(5, 1fr) !important;
+            gap: 0 !important;
+            width: min(100%, 380px) !important;
+        }
+        div[data-testid="stForm"] div[role="radiogroup"]:has(> label:nth-child(5)) > label {
+            margin: 0 !important;
+            width: 100% !important;
+            justify-content: center !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    missing_preview_fields = set(
+        st.session_state.get("post_survey_missing_required", [])
+    )
+
+    def show_required_message(key):
+        if key in missing_preview_fields:
+            st.markdown(
+                "<div style='color:#d32f2f;font-size:0.875rem;margin-top:-0.6rem;"
+                "margin-bottom:0.8rem'>Please select a response.</div>",
+                unsafe_allow_html=True,
+            )
+
+    def five_point_scale(prompt, left_label, middle_label, right_label, key):
+        st.markdown(f"**{prompt}**")
+        value = st.radio(
+            prompt,
+            [1, 2, 3, 4, 5],
+            index=None,
+            horizontal=True,
+            label_visibility="collapsed",
+            key=key,
+        )
+        st.markdown(
+            "<div style='width:min(100%, 380px);display:grid;"
+            "grid-template-columns:1fr 1fr 1fr;align-items:start;"
+            "color:#6b7280;font-size:0.875rem;margin-top:-0.4rem;margin-bottom:1rem'>"
+            f"<div style='text-align:left'>{left_label}</div>"
+            f"<div style='text-align:center'>{middle_label}</div>"
+            f"<div style='text-align:right'>{right_label}</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        show_required_message(key)
+        return value
+
+    saved_preview = st.session_state.get("post_survey_responses", {})
+    preview_widget_fields = {
+        "preview_tutorial_clarity": "tutorial_easy_to_understand",
+        "preview_instruction_clarity": "instructions_clear",
+        "preview_tools_easy_to_use": "tools_easy_to_use",
+        "preview_questions_easy_to_answer": "questions_easy_to_answer",
+        "preview_survey_length_appropriate": "survey_length_appropriate",
+        "preview_ambiguous_questions": "ambiguous_questions",
+        "preview_difficult_tools": "difficult_tools",
+        "preview_used_external_assistance": "used_external_assistance",
+        "preview_external_assistance_details": "external_assistance_details",
+        "preview_experienced_technical_issues": "experienced_technical_issues",
+        "preview_technical_issue_details": "technical_issue_details",
+        "preview_other_feedback": "other_feedback",
+    }
+    for widget_key, response_key in preview_widget_fields.items():
+        if widget_key not in st.session_state and response_key in saved_preview:
+            st.session_state[widget_key] = saved_preview[response_key]
+
+    with st.form("post_survey_preview_form"):
+        if missing_preview_fields:
+            st.error("Please answer the highlighted questions before continuing.")
+        st.caption(
+            "Required: For each statement, select 1 (Strongly disagree) "
+            "to 5 (Strongly agree)."
+        )
+        five_point_scale(
+            "The tutorial was easy to understand.",
+            "Strongly disagree",
+            "Neutral",
+            "Strongly agree",
+            key="preview_tutorial_clarity",
+        )
+        five_point_scale(
+            "The instructions in the survey were clear.",
+            "Strongly disagree",
+            "Neutral",
+            "Strongly agree",
+            key="preview_instruction_clarity",
+        )
+        five_point_scale(
+            "The tools were easy to use.",
+            "Strongly disagree",
+            "Neutral",
+            "Strongly agree",
+            key="preview_tools_easy_to_use",
+        )
+        five_point_scale(
+            "The survey questions were easy to answer.",
+            "Strongly disagree",
+            "Neutral",
+            "Strongly agree",
+            key="preview_questions_easy_to_answer",
+        )
+        five_point_scale(
+            "The length of the survey was appropriate.",
+            "Strongly disagree",
+            "Neutral",
+            "Strongly agree",
+            key="preview_survey_length_appropriate",
+        )
+        st.markdown("#### Additional feedback")
+        st.text_area(
+            "Were any questions difficult to understand or ambiguous? "
+            "If so, please describe them. (Optional)",
+            key="preview_ambiguous_questions",
+        )
+        st.text_area(
+            "Were any tools difficult or confusing to use? "
+            "If so, please describe them. (Optional)",
+            key="preview_difficult_tools",
+        )
+        st.markdown("**Use of external assistance**")
+        st.caption(
+            "Your answer will not affect your compensation or survey results. "
+            "We ask only to better understand how participants completed the survey."
+        )
+        st.radio(
+            "Did you use any external assistance, such as paper, a calculator, "
+            "a search engine, or help from another person, while answering the questions?",
+            ["No", "Yes", "Prefer not to say"],
+            index=None,
+            horizontal=True,
+            key="preview_used_external_assistance",
+        )
+        show_required_message("preview_used_external_assistance")
+        st.text_input(
+            "If yes, what did you use? (Optional)",
+            key="preview_external_assistance_details",
+        )
+        st.markdown("**Technical issues**")
+        st.radio(
+            "Did you experience any technical problems while completing the survey?",
+            ["No", "Yes"],
+            index=None,
+            horizontal=True,
+            key="preview_experienced_technical_issues",
+        )
+        show_required_message("preview_experienced_technical_issues")
+        st.text_input(
+            "If yes, please describe what happened. (Optional)",
+            key="preview_technical_issue_details",
+        )
+        st.text_area(
+            "Is there anything else you would like us to know? (Optional)",
+            key="preview_other_feedback",
+        )
+
+        if st.form_submit_button("Continue to Practice", type="primary"):
+            required_fields = [
+                "preview_tutorial_clarity",
+                "preview_instruction_clarity",
+                "preview_tools_easy_to_use",
+                "preview_questions_easy_to_answer",
+                "preview_survey_length_appropriate",
+                "preview_used_external_assistance",
+                "preview_experienced_technical_issues",
+            ]
+            missing = [
+                key for key in required_fields
+                if st.session_state.get(key) is None
+            ]
+            if missing:
+                st.session_state.post_survey_missing_required = missing
+                st.rerun()
+            else:
+                st.session_state.post_survey_missing_required = []
+                st.session_state.post_survey_responses = {
+                    response_key: st.session_state.get(widget_key)
+                    for widget_key, response_key in preview_widget_fields.items()
+                }
+                st.session_state.post_survey_responses.update(
+                    {
+                        "placement": "pre_practice_preview",
+                        "submitted_at": _ts(),
+                    }
+                )
+                st.session_state.post_survey_preview_seen = True
+                save_survey_results()
+                st.rerun()
     st.stop()
 
 # ============================================================
