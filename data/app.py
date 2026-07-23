@@ -1,5 +1,6 @@
 import os
 import html
+import hashlib
 import math
 import base64
 import tempfile
@@ -77,10 +78,25 @@ components.html(
 DISPLAY_SIDE = 460          # map render size; clicks are mapped back through this
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
-SURVEY_VERSION = "compositional_questions_v1"
-SURVEY_QUESTION_COUNT = 24
+SURVEY_VERSION = "compositional_questions_v2_12_question_forms"
+SURVEY_QUESTION_COUNT = 12
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL")
+
+# Two complementary forms drawn from the 24-question bank. Each contains
+# 3 easy, 6 medium, and 3 hard diagrams and covers the major tool families.
+SURVEY_FORM_QUESTION_IDS = {
+    "A": {
+        "15", "23", "24",                  # hard
+        "12", "21", "11", "4", "25", "13",  # medium
+        "9", "18", "26",                   # easy
+    },
+    "B": {
+        "19", "2", "1",                    # hard
+        "5", "16", "27", "20", "28", "14",  # medium
+        "8", "10", "22",                   # easy
+    },
+}
 
 ANSWER_HINTS_HUMAN = {
     "number": "Enter a number.",
@@ -434,6 +450,7 @@ def render_tutorial_screen():
             st.session_state.tutorial_completed = True
             st.query_params["tutorial_done"] = "1"
             st.session_state.survey_started_at = time.time()
+            mark_tutorial_completed()
             st.rerun()
     with note_col:
         st.caption("You can reopen definitions and tool help during the survey from the Help panel.")
@@ -666,7 +683,14 @@ def normalize_dataset_item(item, item_index):
         "choices": question.get("choices", []),
     }
 
-def load_question_bank(participant_id):
+def assigned_survey_form(participant_id):
+    """Assign A/B reproducibly so a refresh never changes a participant's form."""
+    digest = hashlib.sha256(
+        f"{SURVEY_VERSION}:{participant_id}".encode("utf-8")
+    ).digest()
+    return "A" if digest[0] % 2 == 0 else "B"
+
+def load_question_bank(participant_id, survey_form):
     dataset_path = find_dataset_path()
     if not dataset_path:
         return add_attention_check(FALLBACK_QUESTION_BANK), ""
@@ -686,9 +710,21 @@ def load_question_bank(participant_id):
     ]
     if not normalized:
         return add_attention_check(FALLBACK_QUESTION_BANK), dataset_path
-    sampler = random.Random(participant_id)
-    sampler.shuffle(normalized)
-    selected = normalized[: min(SURVEY_QUESTION_COUNT, len(normalized))]
+    form_ids = SURVEY_FORM_QUESTION_IDS.get(survey_form, set())
+    selected = [
+        item for item in normalized
+        if str(item.get("question_id")) in form_ids
+    ]
+    if len(selected) != SURVEY_QUESTION_COUNT:
+        # Keep the survey usable with a different/fallback dataset, while making
+        # the intended 24-question dataset use the curated balanced forms above.
+        selected = list(normalized)
+        sampler = random.Random(f"{SURVEY_VERSION}:{participant_id}:fallback")
+        sampler.shuffle(selected)
+        selected = selected[: min(SURVEY_QUESTION_COUNT, len(selected))]
+    else:
+        sampler = random.Random(f"{SURVEY_VERSION}:{participant_id}:{survey_form}")
+        sampler.shuffle(selected)
     return add_attention_check(selected), dataset_path
 
 def _answer_matches_choices(answer, choices):
@@ -908,6 +944,18 @@ def answer_is_correct(question, answer):
     if hint_type == "region_pairs":
         submitted_pairs = _normalized_region_pairs(submitted)
         correct_pairs = _normalized_region_pairs(correct)
+        # When there is only one correct pair, the two labels are already
+        # unambiguous without parentheses (for example, "E, J"). For answers
+        # containing multiple pairs, parentheses remain required so pair
+        # membership cannot be misread.
+        if submitted_pairs is None and correct_pairs and len(correct_pairs) == 1:
+            submitted_labels = [
+                token.upper()
+                for token in _answer_tokens(submitted)
+                if len(token) == 1 and token.isalpha()
+            ]
+            if len(submitted_labels) == 2 and submitted_labels[0] != submitted_labels[1]:
+                submitted_pairs = [tuple(sorted(submitted_labels))]
         return submitted_pairs is not None and submitted_pairs == correct_pairs
     if hint_type == "region_set":
         return sorted(submitted_tokens) == sorted(correct_tokens)
@@ -927,13 +975,23 @@ def answer_is_correct(question, answer):
 
 PARTICIPANT_ID = get_participant_id()
 SAVED_SURVEY = load_saved_survey(PARTICIPANT_ID)
+if "survey_form" not in st.session_state:
+    saved_form = SAVED_SURVEY.get("survey_form")
+    st.session_state.survey_form = (
+        saved_form
+        if saved_form in SURVEY_FORM_QUESTION_IDS
+        else assigned_survey_form(PARTICIPANT_ID)
+    )
 if "question_bank" not in st.session_state or "dataset_path" not in st.session_state:
     saved_questions = SAVED_SURVEY.get("questions")
     if isinstance(saved_questions, list) and saved_questions:
         st.session_state.question_bank = saved_questions
         st.session_state.dataset_path = SAVED_SURVEY.get("dataset_path", "")
     else:
-        st.session_state.question_bank, st.session_state.dataset_path = load_question_bank(PARTICIPANT_ID)
+        (
+            st.session_state.question_bank,
+            st.session_state.dataset_path,
+        ) = load_question_bank(PARTICIPANT_ID, st.session_state.survey_form)
 st.session_state.question_bank = add_attention_check(st.session_state.question_bank)
 QUESTION_BANK = st.session_state.question_bank
 DATASET_PATH = st.session_state.dataset_path
@@ -1398,6 +1456,23 @@ if "post_survey_responses" not in st.session_state:
     st.session_state.post_survey_responses = (
         saved_post_survey if isinstance(saved_post_survey, dict) else {}
     )
+if "tutorial_summary" not in st.session_state:
+    saved_tutorial_summary = SAVED_SURVEY.get("tutorial_summary", {})
+    st.session_state.tutorial_summary = (
+        saved_tutorial_summary if isinstance(saved_tutorial_summary, dict) else {}
+    )
+    if not st.session_state.tutorial_summary:
+        skipped_by_query = st.query_params.get("skip_tutorial") == "1"
+        st.session_state.tutorial_summary = {
+            "started_at": None,
+            "completed_at": (
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                if skipped_by_query else None
+            ),
+            "completion_status": "skipped" if skipped_by_query else "not_started",
+            "completion_method": "skip_tutorial_query" if skipped_by_query else None,
+            "steps": {},
+        }
 if "last_result_path" not in st.session_state:
     saved_path = participant_result_path(PARTICIPANT_ID)
     st.session_state.last_result_path = saved_path if SAVED_SURVEY else ""
@@ -1406,7 +1481,10 @@ if "survey_completed" not in st.session_state:
 if "tutorial_completed" not in st.session_state:
     saved_responses = st.session_state.get("survey_responses", {})
     st.session_state.tutorial_completed = bool(
-        SAVED_SURVEY.get("survey_completed", False)
+        SAVED_SURVEY.get("tutorial_completed", False)
+        or SAVED_SURVEY.get("survey_completed", False)
+        or st.session_state.get("tutorial_summary", {}).get("completion_status")
+        in ("completed", "skipped")
         or (isinstance(saved_responses, dict) and bool(saved_responses))
         or st.query_params.get("skip_tutorial") == "1"
         or st.query_params.get("tutorial_done") == "1"
@@ -1671,6 +1749,7 @@ def practice_last_output(tool, input_contains=None):
 
 def continue_after_practice_feedback(stage):
     """Move to the next guided tool only after the participant reads feedback."""
+    mark_tutorial_step_completed(stage)
     next_step = {
         "rightmost": ("vertex", "Region"),
         "meeting": ("neighbors", "Region"),
@@ -1826,6 +1905,47 @@ def current_practice_tool_stage():
     if not st.session_state.get("practice_sort_angles_done", False):
         return "sort"
     return "merge"
+
+def tutorial_step_entry(stage):
+    summary = st.session_state.setdefault("tutorial_summary", {})
+    steps = summary.setdefault("steps", {})
+    return steps.setdefault(stage, {
+        "completed": False,
+        "completion_method": None,
+        "used_completed_example": False,
+        "tool_errors": 0,
+        "completed_at": None,
+    })
+
+def mark_tutorial_step_completed(stage):
+    entry = tutorial_step_entry(stage)
+    entry["completed"] = True
+    entry["completion_method"] = (
+        "completed_example" if entry.get("used_completed_example") else "independent"
+    )
+    entry["completed_at"] = _ts()
+    summary = st.session_state.tutorial_summary
+    summary["completion_status"] = "in_progress"
+    if not summary.get("started_at"):
+        summary["started_at"] = _ts()
+    save_survey_results()
+
+def mark_tutorial_tool_error():
+    if not (IS_PRACTICE and st.session_state.get("practice_step") == "tools"):
+        return
+    stage = current_practice_tool_stage()
+    entry = tutorial_step_entry(stage)
+    entry["tool_errors"] = int(entry.get("tool_errors", 0)) + 1
+    save_survey_results()
+
+def mark_tutorial_completed():
+    summary = st.session_state.setdefault("tutorial_summary", {})
+    summary["completion_status"] = "completed"
+    summary["completion_method"] = "guided_tutorial"
+    summary["completed_at"] = _ts()
+    if not summary.get("started_at"):
+        summary["started_at"] = _ts()
+    save_survey_results()
 
 # ---- selection add/clear/remove (keep selection + selection_meta in lockstep) ----
 def add_to_selection(obj, meta=None):
@@ -3524,6 +3644,7 @@ def run_tool(tool, modes):
                     result, "distance", ref)
 
     except Exception as ex:
+        mark_tutorial_tool_error()
         tool_name = TOOL_LABELS.get(tool, tool).strip()
         participant_message = (
             f"❌ {tool_name} could not complete this operation. "
@@ -3544,6 +3665,10 @@ def run_tool(tool, modes):
 def show_completed_practice_step():
     """Run the current guided task with its expected inputs and show the normal result."""
     stage = current_practice_tool_stage()
+    entry = tutorial_step_entry(stage)
+    entry["used_completed_example"] = True
+    entry["completed_example_requested_at"] = _ts()
+    save_survey_results()
     faces = {
         face.letter: face
         for face in res_map.faces
@@ -3693,18 +3818,30 @@ def save_survey_results():
     payload = {
         "participant_id": PARTICIPANT_ID,
         "survey_version": SURVEY_VERSION,
+        "survey_form": st.session_state.get("survey_form"),
+        "assigned_question_ids": [
+            question.get("question_id")
+            for question in QUESTION_BANK
+            if not question.get("is_attention_check")
+        ],
         "dataset_path": DATASET_PATH,
         "saved_at": _ts(),
         "question_count": len(QUESTION_BANK),
+        "substantive_question_count": sum(
+            1 for question in QUESTION_BANK
+            if not question.get("is_attention_check")
+        ),
         "survey_question_index": st.session_state.get("survey_question_index", 0),
         "max_confirmed_question_index": st.session_state.get(
             "max_confirmed_question_index", -1
         ),
         "survey_completed": st.session_state.get("survey_completed", False),
+        "tutorial_completed": st.session_state.get("tutorial_completed", False),
         "questions": QUESTION_BANK,
         "responses": st.session_state.get("survey_responses", {}),
         "post_survey_responses": st.session_state.get("post_survey_responses", {}),
         "post_survey_preview_seen": st.session_state.get("post_survey_preview_seen", False),
+        "tutorial_summary": st.session_state.get("tutorial_summary", {}),
     }
     if DATABASE_URL:
         _save_survey_postgres(payload)
@@ -3730,6 +3867,36 @@ if not st.session_state.tutorial_completed and not st.session_state.post_survey_
     st.markdown(
         "These questions will appear after the main survey. "
         "For now, they are shown here so the questionnaire can be reviewed."
+    )
+    if st.button(
+        "Skip Tutorial and Start Survey",
+        key="skip_tutorial_and_start_survey",
+        use_container_width=False,
+    ):
+        skipped_at = _ts()
+        tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
+        tutorial_summary.update(
+            {
+                "completion_status": "skipped",
+                "completion_method": "first_page_start_survey_button",
+                "completed_at": skipped_at,
+            }
+        )
+        st.session_state.post_survey_responses = {
+            "completion_status": "skipped",
+            "placement": "pre_practice_preview",
+            "skipped_at": skipped_at,
+        }
+        st.session_state.post_survey_preview_seen = True
+        st.session_state.tutorial_completed = True
+        st.session_state.answer_feedback = None
+        st.session_state.scratch_pad = ""
+        st.session_state.survey_started_at = time.time()
+        st.query_params["tutorial_done"] = "1"
+        save_survey_results()
+        st.rerun()
+    st.caption(
+        "This skips both the questionnaire preview and the tutorial."
     )
     st.markdown(
         """
@@ -3922,6 +4089,10 @@ if not st.session_state.tutorial_completed and not st.session_state.post_survey_
                     }
                 )
                 st.session_state.post_survey_preview_seen = True
+                tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
+                if not tutorial_summary.get("started_at"):
+                    tutorial_summary["started_at"] = _ts()
+                tutorial_summary["completion_status"] = "in_progress"
                 save_survey_results()
                 st.rerun()
     st.stop()
@@ -4055,6 +4226,7 @@ with answer_panel.container(key="answer_panel_content"):
                     st.session_state.answer_feedback = None
                     st.session_state.scratch_pad = ""
                     st.session_state.survey_started_at = time.time()
+                    mark_tutorial_completed()
                     st.rerun()
             elif pending_feedback:
                 if pending_feedback == "rightmost":
@@ -4186,6 +4358,7 @@ with answer_panel.container(key="answer_panel_content"):
                             st.session_state.answer_feedback = None
                             st.session_state.scratch_pad = ""
                             st.session_state.survey_started_at = time.time()
+                            mark_tutorial_completed()
                             st.rerun()
                         else:
                             qid = question_id_for(QUESTION, st.session_state.survey_question_index)
@@ -4726,6 +4899,11 @@ with col_ctrl:
         if st.button("Continue", type="primary",
                      disabled=not (PRACTICE_DIRECTION_DEMO and direction_answered),
                      use_container_width=True):
+            selection_entry = tutorial_step_entry("selection_practice")
+            selection_entry["direction_answer_correct"] = bool(
+                st.session_state.get("practice_direction_correct", False)
+            )
+            mark_tutorial_step_completed("selection_practice")
             clear_selection()
             st.session_state.annotations = []
             st.session_state.lines = []
