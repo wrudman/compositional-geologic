@@ -876,6 +876,11 @@ def Question21(va,vb,vc, codeA, codeB, codeC):
     global smallAng
     if not distinct([va,vb,vc]):
         return failureOutput
+    # Orientation questions should require at least one vertex from inside the
+    # diagram. Three frame vertices reduce the task to reading the outer box
+    # and do not exercise the compositional vertex-finding workflow.
+    if all(frameEdgeForVertex(v) is not None for v in (va, vb, vc)):
+        return failureOutput
     question = LetVerticesBeText([va,vb,vc],['v₁','v₂','v₃'],[codeA,codeB,codeC]) 
     if question == "":
         return failureOutput
