@@ -22,7 +22,7 @@ THE SEVEN VERBS
     draw        make a line             (segment, full line, or ray)
     intersect   ask a line what it hits (which regions, or another line)
     merge       join two bordering regions into one
-    measure     inspect selected geometry (length, angle, area, sides,
+    measure     inspect selected geometry (length, angle, area, edge count,
                 regions, or cycle orientation)
     sort        SEVERAL things -> them, ordered smallest -> largest
 
@@ -188,7 +188,8 @@ def measure(*args, what):
         "angle"   a corner (its point + the region it belongs to)
                   -> the interior angle there, in degrees
         "area"    a region -> its area
-        "sides"   a region -> how many sides it has
+        "edge_count" a region -> how many boundary edges it has
+                     ("sides" is retained as a backwards-compatible alias)
         "regions" the frame -> how many bounded regions are in the diagram
         "orientation" three ordered vertices -> clockwise or counterclockwise
 
@@ -198,7 +199,7 @@ def measure(*args, what):
         measure(A, B, what="distance")    # distance between two regions
         measure(p, A, what="angle")       # angle at corner p inside region A
         measure(A, what="area")
-        measure(A, what="sides")
+        measure(A, what="edge_count")
         measure("frame", what="regions")
         measure(v1, v2, v3, what="orientation")
     """
@@ -220,7 +221,7 @@ def measure(*args, what):
     if what == "area":
         return _engine.area(items[0])
 
-    if what == "sides":
+    if what in ("edge_count", "sides"):
         return _engine.side_count(items[0])
 
     if what == "regions":
@@ -233,7 +234,9 @@ def measure(*args, what):
             raise ValueError('what="orientation" requires exactly three vertices.')
         return _engine.orientation(items[0], items[1], items[2])
 
-    raise ValueError('what must be one of: distance, angle, area, sides, regions, orientation.')
+    raise ValueError(
+        'what must be one of: distance, angle, area, edge_count, regions, orientation.'
+    )
 
 
 # ==============================================================================
