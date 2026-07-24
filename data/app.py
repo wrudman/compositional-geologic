@@ -79,6 +79,12 @@ DISPLAY_SIDE = 460          # map render size; clicks are mapped back through th
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "compositional_questions_v2_12_question_forms"
+RESPONSE_SCHEMA_VERSION = "3.2"
+CODE_VERSION = (
+    os.environ.get("RENDER_GIT_COMMIT")
+    or os.environ.get("GIT_COMMIT")
+    or "local"
+)
 SURVEY_QUESTION_COUNT = 12
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -193,6 +199,14 @@ Good. Next, practice **Neighbors**.
 We now want to find all regions that share an edge with **Region A**.
 
 Choose **Neighbors**, select **Region A**, keep **Neighbor type** as **Share an edge**, then click **RUN**.
+"""
+
+PRACTICE_ORDERED_NEIGHBORS_GUIDE_TEXT = """
+Very good. Neighbors can also list the regions surrounding a selected region in order.
+
+Select **Region A**. Then choose **Vertex** under Selection and select the **rightmost vertex of Region A**. This vertex tells the tool where to begin. Choose **Clockwise** under Walk direction, then click **RUN**.
+
+Starting at the selected vertex, the output lists the regions surrounding Region A as you move clockwise around its boundary.
 """
 
 PRACTICE_MERGE_GUIDE_TEXT = """
@@ -983,10 +997,13 @@ if "survey_form" not in st.session_state:
         else assigned_survey_form(PARTICIPANT_ID)
     )
 if "question_bank" not in st.session_state or "dataset_path" not in st.session_state:
-    saved_questions = SAVED_SURVEY.get("questions")
+    saved_questions = (
+        SAVED_SURVEY.get("question_bank")
+        or SAVED_SURVEY.get("questions")
+    )
     if isinstance(saved_questions, list) and saved_questions:
         st.session_state.question_bank = saved_questions
-        st.session_state.dataset_path = SAVED_SURVEY.get("dataset_path", "")
+        st.session_state.dataset_path = find_dataset_path()
     else:
         (
             st.session_state.question_bank,
@@ -1241,9 +1258,14 @@ def current_question():
     st.session_state.survey_question_index = idx
     return QUESTION_BANK[idx]
 
+def _ts():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
 def init_survey_timer():
     if "survey_started_at" not in st.session_state:
         st.session_state.survey_started_at = time.time()
+    if not st.session_state.get("survey_started_timestamp"):
+        st.session_state.survey_started_timestamp = _ts()
 
 def survey_elapsed_seconds():
     started = st.session_state.get("survey_started_at", time.time())
@@ -1493,6 +1515,41 @@ if "post_survey_preview_seen" not in st.session_state:
     st.session_state.post_survey_preview_seen = bool(
         SAVED_SURVEY.get("post_survey_preview_seen", False)
     )
+if "post_survey_completed" not in st.session_state:
+    st.session_state.post_survey_completed = bool(
+        SAVED_SURVEY.get("post_survey_completed", False)
+    )
+if "landing_choice_made" not in st.session_state:
+    saved_progress_exists = bool(
+        SAVED_SURVEY
+        or st.session_state.get("survey_responses")
+        or st.session_state.get("tutorial_summary", {}).get("completion_status")
+        in ("in_progress", "completed", "skipped")
+    )
+    st.session_state.landing_choice_made = bool(
+        SAVED_SURVEY.get("entry_route") or saved_progress_exists
+    )
+if "entry_route" not in st.session_state:
+    st.session_state.entry_route = SAVED_SURVEY.get("entry_route")
+if "survey_started_timestamp" not in st.session_state:
+    st.session_state.survey_started_timestamp = SAVED_SURVEY.get(
+        "survey_started_at"
+    )
+if "survey_completed_timestamp" not in st.session_state:
+    st.session_state.survey_completed_timestamp = SAVED_SURVEY.get(
+        "survey_completed_at"
+    )
+if "study_started_timestamp" not in st.session_state:
+    st.session_state.study_started_timestamp = (
+        SAVED_SURVEY.get("study_started_at")
+        or st.session_state.get("tutorial_summary", {}).get("started_at")
+        or st.session_state.get("survey_started_timestamp")
+        or datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    )
+if "study_completed_timestamp" not in st.session_state:
+    st.session_state.study_completed_timestamp = SAVED_SURVEY.get(
+        "study_completed_at"
+    )
 if "timer_hidden" not in st.session_state:
     st.session_state.timer_hidden = False
 if "answer_feedback" not in st.session_state:
@@ -1520,6 +1577,7 @@ if IS_PRACTICE:
     st.session_state.setdefault("practice_rightmost_vertex_done", False)
     st.session_state.setdefault("practice_meeting_vertex_done", False)
     st.session_state.setdefault("practice_neighbors_done", False)
+    st.session_state.setdefault("practice_ordered_neighbors_done", False)
     st.session_state.setdefault("practice_draw_line_done", False)
     st.session_state.setdefault("practice_draw_line_ref", None)
     st.session_state.setdefault("practice_intersect_done", False)
@@ -1753,7 +1811,8 @@ def continue_after_practice_feedback(stage):
     next_step = {
         "rightmost": ("vertex", "Region"),
         "meeting": ("neighbors", "Region"),
-        "neighbors": ("draw line", "Vertex"),
+        "neighbors": ("neighbors", "Region"),
+        "ordered_neighbors": ("draw line", "Vertex"),
         "draw": ("intersect", "Vertex"),
         "intersect": ("measure", "Region"),
         "area": ("measure", "Vertex"),
@@ -1787,14 +1846,25 @@ def continue_after_practice_feedback(stage):
         st.session_state.practice_guided_complete = True
         st.session_state.definitions_open = True
         st.session_state.tool_guide_open = True
+        guided_completed_at = _ts()
+        tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
+        tutorial_summary["guided_completed_at"] = guided_completed_at
+        tutorial_summary["free_exploration_started_at"] = guided_completed_at
+        tutorial_summary["free_exploration_tool_calls"] = {
+            "total_tool_calls": 0,
+            "tool_counts": {},
+            "error_count": 0,
+        }
     else:
         active_tool, selection_filter = next_step[stage]
         st.session_state.active_tool = active_tool
         st.session_state.selection_filter = selection_filter
+        current_index = TUTORIAL_GUIDED_STAGES.index(stage)
+        start_tutorial_step(TUTORIAL_GUIDED_STAGES[current_index + 1])
         practice_mode_resets = {
             "rightmost": "rad_vtx_onframe",
             "meeting": "rad_nbr_kind",
-            "neighbors": "rad_style",
+            "ordered_neighbors": "rad_style",
             "draw": "rad_intersect",
             "intersect": "rad_measure",
             "area": "rad_measure",
@@ -1803,6 +1873,8 @@ def continue_after_practice_feedback(stage):
         mode_key = practice_mode_resets.get(stage)
         if mode_key:
             st.session_state[mode_key] = None
+    refresh_tutorial_summary_metrics()
+    save_survey_results()
     st.rerun()
 
 def practice_rightmost_vertex_done():
@@ -1846,6 +1918,21 @@ def practice_neighbors_done():
             and call.get("tool") == "neighbors"
             and call.get("function") == "neighbors"
             and 'neighbors(A, "edge")' in input_text
+        ):
+            return True
+    return False
+
+def practice_ordered_neighbors_done():
+    if st.session_state.get("practice_ordered_neighbors_done"):
+        return True
+    for call in st.session_state.get("tool_calls", []):
+        input_text = str(call.get("input", "")) if isinstance(call, dict) else ""
+        if (
+            isinstance(call, dict)
+            and call.get("tool") == "neighbors"
+            and call.get("function") == "neighbors"
+            and 'neighbors(A, "ordered"' in input_text
+            and "go_counterclockwise=False" in input_text
         ):
             return True
     return False
@@ -1894,6 +1981,8 @@ def current_practice_tool_stage():
         return "meeting"
     if not practice_neighbors_done():
         return "neighbors"
+    if not practice_ordered_neighbors_done():
+        return "ordered_neighbors"
     if not st.session_state.get("practice_draw_line_done", False):
         return "draw"
     if not st.session_state.get("practice_intersect_done", False):
@@ -1906,6 +1995,20 @@ def current_practice_tool_stage():
         return "sort"
     return "merge"
 
+TUTORIAL_GUIDED_STAGES = (
+    "selection_practice",
+    "rightmost",
+    "meeting",
+    "neighbors",
+    "ordered_neighbors",
+    "draw",
+    "intersect",
+    "area",
+    "orientation",
+    "sort",
+    "merge",
+)
+
 def tutorial_step_entry(stage):
     summary = st.session_state.setdefault("tutorial_summary", {})
     steps = summary.setdefault("steps", {})
@@ -1914,16 +2017,29 @@ def tutorial_step_entry(stage):
         "completion_method": None,
         "used_completed_example": False,
         "tool_errors": 0,
+        "started_at": None,
         "completed_at": None,
+        "duration_seconds": None,
     })
 
-def mark_tutorial_step_completed(stage):
+def start_tutorial_step(stage):
     entry = tutorial_step_entry(stage)
+    if not entry.get("started_at"):
+        entry["started_at"] = _ts()
+    return entry
+
+def mark_tutorial_step_completed(stage):
+    entry = start_tutorial_step(stage)
+    completed_at = _ts()
     entry["completed"] = True
     entry["completion_method"] = (
         "completed_example" if entry.get("used_completed_example") else "independent"
     )
-    entry["completed_at"] = _ts()
+    entry["completed_at"] = completed_at
+    entry["duration_seconds"] = elapsed_between_timestamps(
+        entry.get("started_at"),
+        completed_at,
+    )
     summary = st.session_state.tutorial_summary
     summary["completion_status"] = "in_progress"
     if not summary.get("started_at"):
@@ -1931,20 +2047,95 @@ def mark_tutorial_step_completed(stage):
     save_survey_results()
 
 def mark_tutorial_tool_error():
-    if not (IS_PRACTICE and st.session_state.get("practice_step") == "tools"):
+    if not (
+        IS_PRACTICE
+        and st.session_state.get("practice_step") == "tools"
+        and not st.session_state.get("practice_guided_complete", False)
+    ):
         return
     stage = current_practice_tool_stage()
-    entry = tutorial_step_entry(stage)
+    entry = start_tutorial_step(stage)
     entry["tool_errors"] = int(entry.get("tool_errors", 0)) + 1
     save_survey_results()
 
+def summarize_tutorial_tool_calls(calls):
+    valid_calls = [call for call in calls if isinstance(call, dict)]
+    tool_counts = {}
+    error_count = 0
+    for call in valid_calls:
+        tool = str(call.get("tool", "unknown"))
+        tool_counts[tool] = tool_counts.get(tool, 0) + 1
+        if (
+            call.get("call_type") == "error"
+            or call.get("function") == "error"
+        ):
+            error_count += 1
+    return {
+        "total_tool_calls": len(valid_calls),
+        "tool_counts": dict(sorted(tool_counts.items())),
+        "error_count": error_count,
+    }
+
+def refresh_tutorial_summary_metrics():
+    summary = st.session_state.setdefault("tutorial_summary", {})
+    steps = summary.setdefault("steps", {})
+    completed_at = summary.get("completed_at")
+    metric_end = completed_at or _ts()
+    summary["total_duration_seconds"] = elapsed_between_timestamps(
+        summary.get("started_at"),
+        metric_end,
+    )
+    summary["guided_duration_seconds"] = elapsed_between_timestamps(
+        summary.get("started_at"),
+        summary.get("guided_completed_at"),
+    )
+    summary["free_exploration_seconds"] = elapsed_between_timestamps(
+        summary.get("guided_completed_at"),
+        summary.get("free_exploration_completed_at") or (
+            metric_end if summary.get("guided_completed_at") else None
+        ),
+    )
+    summary["total_steps"] = len(TUTORIAL_GUIDED_STAGES)
+    summary["independently_completed_steps"] = sum(
+        steps.get(stage, {}).get("completion_method") == "independent"
+        for stage in TUTORIAL_GUIDED_STAGES
+    )
+    summary["completed_example_steps"] = sum(
+        steps.get(stage, {}).get("completion_method") == "completed_example"
+        for stage in TUTORIAL_GUIDED_STAGES
+    )
+    summary["skipped_steps"] = (
+        len(TUTORIAL_GUIDED_STAGES)
+        if summary.get("completion_status") == "skipped"
+        else sum(
+            steps.get(stage, {}).get("completion_method") == "skipped"
+            for stage in TUTORIAL_GUIDED_STAGES
+        )
+    )
+    summary["total_tool_errors"] = sum(
+        int(steps.get(stage, {}).get("tool_errors", 0) or 0)
+        for stage in TUTORIAL_GUIDED_STAGES
+    )
+    summary.setdefault(
+        "free_exploration_tool_calls",
+        {"total_tool_calls": 0, "tool_counts": {}, "error_count": 0},
+    )
+    return summary
+
 def mark_tutorial_completed():
     summary = st.session_state.setdefault("tutorial_summary", {})
+    completed_at = _ts()
     summary["completion_status"] = "completed"
     summary["completion_method"] = "guided_tutorial"
-    summary["completed_at"] = _ts()
+    summary["completed_at"] = completed_at
     if not summary.get("started_at"):
-        summary["started_at"] = _ts()
+        summary["started_at"] = completed_at
+    if summary.get("guided_completed_at"):
+        summary["free_exploration_completed_at"] = completed_at
+        summary["free_exploration_tool_calls"] = summarize_tutorial_tool_calls(
+            st.session_state.get("tool_calls", [])
+        )
+    refresh_tutorial_summary_metrics()
     save_survey_results()
 
 # ---- selection add/clear/remove (keep selection + selection_meta in lockstep) ----
@@ -1998,6 +2189,20 @@ def record_selection_event(action, obj=None):
     }
     if obj is not None:
         event["object"] = _selection_event_object(obj)
+    events.append(event)
+
+def record_interface_event(action, details=None):
+    """Record a UI-only action without counting it as a reasoning tool call."""
+    events = st.session_state.setdefault("selection_events", [])
+    event = {
+        "order": len(events) + 1,
+        "action": action,
+        "event_type": "interface",
+        "timestamp": _ts(),
+        "survey_elapsed_seconds": survey_elapsed_seconds(),
+    }
+    if details:
+        event["details"] = details
     events.append(event)
 
 def clear_selection():
@@ -2084,8 +2289,20 @@ def highlight_edge_x(odraw, e, label=None):
         odraw.ellipse([px-7, py-7, px+7, py+7], fill=CYAN_EDGE)
     if label:
         mx, my = (p1[0]+p2[0])//2, (p1[1]+p2[1])//2
-        font = DrawGraph.GetSystemFont(35)
-        odraw.text((mx, my), label, fill=(0, 100, 130, 255), font=font,
+        dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+        length = max(1.0, math.hypot(dx, dy))
+        nx, ny = -dy / length, dx / length
+        # Vertex labels sit to the right of their markers, so keep a nearly
+        # vertical edge's name on the left. For a nearly horizontal edge,
+        # prefer the space above it.
+        if abs(nx) >= abs(ny):
+            if nx > 0:
+                nx, ny = -nx, -ny
+        elif ny > 0:
+            nx, ny = -nx, -ny
+        label_xy = (round(mx + 30 * nx), round(my + 30 * ny))
+        font = DrawGraph.GetSystemFont(32)
+        odraw.text(label_xy, label, fill=(0, 100, 130, 255), font=font,
                    anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
 
 def draw_interior_arc_x(odraw, vertex, face, label=None,
@@ -2282,10 +2499,42 @@ def render():
                            stroke_width=2, stroke_fill=(255, 255, 255, 255))
         elif kind == "line":
             a, b = line_endpoints_math(ann["line"])
-            odraw.line([DrawGraph.V2P(a), DrawGraph.V2P(b)], fill=BLUE, width=6)
+            pa, pb = DrawGraph.V2P(a), DrawGraph.V2P(b)
+            # Keep a full extension visually subordinate to the selected
+            # source edge, which is drawn later as the thick cyan segment.
+            line_width = 5 if ann["line"]["type"] == "extend" else 6
+            odraw.line([pa, pb], fill=BLUE, width=line_width)
             if ann.get("label"):
-                mx = (DrawGraph.V2P(a)[0] + DrawGraph.V2P(b)[0]) // 2
-                my = (DrawGraph.V2P(a)[1] + DrawGraph.V2P(b)[1]) // 2
+                if ann["line"]["type"] == "extend":
+                    # Put the line name on the longer exposed extension rather
+                    # than at the source edge's midpoint, where v/e labels
+                    # already compete for space.
+                    source_a = DrawGraph.V2P(ann["line"]["a"])
+                    source_b = DrawGraph.V2P(ann["line"]["b"])
+                    def nearest_source(frame_point):
+                        return min(
+                            (source_a, source_b),
+                            key=lambda source: (
+                                (frame_point[0] - source[0]) ** 2
+                                + (frame_point[1] - source[1]) ** 2
+                            ),
+                        )
+                    exposed_pairs = [
+                        (pa, nearest_source(pa)),
+                        (pb, nearest_source(pb)),
+                    ]
+                    outer, inner = max(
+                        exposed_pairs,
+                        key=lambda pair: (
+                            (pair[0][0] - pair[1][0]) ** 2
+                            + (pair[0][1] - pair[1][1]) ** 2
+                        ),
+                    )
+                    mx = round(outer[0] * 0.58 + inner[0] * 0.42)
+                    my = round(outer[1] * 0.58 + inner[1] * 0.42)
+                else:
+                    mx = (pa[0] + pb[0]) // 2
+                    my = (pa[1] + pb[1]) // 2
                 odraw.text((mx, my), ann["label"], fill=BLUE, font=font,
                            anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
         elif kind == "angle":
@@ -2835,6 +3084,31 @@ def validate(tool, modes):
                     f"The selected starting vertex is not on Region {region.letter}. "
                     f"Choose a vertex of Region {region.letter}.",
                 )
+            if (
+                IS_PRACTICE
+                and PRACTICE_STEP == "tools"
+                and st.session_state.get("practice_neighbors_done", False)
+                and not st.session_state.get("practice_ordered_neighbors_done", False)
+            ):
+                faces = {
+                    face.letter: face
+                    for face in res_map.faces
+                    if getattr(face, "bounded", False)
+                }
+                expected_vertex = max(
+                    faces["A"].vertices,
+                    key=lambda vertex: vertex.p.x,
+                )
+                if (
+                    region.letter != "A"
+                    or start_vertex is not expected_vertex
+                    or modes.get("ccw", True)
+                ):
+                    return (
+                        False,
+                        "For this practice step, select Region A and its rightmost vertex, "
+                        "then choose Clockwise.",
+                    )
             return (True, "")
         return (False, "Select 1 vertex, 1 edge, 1 region, or 1 region + 1 of its corners.")
 
@@ -2851,7 +3125,7 @@ def validate(tool, modes):
             ok
             and IS_PRACTICE
             and PRACTICE_STEP == "tools"
-            and st.session_state.get("practice_neighbors_done", False)
+            and st.session_state.get("practice_ordered_neighbors_done", False)
             and not st.session_state.get("practice_draw_line_done", False)
         ):
             faces = {
@@ -3095,7 +3369,7 @@ def participant_output_for_tool(tool, call_str, result, output_text=None):
         args = call_str[len("measure("):].split(", what=", 1)[0]
         if what == "area":
             return f"Area of Region {args}: {emphasized}."
-        if what == "sides":
+        if what in ("sides", "edge_count"):
             unit = "edge" if str(shown) == "1" else "edges"
             return f"Region {args} has {emphasized} {unit}."
         if what == "regions":
@@ -3164,8 +3438,19 @@ def infer_call_type(output):
         return "annotation"
     return "analysis"
 
-def record_tool_call(tool, function, input_text, output, output_text=None, call_type=None):
+def record_tool_call(
+    tool,
+    function,
+    input_text,
+    output,
+    output_text=None,
+    call_type=None,
+    display_text=None,
+):
     calls = st.session_state.setdefault("tool_calls", [])
+    if display_text is None:
+        visible_log = st.session_state.get("log", [])
+        display_text = visible_log[-1] if visible_log else output_text
     calls.append({
         "order": len(calls) + 1,
         "tool": tool,
@@ -3174,9 +3459,20 @@ def record_tool_call(tool, function, input_text, output, output_text=None, call_
         "input": input_text,
         "output": output,
         "output_text": output_text if output_text is not None else describe(output),
+        "display_text": display_text,
         "timestamp": _ts(),
         "survey_elapsed_seconds": survey_elapsed_seconds(),
     })
+    if (
+        IS_PRACTICE
+        and st.session_state.get("practice_guided_complete", False)
+    ):
+        tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
+        tutorial_summary["free_exploration_tool_calls"] = (
+            summarize_tutorial_tool_calls(calls)
+        )
+        refresh_tutorial_summary_metrics()
+        save_survey_results()
 
 # ---- single-step UNDO -------------------------------------------------------
 _UNDO_KEYS = ["selection", "selection_meta", "annotations", "lines", "angles", "named_edges",
@@ -3241,6 +3537,14 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
             st.session_state.practice_neighbors_done = True
             st.session_state.practice_pending_feedback = "neighbors"
         elif (
+            tool == "neighbors"
+            and st.session_state.get("practice_neighbors_done", False)
+            and 'neighbors(A, "ordered"' in call_str
+            and "go_counterclockwise=False" in call_str
+        ):
+            st.session_state.practice_ordered_neighbors_done = True
+            st.session_state.practice_pending_feedback = "ordered_neighbors"
+        elif (
             tool == "intersect"
             and st.session_state.get("practice_draw_line_done", False)
             and 'intersect(' in call_str
@@ -3302,9 +3606,11 @@ def finish_vertex(call_str, result, assign_prefix="v"):
             _name, meta = point_name_with_meta(v)
             add_to_selection(v, meta)
 
-    if assign_prefix:
-        var = next_name("r")
-        add_program(f"{var} = {call_str}")
+    vertex_labels = [code_name(vertex) for vertex in new_pts if is_vertex(vertex)]
+    if len(vertex_labels) == 1:
+        add_program(f"{vertex_labels[0]} = {call_str}")
+    elif len(vertex_labels) > 1:
+        add_program(f"[{', '.join(vertex_labels)}] = {call_str}")
     else:
         add_program(call_str)
     output_text = answer_like_text(result)
@@ -3460,7 +3766,7 @@ def run_tool(tool, modes):
                 va, vb = edgesel_endpoints(s["edges"][0])
                 kind = "full" if style == "full line" else "segment"
                 line = T.draw(va, vb, kind=kind)
-                call = f'draw({code_name(va)}, {code_name(vb)}, kind="{kind}")  # along {code_name(s["edges"][0])}'
+                call = f'draw({code_name(s["edges"][0])}, kind="{kind}")'
             else:
                 kind = "full" if style == "full line" else "segment"
                 line = T.draw(sel[0], sel[1], kind=kind)
@@ -3470,9 +3776,22 @@ def run_tool(tool, modes):
             st.session_state.annotations.append({"kind": "line", "line": line, "label": name})
             add_program(f"{name} = {call}")
             if style == "ray":
-                add_log(f"Drew **{name}**, a {d}ward ray from {code_name(sel[0])}.")
+                article = "an" if d == "up" else "a"
+                add_log(
+                    f"Drew **{name}**, {article} {d}ward ray "
+                    f"from {code_name(sel[0])}."
+                )
             elif style == "full line":
-                add_log(f"Drew **{name}**, a full line through {code_name(va) if s['edges'] else code_name(sel[0])} and {code_name(vb) if s['edges'] else code_name(sel[1])}.")
+                if s["edges"]:
+                    add_log(
+                        f"Extended **{code_name(s['edges'][0])}** in both directions "
+                        f"to form full line **{name}**."
+                    )
+                else:
+                    add_log(
+                        f"Drew **{name}**, a full line through "
+                        f"{code_name(sel[0])} and {code_name(sel[1])}."
+                    )
             else:
                 start_name = code_name(va) if s["edges"] else code_name(sel[0])
                 end_name = code_name(vb) if s["edges"] else code_name(sel[1])
@@ -3487,7 +3806,7 @@ def run_tool(tool, modes):
             )
             if (
                 st.session_state.get("practice_step") == "tools"
-                and st.session_state.get("practice_neighbors_done", False)
+                and st.session_state.get("practice_ordered_neighbors_done", False)
                 and style == "segment"
             ):
                 st.session_state.practice_draw_line_done = True
@@ -3611,7 +3930,12 @@ def run_tool(tool, modes):
             else:  # area, sides
                 reg = s["regions"][0]
                 val = T.measure(reg, what=w)
-                finish(tool, f'measure({reg.letter}, what="{w}")', val)
+                recorded_measure = "edge_count" if w == "sides" else w
+                finish(
+                    tool,
+                    f'measure({reg.letter}, what="{recorded_measure}")',
+                    val,
+                )
 
         # ---- SORT (several things → ordered) --------------------------------
         elif tool == "sort":
@@ -3665,7 +3989,7 @@ def run_tool(tool, modes):
 def show_completed_practice_step():
     """Run the current guided task with its expected inputs and show the normal result."""
     stage = current_practice_tool_stage()
-    entry = tutorial_step_entry(stage)
+    entry = start_tutorial_step(stage)
     entry["used_completed_example"] = True
     entry["completed_example_requested_at"] = _ts()
     save_survey_results()
@@ -3689,6 +4013,10 @@ def show_completed_practice_step():
     elif stage == "neighbors":
         select(faces["A"])
         run_tool("neighbors", {"kind": "edge"})
+    elif stage == "ordered_neighbors":
+        right_a = max(faces["A"].vertices, key=lambda vertex: vertex.p.x)
+        select(faces["A"], right_a)
+        run_tool("neighbors", {"kind": "ordered", "ccw": False})
     elif stage == "draw":
         left_b = min(faces["B"].vertices, key=lambda vertex: vertex.p.x)
         right_d = max(faces["D"].vertices, key=lambda vertex: vertex.p.x)
@@ -3763,25 +4091,26 @@ def remove_merged_region(index):
 
     source_names = [face.letter for face in source_faces]
     source_text = natural_join(source_names)
-    call_str = f"remove_union({union_name})"
-    add_program(call_str)
     add_log(f"Removed Region **{union_name}** and restored Regions **{source_text}**.")
-    record_tool_call(
-        "merge",
-        "remove_union",
-        call_str,
+    record_interface_event(
+        "undo_merge",
         {
-            "type": "removed_union",
-            "label": union_name,
+            "removed_union": union_name,
             "restored_regions": source_names,
         },
-        f"Restored Regions {source_text}",
-        "annotation",
     )
     st.rerun()
 
-def _ts():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+def elapsed_between_timestamps(started_at, completed_at):
+    if not started_at or not completed_at:
+        return None
+    timestamp_format = "%Y-%m-%d %H:%M:%S.%f"
+    try:
+        started = datetime.strptime(started_at, timestamp_format)
+        completed = datetime.strptime(completed_at, timestamp_format)
+    except (TypeError, ValueError):
+        return None
+    return round(max(0.0, (completed - started).total_seconds()), 3)
 
 def survey_answer_key(question):
     return f"answer_{st.session_state.survey_question_index}_{question.get('question_id', '')}"
@@ -3792,13 +4121,11 @@ def current_trial_record(question, answer, is_correct=None):
     if question_started_time is not None:
         response_time_seconds = round(time.time() - question_started_time, 3)
     return {
-        "participant_id": PARTICIPANT_ID,
-        "survey_version": SURVEY_VERSION,
+        "question_id": question.get("question_id", ""),
         "question_index": st.session_state.survey_question_index,
-        "question": question,
+        "is_attention_check": bool(question.get("is_attention_check")),
         "answer": answer,
         "scratch_pad": st.session_state.get("scratch_pad", ""),
-        "correct_answer": question.get("answer", ""),
         "is_correct": is_correct,
         "question_started_at": st.session_state.get("question_started_at"),
         "survey_elapsed_seconds": survey_elapsed_seconds(),
@@ -3806,42 +4133,201 @@ def current_trial_record(question, answer, is_correct=None):
         "submitted_at": _ts(),
         "tool_calls": list(st.session_state.get("tool_calls", [])),
         "selection_events": list(st.session_state.get("selection_events", [])),
-        "program": list(st.session_state.program),
-        "output_log": list(st.session_state.log),
     }
 
 def result_file_path():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     return participant_result_path(PARTICIPANT_ID)
 
+def compact_response_record(question_id, response):
+    """Normalize old and new response records into response schema v3."""
+    if not isinstance(response, dict):
+        return {}
+    question = response.get("question", {})
+    is_attention_check = response.get("is_attention_check")
+    if is_attention_check is None and isinstance(question, dict):
+        is_attention_check = bool(question.get("is_attention_check"))
+    return {
+        "question_id": str(response.get("question_id") or question_id),
+        "question_index": response.get("question_index"),
+        "is_attention_check": bool(is_attention_check),
+        "answer": response.get("answer", ""),
+        "scratch_pad": response.get("scratch_pad", ""),
+        "is_correct": response.get("is_correct"),
+        "question_started_at": response.get("question_started_at"),
+        "survey_elapsed_seconds": response.get("survey_elapsed_seconds"),
+        "response_time_seconds": response.get("response_time_seconds"),
+        "submitted_at": response.get("submitted_at"),
+        "tool_calls": list(response.get("tool_calls", [])),
+        "selection_events": list(response.get("selection_events", [])),
+    }
+
+def response_score_summary(responses):
+    records = [
+        response
+        for response in responses.values()
+        if isinstance(response, dict)
+        and str(response.get("answer", "")).strip()
+        and isinstance(response.get("is_correct"), bool)
+    ]
+    substantive = [
+        response for response in records
+        if not response.get("is_attention_check", False)
+    ]
+    attention = [
+        response for response in records
+        if response.get("is_attention_check", False)
+    ]
+
+    def score_group(group):
+        correct = sum(bool(response.get("is_correct")) for response in group)
+        total = len(group)
+        return correct, total, round(correct / total, 4) if total else None
+
+    substantive_correct, substantive_total, substantive_accuracy = score_group(
+        substantive
+    )
+    overall_correct, overall_total, overall_accuracy = score_group(records)
+    attention_passed, attention_total, _ = score_group(attention)
+    return {
+        "substantive_correct": substantive_correct,
+        "substantive_total": substantive_total,
+        "substantive_accuracy": substantive_accuracy,
+        "overall_correct": overall_correct,
+        "overall_total": overall_total,
+        "overall_accuracy": overall_accuracy,
+        "attention_checks_passed": attention_passed,
+        "attention_checks_total": attention_total,
+        "attention_check_pass": (
+            attention_passed == attention_total if attention_total else None
+        ),
+    }
+
+def response_tool_summary(responses):
+    substantive = [
+        response
+        for response in responses.values()
+        if isinstance(response, dict)
+        and not response.get("is_attention_check", False)
+    ]
+    tool_counts = {}
+    total_tool_calls = 0
+    questions_using_tools = 0
+    for response in substantive:
+        calls = [
+            call for call in response.get("tool_calls", [])
+            if isinstance(call, dict)
+        ]
+        if calls:
+            questions_using_tools += 1
+        total_tool_calls += len(calls)
+        for call in calls:
+            tool = str(call.get("tool", "unknown"))
+            tool_counts[tool] = tool_counts.get(tool, 0) + 1
+    return {
+        "total_tool_calls": total_tool_calls,
+        "questions_using_tools": questions_using_tools,
+        "tool_counts": dict(sorted(tool_counts.items())),
+    }
+
+def current_dataset_metadata():
+    if not DATASET_PATH:
+        return {"version": "fallback", "file": None, "sha256": None}
+    metadata = {}
+    try:
+        with open(DATASET_PATH, "r", encoding="utf-8") as f:
+            dataset_payload = json.load(f)
+        if isinstance(dataset_payload, dict):
+            metadata = {
+                "version": dataset_payload.get("dataset_version"),
+                "role": dataset_payload.get("dataset_role"),
+                "generated_at": dataset_payload.get("generated_at"),
+            }
+    except (OSError, ValueError, TypeError):
+        metadata = {}
+    try:
+        with open(DATASET_PATH, "rb") as f:
+            dataset_sha256 = hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        dataset_sha256 = None
+    metadata.update(
+        {
+            "file": os.path.basename(DATASET_PATH),
+            "sha256": dataset_sha256,
+        }
+    )
+    return metadata
+
 def save_survey_results():
+    compact_responses = {
+        str(question_id): compact_response_record(question_id, response)
+        for question_id, response in st.session_state.get(
+            "survey_responses", {}
+        ).items()
+        if isinstance(response, dict)
+    }
+    st.session_state.survey_responses = compact_responses
+    score_summary = response_score_summary(compact_responses)
+    tool_summary = response_tool_summary(compact_responses)
+    tutorial_summary = refresh_tutorial_summary_metrics()
+    completed_at = st.session_state.get("survey_completed_timestamp")
+    if st.session_state.get("survey_completed") and not completed_at:
+        completed_at = _ts()
+        st.session_state.survey_completed_timestamp = completed_at
+    study_completed_at = st.session_state.get("study_completed_timestamp")
+    if st.session_state.get("post_survey_completed") and not study_completed_at:
+        study_completed_at = _ts()
+        st.session_state.study_completed_timestamp = study_completed_at
+    recorded_survey_elapsed = (
+        max(
+            (
+                response.get("survey_elapsed_seconds") or 0
+                for response in compact_responses.values()
+            ),
+            default=0,
+        )
+        if compact_responses
+        else 0
+    )
+    survey_duration_seconds = (
+        elapsed_between_timestamps(
+            st.session_state.get("survey_started_timestamp"),
+            completed_at,
+        )
+        if completed_at
+        else recorded_survey_elapsed
+    )
     payload = {
+        "response_schema_version": RESPONSE_SCHEMA_VERSION,
+        "code_version": CODE_VERSION,
         "participant_id": PARTICIPANT_ID,
         "survey_version": SURVEY_VERSION,
         "survey_form": st.session_state.get("survey_form"),
-        "assigned_question_ids": [
-            question.get("question_id")
-            for question in QUESTION_BANK
-            if not question.get("is_attention_check")
-        ],
-        "dataset_path": DATASET_PATH,
+        "dataset": current_dataset_metadata(),
         "saved_at": _ts(),
-        "question_count": len(QUESTION_BANK),
-        "substantive_question_count": sum(
-            1 for question in QUESTION_BANK
-            if not question.get("is_attention_check")
+        "study_started_at": st.session_state.get("study_started_timestamp"),
+        "study_completed_at": study_completed_at,
+        "total_duration_seconds": elapsed_between_timestamps(
+            st.session_state.get("study_started_timestamp"),
+            study_completed_at,
         ),
+        "survey_started_at": st.session_state.get("survey_started_timestamp"),
+        "survey_completed_at": completed_at,
+        "survey_duration_seconds": survey_duration_seconds,
         "survey_question_index": st.session_state.get("survey_question_index", 0),
         "max_confirmed_question_index": st.session_state.get(
             "max_confirmed_question_index", -1
         ),
         "survey_completed": st.session_state.get("survey_completed", False),
         "tutorial_completed": st.session_state.get("tutorial_completed", False),
-        "questions": QUESTION_BANK,
-        "responses": st.session_state.get("survey_responses", {}),
+        "post_survey_completed": st.session_state.get("post_survey_completed", False),
+        "entry_route": st.session_state.get("entry_route"),
+        "question_bank": QUESTION_BANK,
+        "responses": compact_responses,
+        "score_summary": score_summary,
+        "tool_usage_summary": tool_summary,
         "post_survey_responses": st.session_state.get("post_survey_responses", {}),
-        "post_survey_preview_seen": st.session_state.get("post_survey_preview_seen", False),
-        "tutorial_summary": st.session_state.get("tutorial_summary", {}),
+        "tutorial_summary": tutorial_summary,
     }
     if DATABASE_URL:
         _save_survey_postgres(payload)
@@ -3853,50 +4339,81 @@ def save_survey_results():
     st.session_state.last_result_path = destination
     return destination
 
-if st.session_state.survey_completed:
+if not st.session_state.landing_choice_made:
+    st.title("Compositional Survey")
+    st.markdown(
+        "Choose where you would like to begin. These options are provided "
+        "for internal testing."
+    )
+
+    if st.button(
+        "Start with Tutorial",
+        use_container_width=False,
+    ):
+        st.session_state.landing_choice_made = True
+        st.session_state.entry_route = "tutorial"
+        tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
+        if not tutorial_summary.get("started_at"):
+            tutorial_summary["started_at"] = _ts()
+        tutorial_summary["completion_status"] = "in_progress"
+        start_tutorial_step("selection_practice")
+        save_survey_results()
+        st.rerun()
+
+    if st.button(
+        "Start Formal Survey",
+        use_container_width=False,
+    ):
+        skipped_at = _ts()
+        st.session_state.landing_choice_made = True
+        st.session_state.entry_route = "formal_survey"
+        st.session_state.tutorial_completed = True
+        st.session_state.answer_feedback = None
+        st.session_state.scratch_pad = ""
+        st.session_state.survey_started_at = time.time()
+        st.session_state.tutorial_summary.update(
+            {
+                "completion_status": "skipped",
+                "completion_method": "landing_page_formal_survey",
+                "completed_at": skipped_at,
+            }
+        )
+        st.query_params["tutorial_done"] = "1"
+        save_survey_results()
+        st.rerun()
+
+    if st.button(
+        "Jump to Post-Questionnaire",
+        use_container_width=False,
+    ):
+        jumped_at = _ts()
+        st.session_state.landing_choice_made = True
+        st.session_state.entry_route = "post_questionnaire_testing"
+        st.session_state.tutorial_completed = True
+        st.session_state.survey_completed = True
+        st.session_state.tutorial_summary.update(
+            {
+                "completion_status": "skipped",
+                "completion_method": "landing_page_post_questionnaire_testing",
+                "completed_at": jumped_at,
+            }
+        )
+        save_survey_results()
+        st.rerun()
+    st.stop()
+
+if st.session_state.survey_completed and st.session_state.post_survey_completed:
     st.success("Survey complete. Thank you.")
     if st.session_state.last_result_path:
         st.caption("Your responses have been saved.")
     st.stop()
 
-# Temporary placement for reviewing the post-survey questionnaire. Once its
-# wording is approved, this page will be moved to the end of the main survey.
-if not st.session_state.tutorial_completed and not st.session_state.post_survey_preview_seen:
-    st.caption("Post-survey questionnaire preview")
+if st.session_state.survey_completed and not st.session_state.post_survey_completed:
+    st.caption("Post-survey questionnaire")
     st.title("Tell us about your experience")
     st.markdown(
-        "These questions will appear after the main survey. "
-        "For now, they are shown here so the questionnaire can be reviewed."
-    )
-    if st.button(
-        "Skip Tutorial and Start Survey",
-        key="skip_tutorial_and_start_survey",
-        use_container_width=False,
-    ):
-        skipped_at = _ts()
-        tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
-        tutorial_summary.update(
-            {
-                "completion_status": "skipped",
-                "completion_method": "first_page_start_survey_button",
-                "completed_at": skipped_at,
-            }
-        )
-        st.session_state.post_survey_responses = {
-            "completion_status": "skipped",
-            "placement": "pre_practice_preview",
-            "skipped_at": skipped_at,
-        }
-        st.session_state.post_survey_preview_seen = True
-        st.session_state.tutorial_completed = True
-        st.session_state.answer_feedback = None
-        st.session_state.scratch_pad = ""
-        st.session_state.survey_started_at = time.time()
-        st.query_params["tutorial_done"] = "1"
-        save_survey_results()
-        st.rerun()
-    st.caption(
-        "This skips both the questionnaire preview and the tutorial."
+        "Please answer the following questions about your experience with the tutorial, "
+        "survey, and tools."
     )
     st.markdown(
         """
@@ -3970,7 +4487,7 @@ if not st.session_state.tutorial_completed and not st.session_state.post_survey_
         if widget_key not in st.session_state and response_key in saved_preview:
             st.session_state[widget_key] = saved_preview[response_key]
 
-    with st.form("post_survey_preview_form"):
+    with st.form("post_survey_questionnaire_form"):
         if missing_preview_fields:
             st.error("Please answer the highlighted questions before continuing.")
         st.caption(
@@ -4059,7 +4576,7 @@ if not st.session_state.tutorial_completed and not st.session_state.post_survey_
             key="preview_other_feedback",
         )
 
-        if st.form_submit_button("Continue to Practice", type="primary"):
+        if st.form_submit_button("Submit Questionnaire", type="primary"):
             required_fields = [
                 "preview_tutorial_clarity",
                 "preview_instruction_clarity",
@@ -4084,15 +4601,12 @@ if not st.session_state.tutorial_completed and not st.session_state.post_survey_
                 }
                 st.session_state.post_survey_responses.update(
                     {
-                        "placement": "pre_practice_preview",
+                        "placement": "post_survey",
                         "submitted_at": _ts(),
                     }
                 )
                 st.session_state.post_survey_preview_seen = True
-                tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
-                if not tutorial_summary.get("started_at"):
-                    tutorial_summary["started_at"] = _ts()
-                tutorial_summary["completion_status"] = "in_progress"
+                st.session_state.post_survey_completed = True
                 save_survey_results()
                 st.rerun()
     st.stop()
@@ -4182,6 +4696,11 @@ with answer_panel.container(key="answer_panel_content"):
             and PRACTICE_STEP == "tools"
             and practice_neighbors_done()
         )
+        practice_ordered_neighbor_done = (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and practice_ordered_neighbors_done()
+        )
         practice_draw_done = (
             IS_PRACTICE
             and PRACTICE_STEP == "tools"
@@ -4241,6 +4760,17 @@ with answer_panel.container(key="answer_panel_content"):
                 elif pending_feedback == "neighbors":
                     output = practice_last_output("neighbors", 'neighbors(A, "edge")')
                     message = f"Very good — {output} are the regions that share an edge with Region A."
+                elif pending_feedback == "ordered_neighbors":
+                    output = practice_last_output(
+                        "neighbors",
+                        'neighbors(A, "ordered"',
+                    ) or "the listed regions"
+                    message = (
+                        f"Very good — the output is {output}. The selected vertex is the "
+                        "starting point. From there, the output lists the regions surrounding "
+                        "Region A in the order you encounter them while moving clockwise "
+                        "around Region A's boundary."
+                    )
                 elif pending_feedback == "draw":
                     output = practice_last_output("draw line") or "The labeled line"
                     message = f"Very good — {output} is the line segment connecting the two selected vertices."
@@ -4268,7 +4798,7 @@ with answer_panel.container(key="answer_panel_content"):
                 st.success(message)
                 if st.button("Continue", type="primary"):
                     continue_after_practice_feedback(pending_feedback)
-            elif practice_neighbor_done:
+            elif practice_ordered_neighbor_done:
                 if practice_angle_sort_done:
                     st.markdown(PRACTICE_MERGE_GUIDE_TEXT)
                 elif practice_orientation_done:
@@ -4281,6 +4811,8 @@ with answer_panel.container(key="answer_panel_content"):
                     st.markdown(PRACTICE_INTERSECT_GUIDE_TEXT)
                 else:
                     st.markdown(PRACTICE_DRAW_LINE_GUIDE_TEXT)
+            elif practice_neighbor_done:
+                st.markdown(PRACTICE_ORDERED_NEIGHBORS_GUIDE_TEXT)
             elif practice_meeting_done:
                 st.markdown(PRACTICE_NEIGHBORS_GUIDE_TEXT)
             elif practice_rightmost_done:
@@ -4923,6 +5455,7 @@ with col_ctrl:
             st.session_state.practice_rightmost_vertex_done = False
             st.session_state.practice_meeting_vertex_done = False
             st.session_state.practice_neighbors_done = False
+            st.session_state.practice_ordered_neighbors_done = False
             st.session_state.practice_draw_line_done = False
             st.session_state.practice_draw_line_ref = None
             st.session_state.practice_intersect_done = False
@@ -4934,6 +5467,8 @@ with col_ctrl:
             st.session_state.practice_guided_complete = False
             st.session_state.practice_direction_answered = False
             st.session_state.practice_direction_correct = None
+            start_tutorial_step("rightmost")
+            save_survey_results()
             st.rerun()
 
 # ----------------------------------------------------------------------------
