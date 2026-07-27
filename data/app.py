@@ -266,7 +266,7 @@ Please review the **Definitions** on the right before moving on. You can also op
 
 This survey is **not a test of your ability to operate the tools**. You can answer the questions without them, but the tools can make many questions substantially easier, so we recommend becoming comfortable with them.
 
-Feel free to keep practicing before starting the survey. For example, **try drawing a full line or a ray, extending an edge, measuring a distance or edge count, finding the neighbors of a vertex or edge, or sorting regions and vertices**.
+Feel free to keep practicing before starting the survey. For example, **try drawing a ray, extending an edge, measuring a distance or edge count, finding the neighbors of a vertex or edge, or sorting regions and vertices**.
 
 Read the instructions under the diagram to see what else each tool can do.
 """
@@ -464,6 +464,8 @@ def render_tutorial_screen():
             st.session_state.tutorial_completed = True
             st.query_params["tutorial_done"] = "1"
             st.session_state.survey_started_at = time.time()
+            st.session_state.definitions_open = False
+            st.session_state.tool_guide_open = False
             mark_tutorial_completed()
             st.rerun()
     with note_col:
@@ -1495,6 +1497,13 @@ if "tutorial_summary" not in st.session_state:
             "completion_method": "skip_tutorial_query" if skipped_by_query else None,
             "steps": {},
         }
+if "tutorial_tool_calls" not in st.session_state:
+    saved_tutorial_calls = st.session_state.get("tutorial_summary", {}).get(
+        "tool_calls", []
+    )
+    st.session_state.tutorial_tool_calls = (
+        list(saved_tutorial_calls) if isinstance(saved_tutorial_calls, list) else []
+    )
 if "last_result_path" not in st.session_state:
     saved_path = participant_result_path(PARTICIPANT_ID)
     st.session_state.last_result_path = saved_path if SAVED_SURVEY else ""
@@ -1724,7 +1733,7 @@ def describe(o):
         nm = point_name(o, create=False)
         return nm if nm else "Vertex"
     if isinstance(o, dict) and "type" in o:
-        return {"segment": "a segment", "extend": "a full line", "ray": "a ray"}[o["type"]]
+        return {"segment": "a segment", "extend": "an edge extension", "ray": "a ray"}[o["type"]]
     if isinstance(o, float): return f"{o:.4f}"
     return str(o)
 
@@ -1752,7 +1761,7 @@ def answer_like_text(o):
         nm = point_name(o, create=False)
         return nm if nm else "Vertex"
     if isinstance(o, dict) and "type" in o:
-        return {"segment": "segment", "extend": "full line", "ray": "ray"}[o["type"]]
+        return {"segment": "segment", "extend": "edge extension", "ray": "ray"}[o["type"]]
     if isinstance(o, float):
         return f"{o:.4f}"
     return str(o)
@@ -2120,6 +2129,26 @@ def refresh_tutorial_summary_metrics():
         "free_exploration_tool_calls",
         {"total_tool_calls": 0, "tool_counts": {}, "error_count": 0},
     )
+    tutorial_calls = list(st.session_state.get("tutorial_tool_calls", []))
+    summary["tool_calls"] = tutorial_calls
+    for stage in TUTORIAL_GUIDED_STAGES:
+        step = tutorial_step_entry(stage)
+        step_calls = [
+            call for call in tutorial_calls
+            if call.get("tutorial_phase") == "guided"
+            and call.get("tutorial_step") == stage
+        ]
+        step["tool_calls"] = step_calls
+        step["tool_usage"] = summarize_tutorial_tool_calls(step_calls)
+    free_calls = [
+        call for call in tutorial_calls
+        if call.get("tutorial_phase") == "free_exploration"
+    ]
+    summary["free_exploration_calls"] = free_calls
+    summary["free_exploration_tool_calls"] = summarize_tutorial_tool_calls(
+        free_calls
+    )
+    summary["tool_usage"] = summarize_tutorial_tool_calls(tutorial_calls)
     return summary
 
 def mark_tutorial_completed():
@@ -2132,9 +2161,6 @@ def mark_tutorial_completed():
         summary["started_at"] = completed_at
     if summary.get("guided_completed_at"):
         summary["free_exploration_completed_at"] = completed_at
-        summary["free_exploration_tool_calls"] = summarize_tutorial_tool_calls(
-            st.session_state.get("tool_calls", [])
-        )
     refresh_tutorial_summary_metrics()
     save_survey_results()
 
@@ -2971,7 +2997,7 @@ INSTRUCTIONS = {
     "draw line": (
         "- **Select TWO Vertices** → draw a line segment between them. \n"
         "- **Select ONE Vertex** → draw a ray starting at that vertex that extends up / down / left /right.\n"
-        "- **Select ONE Edge** → extend the edge in both directions as a full line.\n"
+        "- **Select ONE Edge** → extend the edge in both directions as a straight line.\n"
     ),
     "intersect": (
         "- **Select ONE Line** → return all regions this line crosses.\n"
@@ -3012,7 +3038,7 @@ TOOL_GUIDE_TEXT = """
 
 - Draw a segment between two vertices.
 - Draw a ray from one vertex in a chosen direction.
-- Extend a selected edge into a full line.
+- Extend a selected edge in both directions as a straight line.
 
 **Intersect**
 
@@ -3119,7 +3145,7 @@ def validate(tool, modes):
         if style == "ray":
             return (s["n"] == 1 and nV == 1, "Ray needs exactly 1 vertex.")
         if style == "full line":
-            return (s["n"] == 1 and nE == 1, "Full line needs exactly 1 edge.")
+            return (s["n"] == 1 and nE == 1, "Extend edge needs exactly 1 edge.")
         ok = s["n"] == 2 and nV == 2
         if (
             ok
@@ -3449,10 +3475,24 @@ def record_tool_call(
     if display_text is None:
         visible_log = st.session_state.get("log", [])
         display_text = visible_log[-1] if visible_log else output_text
-    calls.append({
+    normalized_function = function
+    if tool == "measure":
+        if 'what="area"' in input_text:
+            normalized_function = "area"
+        elif 'what="distance"' in input_text:
+            normalized_function = "distance"
+        elif 'what="angle"' in input_text:
+            normalized_function = "angle"
+        elif 'what="edges"' in input_text:
+            normalized_function = "edge_count"
+        elif 'what="regions"' in input_text:
+            normalized_function = "region_count"
+        elif 'what="orientation"' in input_text:
+            normalized_function = "cycle_orientation"
+    call = {
         "order": len(calls) + 1,
         "tool": tool,
-        "function": function,
+        "function": normalized_function,
         "call_type": call_type or infer_call_type(output),
         "input": input_text,
         "output": output,
@@ -3460,15 +3500,21 @@ def record_tool_call(
         "display_text": display_text,
         "timestamp": _ts(),
         "survey_elapsed_seconds": survey_elapsed_seconds(),
-    })
-    if (
-        IS_PRACTICE
-        and st.session_state.get("practice_guided_complete", False)
-    ):
-        tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
-        tutorial_summary["free_exploration_tool_calls"] = (
-            summarize_tutorial_tool_calls(calls)
+    }
+    calls.append(call)
+    if IS_PRACTICE:
+        guided_complete = st.session_state.get("practice_guided_complete", False)
+        call["tutorial_phase"] = (
+            "free_exploration" if guided_complete else "guided"
         )
+        call["tutorial_step"] = (
+            None if guided_complete else current_practice_tool_stage()
+        )
+        tutorial_calls = st.session_state.setdefault("tutorial_tool_calls", [])
+        tutorial_call = dict(call)
+        tutorial_call["order"] = len(tutorial_calls) + 1
+        tutorial_calls.append(tutorial_call)
+        tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
         refresh_tutorial_summary_metrics()
         save_survey_results()
 
@@ -3783,7 +3829,7 @@ def run_tool(tool, modes):
                 if s["edges"]:
                     add_log(
                         f"Extended **{code_name(s['edges'][0])}** in both directions "
-                        f"to form full line **{name}**."
+                        f"as **{name}**."
                     )
                 else:
                     add_log(
@@ -4774,6 +4820,8 @@ with answer_panel.container(key="answer_panel_content"):
                     st.session_state.answer_feedback = None
                     st.session_state.scratch_pad = ""
                     st.session_state.survey_started_at = time.time()
+                    st.session_state.definitions_open = False
+                    st.session_state.tool_guide_open = False
                     mark_tutorial_completed()
                     st.rerun()
             elif pending_feedback:
@@ -4919,6 +4967,8 @@ with answer_panel.container(key="answer_panel_content"):
                             st.session_state.answer_feedback = None
                             st.session_state.scratch_pad = ""
                             st.session_state.survey_started_at = time.time()
+                            st.session_state.definitions_open = False
+                            st.session_state.tool_guide_open = False
                             mark_tutorial_completed()
                             st.rerun()
                         else:
@@ -5229,9 +5279,14 @@ with col_ctrl:
                     horizontal=True, key="rad_nbr_kind")
 
         elif tool == "draw line":
-            modes["style"] = st.radio("Line style", ["segment", "full line", "ray"],
-                                      index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
-                                      horizontal=True, key="rad_style")
+            modes["style"] = st.radio(
+                "Line style",
+                ["segment", "full line", "ray"],
+                format_func=lambda value: "Extend edge" if value == "full line" else value,
+                index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
+                horizontal=True,
+                key="rad_style",
+            )
             if modes["style"] == "ray":
                 modes["ray_direction"] = st.radio("Direction", ["up", "down", "left", "right"],
                                                   horizontal=True, key="rad_raydir")
@@ -5276,8 +5331,6 @@ with col_ctrl:
                     st.caption("Will measure the distance between the two selected regions.")
                 elif len(s["vertices"]) >= 2:
                     st.caption("Will measure the distance between the two selected vertices.")
-                else:
-                    st.caption("Select two vertices or two regions.")
             elif modes["what"] == "angle":
                 if s["angles"]:
                     n = len(s["angles"])
@@ -5328,7 +5381,7 @@ with col_ctrl:
             for remove_union_index, union in enumerate(st.session_state.unions):
                 union_name = union.get("name", "U")
                 if st.button(
-                    f"Remove Region {union_name}",
+                    f"Clear Region {union_name}",
                     key=f"remove_union_{remove_union_index}",
                     use_container_width=True,
                 ):
