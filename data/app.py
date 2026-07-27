@@ -462,7 +462,6 @@ def render_tutorial_screen():
     with start_col:
         if st.button("Start Survey", type="primary", use_container_width=True):
             st.session_state.tutorial_completed = True
-            st.query_params["tutorial_done"] = "1"
             st.session_state.survey_started_at = time.time()
             st.session_state.definitions_open = False
             st.session_state.tool_guide_open = False
@@ -1486,15 +1485,11 @@ if "tutorial_summary" not in st.session_state:
         saved_tutorial_summary if isinstance(saved_tutorial_summary, dict) else {}
     )
     if not st.session_state.tutorial_summary:
-        skipped_by_query = st.query_params.get("skip_tutorial") == "1"
         st.session_state.tutorial_summary = {
             "started_at": None,
-            "completed_at": (
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                if skipped_by_query else None
-            ),
-            "completion_status": "skipped" if skipped_by_query else "not_started",
-            "completion_method": "skip_tutorial_query" if skipped_by_query else None,
+            "completed_at": None,
+            "completion_status": "not_started",
+            "completion_method": None,
             "steps": {},
         }
 if "tutorial_tool_calls" not in st.session_state:
@@ -1517,8 +1512,6 @@ if "tutorial_completed" not in st.session_state:
         or st.session_state.get("tutorial_summary", {}).get("completion_status")
         in ("completed", "skipped")
         or (isinstance(saved_responses, dict) and bool(saved_responses))
-        or st.query_params.get("skip_tutorial") == "1"
-        or st.query_params.get("tutorial_done") == "1"
     )
 if "post_survey_preview_seen" not in st.session_state:
     st.session_state.post_survey_preview_seen = bool(
@@ -4415,14 +4408,22 @@ def save_survey_results():
     return destination
 
 if not st.session_state.landing_choice_made:
-    st.title("Compositional Survey")
+    st.title("Survey Instructions")
     st.markdown(
-        "Choose where you would like to begin. These options are provided "
-        "for internal testing."
+        "In this survey, you will answer questions based on a series of diagrams.\n\n"
+        "Before the survey begins, you will complete a brief tutorial to help "
+        "you become familiar with the task and learn how to use the survey interface.\n\n"
+        "The tutorial is for practice only and is not scored.\n\n"
+        "Please use only the tools provided within the survey interface. Do not "
+        "use any external tools or assistance, including pen and paper, calculators, "
+        "other websites, or AI tools.\n\n"
+        "Please complete the survey in one sitting using a laptop or desktop computer.\n\n"
+        "Click **Start Tutorial** when you are ready."
     )
 
     if st.button(
-        "Start with Tutorial",
+        "Start Tutorial",
+        type="primary",
         use_container_width=False,
     ):
         st.session_state.landing_choice_made = True
@@ -4432,47 +4433,6 @@ if not st.session_state.landing_choice_made:
             tutorial_summary["started_at"] = _ts()
         tutorial_summary["completion_status"] = "in_progress"
         start_tutorial_step("selection_practice")
-        save_survey_results()
-        st.rerun()
-
-    if st.button(
-        "Start Formal Survey",
-        use_container_width=False,
-    ):
-        skipped_at = _ts()
-        st.session_state.landing_choice_made = True
-        st.session_state.entry_route = "formal_survey"
-        st.session_state.tutorial_completed = True
-        st.session_state.answer_feedback = None
-        st.session_state.scratch_pad = ""
-        st.session_state.survey_started_at = time.time()
-        st.session_state.tutorial_summary.update(
-            {
-                "completion_status": "skipped",
-                "completion_method": "landing_page_formal_survey",
-                "completed_at": skipped_at,
-            }
-        )
-        st.query_params["tutorial_done"] = "1"
-        save_survey_results()
-        st.rerun()
-
-    if st.button(
-        "Jump to Post-Questionnaire",
-        use_container_width=False,
-    ):
-        jumped_at = _ts()
-        st.session_state.landing_choice_made = True
-        st.session_state.entry_route = "post_questionnaire_testing"
-        st.session_state.tutorial_completed = True
-        st.session_state.survey_completed = True
-        st.session_state.tutorial_summary.update(
-            {
-                "completion_status": "skipped",
-                "completion_method": "landing_page_post_questionnaire_testing",
-                "completed_at": jumped_at,
-            }
-        )
         save_survey_results()
         st.rerun()
     st.stop()
@@ -4816,7 +4776,6 @@ with answer_panel.container(key="answer_panel_content"):
                 st.markdown(PRACTICE_TOOL_FINAL_TEXT)
                 if st.button("Start Survey", type="primary"):
                     st.session_state.tutorial_completed = True
-                    st.query_params["tutorial_done"] = "1"
                     st.session_state.answer_feedback = None
                     st.session_state.scratch_pad = ""
                     st.session_state.survey_started_at = time.time()
@@ -4963,7 +4922,6 @@ with answer_panel.container(key="answer_panel_content"):
                             st.error("Please enter an answer before continuing.")
                         elif IS_PRACTICE:
                             st.session_state.tutorial_completed = True
-                            st.query_params["tutorial_done"] = "1"
                             st.session_state.answer_feedback = None
                             st.session_state.scratch_pad = ""
                             st.session_state.survey_started_at = time.time()
