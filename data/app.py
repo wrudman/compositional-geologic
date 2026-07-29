@@ -79,7 +79,7 @@ DISPLAY_SIDE = 460          # map render size; clicks are mapped back through th
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "compositional_questions_v2_12_question_forms"
-RESPONSE_SCHEMA_VERSION = "3.2"
+RESPONSE_SCHEMA_VERSION = "3.7"
 CODE_VERSION = (
     os.environ.get("RENDER_GIT_COMMIT")
     or os.environ.get("GIT_COMMIT")
@@ -1730,6 +1730,62 @@ def describe(o):
     if isinstance(o, float): return f"{o:.4f}"
     return str(o)
 
+def _point_coordinates(point):
+    """Return stable diagram-space coordinates for response logging."""
+    if point is None or not hasattr(point, "x") or not hasattr(point, "y"):
+        return None
+    return [round(float(point.x), 6), round(float(point.y), 6)]
+
+def _vertex_geometry(vertex):
+    return {
+        "vertex_id": getattr(vertex, "num", None),
+        "coordinates": _point_coordinates(getattr(vertex, "p", None)),
+    }
+
+def _edge_geometry(edge_sel):
+    segments = []
+    for segment in getattr(edge_sel, "segments", ()):
+        segments.append(
+            {
+                "tail_vertex_id": getattr(segment.tail, "num", None),
+                "head_vertex_id": getattr(segment.head, "num", None),
+                "tail": _point_coordinates(getattr(segment.tail, "p", None)),
+                "head": _point_coordinates(getattr(segment.head, "p", None)),
+            }
+        )
+    return {"segments": segments}
+
+def _angle_geometry(angle_sel):
+    vertex = angle_sel.vertex
+    face = angle_sel.face
+    geometry = {
+        "region": face.letter if getattr(face, "bounded", True) else "Outside",
+        "vertex_id": getattr(vertex, "num", None),
+        "vertex": _point_coordinates(getattr(vertex, "p", None)),
+    }
+    vertices = list(getattr(face, "vertices", ()))
+    # Graph.getVertices() repeats the first vertex at the end to close the
+    # polygon. Remove that duplicate before finding the two angle rays;
+    # otherwise an angle at the first vertex records itself as a ray point.
+    if len(vertices) >= 2 and vertices[0] is vertices[-1]:
+        vertices.pop()
+    if vertex in vertices and len(vertices) >= 3:
+        index = vertices.index(vertex)
+        geometry["ray_points"] = [
+            _point_coordinates(vertices[index - 1].p),
+            _point_coordinates(vertices[(index + 1) % len(vertices)].p),
+        ]
+    return geometry
+
+def _object_geometry(obj):
+    if is_angle(obj):
+        return _angle_geometry(obj)
+    if is_edgesel(obj):
+        return _edge_geometry(obj)
+    if is_vertex(obj):
+        return _vertex_geometry(obj)
+    return {}
+
 def answer_like_text(o):
     """Format tool results so they can be copied into the answer box."""
     if is_angle(o):
@@ -2187,13 +2243,17 @@ def _selection_event_object(obj):
         kind, label = "vertex", point_name(obj, create=False) or "unlabeled vertex"
     else:
         kind, label = "object", describe(obj)
-    return {
+    record = {
         "object_type": kind,
         "object_label": label,
         "description": describe(obj),
     }
+    # Region labels already identify their geometry in the saved diagram.
+    # Temporary vertex/edge/angle names do not, so retain their true geometry.
+    record.update(_object_geometry(obj))
+    return record
 
-def record_selection_event(action, obj=None):
+def record_selection_event(action, obj=None, selection_before=None):
     """Record UI selection history separately from executed tool calls."""
     events = st.session_state.setdefault("selection_events", [])
     event = {
@@ -2206,6 +2266,10 @@ def record_selection_event(action, obj=None):
         "timestamp": _ts(),
         "survey_elapsed_seconds": survey_elapsed_seconds(),
     }
+    if selection_before is not None:
+        event["selection_before"] = [
+            _selection_event_object(item) for item in selection_before
+        ]
     if obj is not None:
         event["object"] = _selection_event_object(obj)
     events.append(event)
@@ -2233,11 +2297,16 @@ def remove_selection_item(i):
     sel, meta_list = st.session_state.selection, st.session_state.selection_meta
     if i < 0 or i >= len(sel):
         return
+    selection_before = list(sel)
     meta = meta_list[i] if i < len(meta_list) else None
     removed = sel.pop(i)
     if i < len(meta_list):
         meta_list.pop(i)
-    record_selection_event("deselect", removed)
+    record_selection_event(
+        "deselect",
+        removed,
+        selection_before=selection_before,
+    )
     if meta:
         if meta["kind"] == "point":
             # Vertex labels are persistent names. Deselecting a vertex only
@@ -3428,13 +3497,19 @@ def _tool_output(value):
     if isinstance(value, str):
         return {"type": "text", "value": value}
     if is_vertex(value):
-        return {"type": "annotation", "kind": "point", "label": code_name(value)}
+        return {
+            "type": "annotation",
+            "kind": "point",
+            "label": code_name(value),
+            "origin": "tool_output",
+            **_vertex_geometry(value),
+        }
     if is_angle(value):
         return {
             "type": "annotation",
             "kind": "angle",
             "label": angle_name(value),
-            "region": value.face.letter,
+            **_angle_geometry(value),
         }
     if is_edgesel(value):
         return {
@@ -3442,6 +3517,7 @@ def _tool_output(value):
             "kind": "edge",
             "label": edge_name(value),
             "description": value.text,
+            **_edge_geometry(value),
         }
     if is_region(value):
         return {
@@ -3465,6 +3541,19 @@ def record_tool_call(
     display_text=None,
 ):
     calls = st.session_state.setdefault("tool_calls", [])
+    tutorial_phase = None
+    tutorial_step = None
+    if IS_PRACTICE:
+        guided_complete = st.session_state.get("practice_guided_complete", False)
+        tutorial_phase = (
+            "free_exploration" if guided_complete else "guided"
+        )
+        # Resolve the stage before appending the new call. Several tutorial
+        # completion checks inspect existing calls, so resolving afterward
+        # incorrectly attributes a successful call to the following step.
+        tutorial_step = (
+            None if guided_complete else current_practice_tool_stage()
+        )
     if display_text is None:
         visible_log = st.session_state.get("log", [])
         display_text = visible_log[-1] if visible_log else output_text
@@ -3489,20 +3578,21 @@ def record_tool_call(
         "call_type": call_type or infer_call_type(output),
         "input": input_text,
         "output": output,
+        "output_origin": "tool_execution",
         "output_text": output_text if output_text is not None else describe(output),
         "display_text": display_text,
         "timestamp": _ts(),
         "survey_elapsed_seconds": survey_elapsed_seconds(),
+        "selection_context": [
+            _selection_event_object(item)
+            for item in st.session_state.get("selection", [])
+        ],
+        "selection_context_timing": "after_execution",
     }
     calls.append(call)
     if IS_PRACTICE:
-        guided_complete = st.session_state.get("practice_guided_complete", False)
-        call["tutorial_phase"] = (
-            "free_exploration" if guided_complete else "guided"
-        )
-        call["tutorial_step"] = (
-            None if guided_complete else current_practice_tool_stage()
-        )
+        call["tutorial_phase"] = tutorial_phase
+        call["tutorial_step"] = tutorial_step
         tutorial_calls = st.session_state.setdefault("tutorial_tool_calls", [])
         tutorial_call = dict(call)
         tutorial_call["order"] = len(tutorial_calls) + 1
@@ -3514,11 +3604,16 @@ def record_tool_call(
 # ---- single-step UNDO -------------------------------------------------------
 _UNDO_KEYS = ["selection", "selection_meta", "annotations", "lines", "angles", "named_edges",
               "unions", "union_consumed", "point_names", "counters",
-              "program", "log", "tool_calls"]
+              "program", "log"]
 
 def push_undo():
     """Snapshot the tracked state BEFORE a mutating action so it can be undone."""
-    snap = {}
+    snap = {
+        # Tool calls are behavioral data, not only interface state. Keep the
+        # count so undo_last() can mark calls made by the undone action without
+        # deleting them from the participant's recorded trajectory.
+        "_tool_call_count": len(st.session_state.get("tool_calls", [])),
+    }
     for k in _UNDO_KEYS:
         val = st.session_state.get(k)
         if isinstance(val, dict):
@@ -3536,9 +3631,47 @@ def push_undo():
 def undo_last():
     if not st.session_state.undo_stack:
         return
+    selection_before = list(st.session_state.get("selection", []))
     snap = st.session_state.undo_stack.pop()
+    calls = st.session_state.setdefault("tool_calls", [])
+    previous_call_count = int(snap.get("_tool_call_count", len(calls)))
+    newly_undone_calls = [
+        call for call in calls[previous_call_count:]
+        if not call.get("undone")
+    ]
+    if newly_undone_calls:
+        undone_at = _ts()
+        next_undo_order = (
+            sum(bool(call.get("undone")) for call in calls) + 1
+        )
+        for offset, call in enumerate(newly_undone_calls):
+            call["undone"] = True
+            call["undone_at"] = undone_at
+            call["undo_order"] = next_undo_order + offset
     for k, v in snap.items():
+        if k.startswith("_"):
+            continue
         st.session_state[k] = v
+    events = st.session_state.setdefault("selection_events", [])
+    events.append(
+        {
+            "order": len(events) + 1,
+            "action": "undo",
+            "event_type": "interface",
+            "undone_tool_call_orders": [
+                call.get("order") for call in newly_undone_calls
+            ],
+            "selection_before": [
+                _selection_event_object(item) for item in selection_before
+            ],
+            "selection_after": [
+                _selection_event_object(item)
+                for item in st.session_state.get("selection", [])
+            ],
+            "timestamp": _ts(),
+            "survey_elapsed_seconds": survey_elapsed_seconds(),
+        }
+    )
     st.session_state.click_targets = None
     st.session_state.pending_angle_vertex = None
     st.rerun()
@@ -4280,6 +4413,8 @@ def response_tool_summary(responses):
     ]
     tool_counts = {}
     total_tool_calls = 0
+    undone_tool_calls = 0
+    cleared_tool_calls = 0
     questions_using_tools = 0
     for response in substantive:
         calls = [
@@ -4289,11 +4424,21 @@ def response_tool_summary(responses):
         if calls:
             questions_using_tools += 1
         total_tool_calls += len(calls)
+        undone_tool_calls += sum(bool(call.get("undone")) for call in calls)
+        cleared_tool_calls += sum(bool(call.get("cleared")) for call in calls)
         for call in calls:
             tool = str(call.get("tool", "unknown"))
             tool_counts[tool] = tool_counts.get(tool, 0) + 1
     return {
         "total_tool_calls": total_tool_calls,
+        "active_tool_calls": sum(
+            not call.get("undone") and not call.get("cleared")
+            for response in substantive
+            for call in response.get("tool_calls", [])
+            if isinstance(call, dict)
+        ),
+        "undone_tool_calls": undone_tool_calls,
+        "cleared_tool_calls": cleared_tool_calls,
         "questions_using_tools": questions_using_tools,
         "tool_counts": dict(sorted(tool_counts.items())),
     }
@@ -5027,10 +5172,24 @@ with action_panel:
                            disabled=not st.session_state.undo_stack):
             undo_last()
         if qcols[1].button("Clear all", use_container_width=True):
+            selection_before = list(st.session_state.selection)
+            calls_before_clear = list(st.session_state.get("tool_calls", []))
+            cleared_at = _ts()
+            for call in calls_before_clear:
+                if not call.get("undone") and not call.get("cleared"):
+                    call["cleared"] = True
+                    call["cleared_at"] = cleared_at
             clear_selection()
-            record_selection_event("clear_all")
+            record_selection_event(
+                "clear_all",
+                selection_before=selection_before,
+            )
+            st.session_state.selection_events[-1]["cleared_tool_call_orders"] = [
+                call.get("order") for call in calls_before_clear
+                if call.get("cleared_at") == cleared_at
+            ]
             for k in ["annotations", "lines", "angles", "named_edges", "unions",
-                      "union_consumed", "undo_stack", "program", "log", "tool_calls"]:
+                      "union_consumed", "undo_stack", "program", "log"]:
                 st.session_state[k] = []
             st.session_state.pending_angle_vertex = None
             st.session_state.pending_edge_options = []
