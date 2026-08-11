@@ -4817,7 +4817,15 @@ if not st.session_state.landing_choice_made:
     st.stop()
 
 if st.session_state.survey_completed and st.session_state.post_survey_completed:
-    st.success("Survey complete. Thank you.")
+    # Use an explicit completion banner instead of Streamlit's theme-dependent
+    # alert component, whose text can be vertically clipped in some browsers.
+    st.markdown(
+        '<div style="box-sizing:border-box; width:100%; padding:0.8rem 1rem; '
+        'border-radius:0.65rem; background:#e8f7ec; color:#16833a; '
+        'font-size:1rem; font-weight:500; line-height:1.5; overflow:visible;">'
+        'Survey complete. Thank you.</div>',
+        unsafe_allow_html=True,
+    )
     if st.session_state.last_result_path:
         st.caption("Your responses have been saved.")
     st.stop()
