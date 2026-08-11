@@ -79,7 +79,7 @@ DISPLAY_SIDE = 400          # compact enough to keep the initial workspace in on
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "compositional_questions_v2_12_question_forms"
-RESPONSE_SCHEMA_VERSION = "3.7"
+RESPONSE_SCHEMA_VERSION = "3.8"
 CODE_VERSION = (
     os.environ.get("RENDER_GIT_COMMIT")
     or os.environ.get("GIT_COMMIT")
@@ -1493,6 +1493,13 @@ if "tutorial_tool_calls" not in st.session_state:
     st.session_state.tutorial_tool_calls = (
         list(saved_tutorial_calls) if isinstance(saved_tutorial_calls, list) else []
     )
+if "tutorial_selection_events" not in st.session_state:
+    saved_tutorial_events = st.session_state.get("tutorial_summary", {}).get(
+        "selection_events", []
+    )
+    st.session_state.tutorial_selection_events = (
+        list(saved_tutorial_events) if isinstance(saved_tutorial_events, list) else []
+    )
 if "last_result_path" not in st.session_state:
     saved_path = participant_result_path(PARTICIPANT_ID)
     st.session_state.last_result_path = saved_path if SAVED_SURVEY else ""
@@ -2224,6 +2231,9 @@ def refresh_tutorial_summary_metrics():
         free_calls
     )
     summary["tool_usage"] = summarize_tutorial_tool_calls(tutorial_calls)
+    summary["selection_events"] = list(
+        st.session_state.get("tutorial_selection_events", [])
+    )
     return summary
 
 def mark_tutorial_completed():
@@ -2299,6 +2309,23 @@ def record_selection_event(action, obj=None, selection_before=None):
     if obj is not None:
         event["object"] = _selection_event_object(obj)
     events.append(event)
+    if IS_PRACTICE:
+        tutorial_events = st.session_state.setdefault(
+            "tutorial_selection_events", []
+        )
+        tutorial_event = dict(event)
+        tutorial_event["order"] = len(tutorial_events) + 1
+        tutorial_event["tutorial_phase"] = (
+            "free_exploration"
+            if st.session_state.get("practice_guided_complete", False)
+            else "guided"
+        )
+        tutorial_event["tutorial_step"] = (
+            None
+            if tutorial_event["tutorial_phase"] == "free_exploration"
+            else current_practice_tool_stage()
+        )
+        tutorial_events.append(tutorial_event)
 
 def record_interface_event(action, details=None):
     """Record a UI-only action without counting it as a reasoning tool call."""
@@ -2313,6 +2340,23 @@ def record_interface_event(action, details=None):
     if details:
         event["details"] = details
     events.append(event)
+    if IS_PRACTICE:
+        tutorial_events = st.session_state.setdefault(
+            "tutorial_selection_events", []
+        )
+        tutorial_event = dict(event)
+        tutorial_event["order"] = len(tutorial_events) + 1
+        tutorial_event["tutorial_phase"] = (
+            "free_exploration"
+            if st.session_state.get("practice_guided_complete", False)
+            else "guided"
+        )
+        tutorial_event["tutorial_step"] = (
+            None
+            if tutorial_event["tutorial_phase"] == "free_exploration"
+            else current_practice_tool_stage()
+        )
+        tutorial_events.append(tutorial_event)
 
 def clear_selection():
     st.session_state.selection = []
@@ -3648,6 +3692,9 @@ def record_tool_call(
             normalized_function = "cycle_orientation"
     call = {
         "order": len(calls) + 1,
+        "status": "active",
+        "undone": False,
+        "cleared": False,
         "tool": tool,
         "function": normalized_function,
         "call_type": call_type or infer_call_type(output),
@@ -3721,6 +3768,7 @@ def undo_last():
         )
         for offset, call in enumerate(newly_undone_calls):
             call["undone"] = True
+            call["status"] = "undone"
             call["undone_at"] = undone_at
             call["undo_order"] = next_undo_order + offset
     for k, v in snap.items():
@@ -3728,8 +3776,7 @@ def undo_last():
             continue
         st.session_state[k] = v
     events = st.session_state.setdefault("selection_events", [])
-    events.append(
-        {
+    undo_event = {
             "order": len(events) + 1,
             "action": "undo",
             "event_type": "interface",
@@ -3746,7 +3793,24 @@ def undo_last():
             "timestamp": _ts(),
             "survey_elapsed_seconds": survey_elapsed_seconds(),
         }
-    )
+    events.append(undo_event)
+    if IS_PRACTICE:
+        tutorial_events = st.session_state.setdefault(
+            "tutorial_selection_events", []
+        )
+        tutorial_event = dict(undo_event)
+        tutorial_event["order"] = len(tutorial_events) + 1
+        tutorial_event["tutorial_phase"] = (
+            "free_exploration"
+            if st.session_state.get("practice_guided_complete", False)
+            else "guided"
+        )
+        tutorial_event["tutorial_step"] = (
+            None
+            if tutorial_event["tutorial_phase"] == "free_exploration"
+            else current_practice_tool_stage()
+        )
+        tutorial_events.append(tutorial_event)
     st.session_state.click_targets = None
     st.session_state.pending_angle_vertex = None
     st.rerun()
@@ -4667,23 +4731,35 @@ def save_survey_results():
         if completed_at
         else recorded_survey_elapsed
     )
+    saved_at = _ts()
+    study_duration_end = study_completed_at or saved_at
+    survey_duration_end = completed_at or saved_at
     payload = {
         "response_schema_version": RESPONSE_SCHEMA_VERSION,
         "code_version": CODE_VERSION,
+        "condition": "compositional",
         "participant_id": PARTICIPANT_ID,
+        "survey_instance": PARTICIPANT_ID,
         "survey_version": SURVEY_VERSION,
         "survey_form": st.session_state.get("survey_form"),
         "dataset": current_dataset_metadata(),
-        "saved_at": _ts(),
+        "saved_at": saved_at,
         "study_started_at": st.session_state.get("study_started_timestamp"),
         "study_completed_at": study_completed_at,
         "total_duration_seconds": elapsed_between_timestamps(
             st.session_state.get("study_started_timestamp"),
-            study_completed_at,
+            study_duration_end,
         ),
         "survey_started_at": st.session_state.get("survey_started_timestamp"),
         "survey_completed_at": completed_at,
-        "survey_duration_seconds": survey_duration_seconds,
+        "survey_duration_seconds": (
+            elapsed_between_timestamps(
+                st.session_state.get("survey_started_timestamp"),
+                survey_duration_end,
+            )
+            if st.session_state.get("survey_started_timestamp")
+            else survey_duration_seconds
+        ),
         "survey_question_index": st.session_state.get("survey_question_index", 0),
         "max_confirmed_question_index": st.session_state.get(
             "max_confirmed_question_index", -1
@@ -5336,6 +5412,7 @@ with action_panel:
             for call in calls_before_clear:
                 if not call.get("undone") and not call.get("cleared"):
                     call["cleared"] = True
+                    call["status"] = "cleared"
                     call["cleared_at"] = cleared_at
             clear_selection()
             record_selection_event(
