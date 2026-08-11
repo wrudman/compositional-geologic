@@ -180,7 +180,7 @@ DISPLAY_SIDE = 400
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v19_12_question_forms"
-RESPONSE_SCHEMA_VERSION = "3.5"
+RESPONSE_SCHEMA_VERSION = "3.8"
 SURVEY_CONDITION = "annotation"
 CODE_VERSION = (
     os.environ.get("RENDER_GIT_COMMIT")
@@ -2379,6 +2379,9 @@ def build_result_payload(data: dict) -> dict:
         if isinstance(post_survey_responses, dict)
         else None
     ) or survey_completed_at
+    saved_at = _ts()
+    study_duration_end = study_completed_at or saved_at
+    survey_duration_end = survey_completed_at or saved_at
     return {
         "response_schema_version": RESPONSE_SCHEMA_VERSION,
         "code_version": CODE_VERSION,
@@ -2388,18 +2391,18 @@ def build_result_payload(data: dict) -> dict:
         "survey_version": SURVEY_VERSION,
         "survey_form": data.get("survey_form", SURVEY_FORM),
         "dataset": annotation_dataset_metadata(data),
-        "saved_at": _ts(),
+        "saved_at": saved_at,
         "study_started_at": data.get("demo_start_time") or None,
         "study_completed_at": study_completed_at,
         "total_duration_seconds": elapsed_between_timestamps(
             data.get("demo_start_time", ""),
-            study_completed_at or "",
+            study_duration_end,
         ),
         "survey_started_at": data.get("survey_start_time") or None,
         "survey_completed_at": survey_completed_at,
         "survey_duration_seconds": elapsed_between_timestamps(
             data.get("survey_start_time", ""),
-            survey_completed_at or "",
+            survey_duration_end,
         ),
         "survey_question_index": data.get("current_trial_index", 0),
         "max_confirmed_question_index": max(
