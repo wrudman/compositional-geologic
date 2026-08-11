@@ -1,0 +1,1624 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: transparent; display: flex; gap: 56px;
+            width:100%; box-sizing:border-box; 
+        }
+        .diagram-column { width:400px; display:flex; flex-direction:column; align-items:stretch; gap:10px; }
+        .pad-container { position: relative; width: 400px; height: 400px; border-radius: 8px; overflow: hidden; box-shadow: none; }
+        canvas { position: absolute; top: 0; left: 0; width:400px; height:400px; cursor: crosshair; }
+        .right-panel { width: 276px; min-height: 400px; height:auto; background: transparent; border: none; padding: 0; box-sizing: border-box; display: flex; flex-direction: column; box-shadow: none; overflow:visible; }
+        
+        
+        .practice-banner { width:100%; box-sizing:border-box; background:#eff6ff; color:#1e3a8a; border:1px solid #bfdbfe; border-radius:0.5rem; padding:0.75rem 1rem; margin-top:0.65rem; font-size:0.9rem; line-height:1.4; text-align:left; }
+        .selection-review-panel { width:100%; box-sizing:border-box; padding-top:0.35rem; }
+        .selection-review-success { box-sizing:border-box; background:#e9f7ee; color:#177534; border-radius:0.5rem; padding:1rem; font-size:0.95rem; line-height:1.4; margin-bottom:0.65rem; }
+        .selection-review-caption { color:rgba(49,51,63,0.6); font-size:0.875rem; line-height:1.4; margin-bottom:0.65rem; }
+        .selection-review-continue { width:100%; box-sizing:border-box; border:1px solid #ff4b4b; border-radius:0.4rem; background:#ff4b4b; color:#fff; padding:0.65rem 1rem; font-size:1rem; font-weight:600; cursor:pointer; }
+        .selection-review-continue:hover { background:#e94343; border-color:#e94343; }
+        #actionsHeading, #toolGrid { order: 1; }
+        #drawToolSettings, #measureToolSettings { order: 2; margin:2px 0 7px; }
+        #vertexPanel, #anglePanel, #edgePanel, #regionPanel { order: 3; }
+        #runRequirement { order: 4; }
+        #selectionControls { order: 5; }
+        #placeholderText { order: 6; }
+        #panelHeader { display: none; }
+        .tool-heading { margin:0 0 7px; color:#111827; font-size:1.1rem; font-weight:600; line-height:1.2; }
+        .mode-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+        .mode-option { display: flex; align-items: center; gap: 5px; color: #303440; font-size: 15px; cursor: pointer; }
+        .mode-option input { accent-color: #ff4b4b; cursor: pointer; }
+        .selection-list { margin:0 0 10px; }
+        .section-title { margin:2px 0 5px; color:#6b7280; font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+        .selection-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 7px; margin-top:4px; border-radius:6px; color:#374151; font-size:14px; }
+        .selection-row > span::before { content:'•'; margin-right:10px; color:#374151; }
+        .selection-row:hover { background:rgba(150,150,150,0.15); }
+        .selection-remove { opacity:1; color:#b42318; background:#fff5f5; border:1px solid #efb7b2; font-size:18px; font-weight:700; line-height:1; min-height:2rem; padding:0.1rem 0.4rem; cursor:pointer; border-radius:6px; transition:background-color .15s ease,border-color .15s ease; }
+        .selection-remove:hover { color:#8f1d14; background:#fee4e2; border-color:#d92d20; }
+        .selection-echo { display:none !important; }
+        .tool-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 10px; margin-bottom:8px; }
+        .tool-choice { background:#fff; color:#374151; border:1px solid #cbd5e1; padding:8px 7px; border-radius:5px; cursor:pointer; font-size:15px; font-weight:400; text-align:left; }
+        .tool-choice:hover { background:#f8fafc; border-color:#94a3b8; }
+        .tool-choice.active { background:#e3f9ea; border-color:#8fd4a8; color:#1e5631; }
+        .tool-info { display:none; box-sizing:border-box; width:100%; background:#eaf3ff; color:#0756a5; border-radius:10px; padding:14px 18px; font-size:15px; line-height:1.5; }
+        .tool-info ul { margin:0; padding-left:22px; }
+        .tool-info li { padding-left:5px; }
+        .category-section { display:none; }
+        .setting-label { margin:2px 0 4px; color:#4b5563; font-size:13px; font-weight:600; }
+        .setting-choice { display:flex; align-items:center; gap:6px; margin:4px 0 6px; color:#374151; font-size:14px; }
+        .setting-choice input { accent-color:#ff4b4b; }
+        .ray-directions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 12px; margin:0 0 6px 22px; }
+        .run-requirement { display:none; color:rgba(49,51,63,0.6); background:transparent; border:none; border-radius:0; font-size:14px; font-weight:400; line-height:1.4; padding:0; margin:7px 0 10px; }
+        .status-box, .angle-box, .region-box { padding: 10px; margin-bottom: 9px; font-size: 15px; font-weight: 500; border-radius: 0 5px 5px 0; }
+        .status-box { background-color: #EDF7ED; border-left: 3px solid #4CAF50; color: #1E4620; }
+        .angle-box, .region-box { background-color: #FFF8E1; border-left: 3px solid #FFA000; color: #5D4037; }
+        .edge-box { padding:5px 7px; margin:0 0 8px; color:#374151; font-size:14px; }
+        .info-box { padding: 8px; background-color: #E3F2FD; border-left: 3px solid #2196F3; color: #0D47A1; margin-bottom: 8px; font-size: 12px; border-radius: 0 5px 5px 0; }
+        .hidden { display: none !important; }
+        .action-btn, .angle-btn, .edge-btn, .region-btn { background: #ffffff; color: #374151; border: 1px solid #cbd5e1; padding: 11px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-top: 5px; width: 100%; font-size: 15px; transition: background 0.2s, border-color 0.2s; }
+        .action-btn:hover, .angle-btn:hover, .edge-btn:hover, .region-btn:hover { background: #f8fafc; border-color: #94a3b8; }
+        .measure-btn { background: #ffffff; color: #374151; border: 1px solid #cbd5e1; padding: 11px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-top: 5px; width: 100%; font-size: 15px; transition: background 0.2s, border-color 0.2s; }
+        .measure-btn:hover { background: #f8fafc; border-color: #94a3b8; }
+        .sec-btn { background: #ffffff; color: #374151; border: 1px solid #cbd5e1; margin-top: 5px; width:100%; text-align:center; padding:11px; border-radius:6px; cursor:pointer; font-size:15px; font-weight:500; box-shadow:0 1px 1px rgba(15,23,42,0.04); }
+        .sec-btn:hover { background: #f8fafc; border-color: #94a3b8; }
+        .cancel-btn { background: #ffffff; color: #374151; border: 1px solid #cbd5e1; }
+        .cancel-btn:hover { background: #f8fafc; border-color: #94a3b8; }
+        .run-btn { background:#ff4b4b; color:#fff; border-color:#ff4b4b; font-weight:600; }
+        .run-btn:hover { background:#e94343; color:#fff; border-color:#e94343; }
+        .run-btn:disabled { background:#f3f4f6; color:#a3a7b0; border-color:#d1d5db; cursor:not-allowed; opacity:1; }
+        .run-btn:disabled:hover { background:#f3f4f6; color:#a3a7b0; border-color:#d1d5db; }
+    </style>
+</head>
+<body>
+    <div class="right-panel">
+        
+        <div id="actionsHeading" class="tool-heading ">Tools</div>
+        <div id="toolGrid" class="tool-grid ">
+            <button class="tool-choice" data-category="highlight">Highlight</button>
+            <button class="tool-choice" data-category="measure">Measure</button>
+            <button class="tool-choice" data-category="draw">Draw Line</button>
+            <button class="tool-choice" data-category="merge">Merge</button>
+        </div>
+        <div id="drawToolSettings" class="category-section" data-category="draw">
+            <div class="setting-label">Draw Line</div>
+            <label class="setting-choice"><input type="radio" name="globalDrawKind" value="segment"> Segment</label>
+            <label class="setting-choice"><input type="radio" name="globalDrawKind" value="ray"> Ray</label>
+            <div id="rayDirectionSettings" class="ray-directions hidden">
+                <label class="setting-choice"><input type="radio" name="globalRayDirection" value="up"> Up</label>
+                <label class="setting-choice"><input type="radio" name="globalRayDirection" value="down"> Down</label>
+                <label class="setting-choice"><input type="radio" name="globalRayDirection" value="left"> Left</label>
+                <label class="setting-choice"><input type="radio" name="globalRayDirection" value="right"> Right</label>
+            </div>
+            <label class="setting-choice"><input type="radio" name="globalDrawKind" value="extend" > Extend edge</label>
+        </div>
+        <div id="measureToolSettings" class="category-section" data-category="measure">
+            <div class="setting-label">Measure what?</div>
+            <div class="mode-row">
+                <label class="mode-option"><input type="radio" name="globalMeasureKind" value="distance" checked> Distance</label>
+                <label class="mode-option"><input type="radio" name="globalMeasureKind" value="angle" > Angle</label>
+                <label class="mode-option"><input type="radio" name="globalMeasureKind" value="area" > Area</label>
+            </div>
+        </div>
+        <div id="selectionControls">
+            <div class="tool-heading" style="font-size:1.25rem; font-weight:600; margin:0.5rem 0 0.35rem 0;">Selection</div>
+            <div class="mode-row" role="radiogroup" aria-label="Select object type">
+                <label class="mode-option"><input type="radio" name="toolMode" value="Region" >Region</label><label class="mode-option"><input type="radio" name="toolMode" value="Angle" >Angle</label><label class="mode-option"><input type="radio" name="toolMode" value="Vertex" checked>Vertex</label><label class="mode-option"><input type="radio" name="toolMode" value="Edge" >Edge</label>
+            </div>
+            
+            <div id="selectionSection" class="selection-section hidden">
+                <div id="selectionList" class="selection-list"></div>
+            </div>
+        </div>
+        <h3 id="panelHeader" style="margin-top:0; color:#111; font-size:18px; border-bottom:2px solid #F0F0F0; padding-bottom:10px;">Tools: Vertex</h3>
+
+        <div id="placeholderText" class="hidden"></div>
+
+        <div id="vertexPanel" class="hidden">
+            <div id="normalForm">
+                <div class="category-section" data-category="highlight">
+                    <button class="action-btn run-btn" id="submitBtn">▶ RUN</button>
+                </div>
+                <div class="category-section" data-category="draw" style="margin-top:8px;">
+                    <label style="display:none"><input type="radio" name="vertexLineStyle" value="segment" checked></label>
+                    <label style="display:none"><input type="radio" name="vertexLineStyle" value="up" ></label>
+                    <label style="display:none"><input type="radio" name="vertexLineStyle" value="down" ></label>
+                    <label style="display:none"><input type="radio" name="vertexLineStyle" value="left" ></label>
+                    <label style="display:none"><input type="radio" name="vertexLineStyle" value="right" ></label>
+                    <button class="sec-btn run-btn" id="runVertexLineBtn">▶ RUN</button>
+                </div>
+                <div class="category-section" data-category="measure">
+                    <button class="measure-btn run-btn" id="measureDistanceSingleBtn">▶ RUN</button>
+                </div>
+            </div>
+            <div id="connectionForm" class="hidden">
+                <div class="category-section" data-category="draw">
+                    <button class="action-btn run-btn" id="confirmConnectBtn">▶ RUN</button>
+                </div>
+                <div class="category-section" data-category="measure">
+                    <button class="measure-btn run-btn" id="measureDistanceBtn">▶ RUN</button>
+                </div>
+                <button class="action-btn cancel-btn" id="cancelConnectBtn">Clear Selection</button>
+            </div>
+        </div>
+
+        <div id="anglePanel" class="hidden">
+            <div class="category-section" data-category="highlight"><button class="angle-btn run-btn" id="commitAngleBtn">▶ RUN</button></div>
+            <div class="category-section" data-category="measure">
+                <button type="button" class="measure-btn run-btn" id="measureAngleBtn" onclick="runMeasureAngle()">▶ RUN</button>
+            </div>
+        </div>
+
+        <div id="edgePanel" class="hidden">
+            <div id="edgeHiddenWarning" class="info-box hidden">
+                This edge is hidden by a union.
+            </div>
+            <div id="edgeActiveContent" class="hidden">
+                <div id="edgeSelectionBox" class="edge-box selection-echo">
+                    <span id="edge_label_span">-</span>
+                </div>
+                <div id="edgeBoundaryPrompt" class="category-section" data-category="highlight" style="font-size:12px; color:#777; margin-bottom:8px;">Which region's boundary?</div>
+                <div class="category-section" data-category="highlight">
+                    <label class="setting-choice" id="edgeMainChoice"><input type="radio" name="edgeSide" value="main"> <span id="edgeMainLabel">-</span></label>
+                    <label class="setting-choice" id="edgeOppoChoice"><input type="radio" name="edgeSide" value="oppo"> <span id="edgeOppoLabel">-</span></label>
+                    <button class="edge-btn run-btn" id="edgeHighlightRun">▶ RUN</button>
+                </div>
+                <div class="category-section" data-category="draw">
+                    <button class="sec-btn run-btn" id="extendEdgeBtn">▶ RUN</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="regionPanel" class="hidden">
+            <div id="mergedFormationAlert" class="status-box selection-echo hidden" style="background-color: #E8F5E9; border-left-color: #2E7D32; color: #1B5E20;">
+                <b>Region U</b>
+            </div>
+            
+            <div id="normalRegionBox" class="region-box selection-echo">
+                <b>Region:</b> <span id="region_label_span">-</span>
+            </div>
+
+            <div class="category-section" data-category="highlight">
+                <button class="region-btn run-btn" id="commitRegionBtn">▶ RUN</button>
+                <button class="region-btn run-btn hidden" id="commitUnionHighlightBtn">▶ RUN</button>
+            </div>
+            <div class="category-section" data-category="measure">
+                <button class="measure-btn run-btn" id="measureRegionBtn">▶ RUN</button>
+            </div>
+            <button class="sec-btn hidden" id="clearUnionBtn" style="margin-top: 8px; background: #F5F5F5; color: #333; border-color: #BBB;">Clear Region U</button>
+
+            <div id="unionConstructionSection" style="display:none; margin-top:20px; border-top:1px dashed #DDD; padding-top:15px;">
+                <span style="font-size:12px; font-weight:bold; color:#777;">Union Construction:</span>
+                <button class="sec-btn" id="addToBufferBtn" style="margin-top: 8px;">➕ Add to Union Buffer</button>
+                <button class="sec-btn cancel-btn" id="removeFromBufferBtn" style="margin-top: 8px; display:none;">Remove from Buffer</button>
+                <div id="bufferWarning" style="color: #D32F2F; font-size: 11px; margin-top: 5px; font-weight: 500;" class="hidden"></div>
+            </div>
+
+            <div id="globalBufferBox" data-category="merge" style="margin-top:15px;" class="category-section">
+                <p class="selection-echo">Selected regions: <b id="staged_letters_span">-</b></p>
+                <div style="display: flex; gap: 8px;">
+                    <button class="action-btn run-btn" id="execUnionBtn" style="flex:1; margin-top:0;">▶ RUN</button>
+                </div>
+            </div>
+        </div>
+        <div id="runRequirement" class="run-requirement"></div>
+    </div>
+
+    <div class="diagram-column">
+        <div class="pad-container">
+            <canvas id="bgCanvas" width="400" height="400"></canvas>
+            <canvas id="interactionCanvas" width="400" height="400"></canvas>
+        </div>
+        
+        <div id="toolInfo" class="tool-info"></div>
+    </div>
+
+    <script>
+        function sendStreamlit(type, data) {
+            window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*");
+        }
+        const StreamlitBridge = {
+            ready: function() { sendStreamlit("streamlit:componentReady", {apiVersion: 1}); },
+            height: function(h) { sendStreamlit("streamlit:setFrameHeight", {height: h}); },
+            value: function(v) { sendStreamlit("streamlit:setComponentValue", {value: v, dataType: "json"}); }
+        };
+
+        const toolMode = "Vertex";
+        const measureKind = "distance";
+        const lastRunMessage = "";
+        const selectionOnlyDemo = false;
+        const tutorialLineStyle = "";
+        const hasStartPoint = false;
+        const startPointId = "";
+        const lastActiveId = "none";
+        const selectedVertexIds = [];
+        const selectedVertexLabels = {};
+        const selectedRegionIndices = [];
+        const selectedAngle = null;
+        const selectedEdge = null;
+        const selectedAngles = [];
+        const selectedEdges = [];
+        const anglePreviewLabels = ["a1"];
+        const edgePreviewLabels = ["e1"];
+        
+        const hasExistingUnion = false;
+        const bufferIndices = [];
+        const bufferLetters = [];
+        const obsoleteFacesUnionInfo = {};
+
+        const vertices = [{"id": 0, "x": 338.9514816896975, "y": 142.4444117722905, "label": 0, "is_obsolete": false, "neighbor_regions": ["A", "E"]}, {"id": 1, "x": 257.5555882277095, "y": 61.048518310302505, "label": 1, "is_obsolete": false, "neighbor_regions": ["A", "B"]}, {"id": 2, "x": 142.4444117722905, "y": 61.048518310302505, "label": 2, "is_obsolete": false, "neighbor_regions": ["B"]}, {"id": 3, "x": 61.048518310302484, "y": 142.4444117722905, "label": 3, "is_obsolete": false, "neighbor_regions": ["B", "C"]}, {"id": 4, "x": 61.04851831030247, "y": 257.55558822770945, "label": 4, "is_obsolete": false, "neighbor_regions": ["C"]}, {"id": 5, "x": 142.4444117722904, "y": 338.9514816896975, "label": 5, "is_obsolete": false, "neighbor_regions": ["C", "D"]}, {"id": 6, "x": 257.55558822770956, "y": 338.9514816896975, "label": 6, "is_obsolete": false, "neighbor_regions": ["D"]}, {"id": 7, "x": 338.9514816896975, "y": 257.55558822770956, "label": 7, "is_obsolete": false, "neighbor_regions": ["D", "E"]}, {"id": 8, "x": 184.0, "y": 177.60000000000002, "label": 8, "is_obsolete": false, "neighbor_regions": ["B", "A", "D", "C"]}, {"id": 9, "x": 225.6, "y": 225.6, "label": 9, "is_obsolete": false, "neighbor_regions": ["D", "A", "E"]}];
+        const facesData = [{"cache_idx": 1, "letter": "A", "display": "A", "cx": 265.856696589918, "cy": 134.71351572057702, "vertices": [{"id": 0, "x": 338.9514816896975, "y": 142.4444117722905}, {"id": 1, "x": 257.5555882277095, "y": 61.048518310302505}, {"id": 8, "x": 184.0, "y": 177.60000000000002}, {"id": 9, "x": 225.6, "y": 225.6}], "is_obsolete": false, "union_partner_idx": null, "valid_corner_ids": [0, 1, 8, 9]}, {"cache_idx": 2, "letter": "B", "display": "B", "cx": 159.77690310706362, "cy": 123.57656099149844, "vertices": [{"id": 1, "x": 257.5555882277095, "y": 61.048518310302505}, {"id": 2, "x": 142.4444117722905, "y": 61.048518310302505}, {"id": 3, "x": 61.048518310302484, "y": 142.4444117722905}, {"id": 8, "x": 184.0, "y": 177.60000000000002}], "is_obsolete": false, "union_partner_idx": null, "valid_corner_ids": [1, 2, 3, 8]}, {"cache_idx": 3, "letter": "C", "display": "C", "cx": 108.20291620458019, "cy": 242.14051083024552, "vertices": [{"id": 3, "x": 61.048518310302484, "y": 142.4444117722905}, {"id": 4, "x": 61.04851831030247, "y": 257.55558822770945}, {"id": 5, "x": 142.4444117722904, "y": 338.9514816896975}, {"id": 8, "x": 184.0, "y": 177.60000000000002}], "is_obsolete": false, "union_partner_idx": null, "valid_corner_ids": [3, 4, 5, 8]}, {"cache_idx": 4, "letter": "D", "display": "D", "cx": 210.2130787692725, "cy": 271.5346163535036, "vertices": [{"id": 5, "x": 142.4444117722904, "y": 338.9514816896975}, {"id": 6, "x": 257.55558822770956, "y": 338.9514816896975}, {"id": 7, "x": 338.9514816896975, "y": 257.55558822770956}, {"id": 9, "x": 225.6, "y": 225.6}, {"id": 8, "x": 184.0, "y": 177.60000000000002}], "is_obsolete": false, "union_partner_idx": null, "valid_corner_ids": [5, 6, 7, 9, 8]}, {"cache_idx": 5, "letter": "E", "display": "E", "cx": 308.98215387965246, "cy": 199.81640573753592, "vertices": [{"id": 7, "x": 338.9514816896975, "y": 257.55558822770956}, {"id": 0, "x": 338.9514816896975, "y": 142.4444117722905}, {"id": 9, "x": 225.6, "y": 225.6}], "is_obsolete": false, "union_partner_idx": null, "valid_corner_ids": [7, 0, 9]}];
+        const edgesData = [{"edge_idx": 0, "tail_id": 0, "head_id": 1, "tail_x": 0.9342233802803047, "tail_y": 0.6798612132115922, "head_x": 0.6798612132115922, "head_y": 0.9342233802803047, "x1": 338.9514816896975, "y1": 142.4444117722905, "x2": 257.5555882277095, "y2": 61.048518310302505, "segments": [{"x1": 338.9514816896975, "y1": 142.4444117722905, "x2": 257.5555882277095, "y2": 61.048518310302505}], "is_hidden": false, "is_obsolete": false, "is_frame": true, "main_name": "A", "oppo_name": "Frame", "main_valid": true, "oppo_valid": false}, {"edge_idx": 2, "tail_id": 1, "head_id": 2, "tail_x": 0.6798612132115922, "tail_y": 0.9342233802803047, "head_x": 0.32013878678840785, "head_y": 0.9342233802803047, "x1": 257.5555882277095, "y1": 61.048518310302505, "x2": 142.4444117722905, "y2": 61.048518310302505, "segments": [{"x1": 257.5555882277095, "y1": 61.048518310302505, "x2": 142.4444117722905, "y2": 61.048518310302505}], "is_hidden": false, "is_obsolete": false, "is_frame": true, "main_name": "B", "oppo_name": "Frame", "main_valid": true, "oppo_valid": false}, {"edge_idx": 4, "tail_id": 2, "head_id": 3, "tail_x": 0.32013878678840785, "tail_y": 0.9342233802803047, "head_x": 0.06577661971969528, "head_y": 0.6798612132115922, "x1": 142.4444117722905, "y1": 61.048518310302505, "x2": 61.048518310302484, "y2": 142.4444117722905, "segments": [{"x1": 142.4444117722905, "y1": 61.048518310302505, "x2": 61.048518310302484, "y2": 142.4444117722905}], "is_hidden": false, "is_obsolete": false, "is_frame": true, "main_name": "B", "oppo_name": "Frame", "main_valid": true, "oppo_valid": false}, {"edge_idx": 6, "tail_id": 3, "head_id": 4, "tail_x": 0.06577661971969528, "tail_y": 0.6798612132115922, "head_x": 0.06577661971969523, "head_y": 0.3201387867884079, "x1": 61.048518310302484, "y1": 142.4444117722905, "x2": 61.04851831030247, "y2": 257.55558822770945, "segments": [{"x1": 61.048518310302484, "y1": 142.4444117722905, "x2": 61.04851831030247, "y2": 257.55558822770945}], "is_hidden": false, "is_obsolete": false, "is_frame": true, "main_name": "C", "oppo_name": "Frame", "main_valid": true, "oppo_valid": false}, {"edge_idx": 8, "tail_id": 4, "head_id": 5, "tail_x": 0.06577661971969523, "tail_y": 0.3201387867884079, "head_x": 0.32013878678840757, "head_y": 0.06577661971969534, "x1": 61.04851831030247, "y1": 257.55558822770945, "x2": 142.4444117722904, "y2": 338.9514816896975, "segments": [{"x1": 61.04851831030247, "y1": 257.55558822770945, "x2": 142.4444117722904, "y2": 338.9514816896975}], "is_hidden": false, "is_obsolete": false, "is_frame": true, "main_name": "C", "oppo_name": "Frame", "main_valid": true, "oppo_valid": false}, {"edge_idx": 10, "tail_id": 5, "head_id": 6, "tail_x": 0.32013878678840757, "tail_y": 0.06577661971969534, "head_x": 0.6798612132115923, "head_y": 0.06577661971969528, "x1": 142.4444117722904, "y1": 338.9514816896975, "x2": 257.55558822770956, "y2": 338.9514816896975, "segments": [{"x1": 142.4444117722904, "y1": 338.9514816896975, "x2": 257.55558822770956, "y2": 338.9514816896975}], "is_hidden": false, "is_obsolete": false, "is_frame": true, "main_name": "D", "oppo_name": "Frame", "main_valid": true, "oppo_valid": false}, {"edge_idx": 12, "tail_id": 6, "head_id": 7, "tail_x": 0.6798612132115923, "tail_y": 0.06577661971969528, "head_x": 0.9342233802803046, "head_y": 0.3201387867884075, "x1": 257.55558822770956, "y1": 338.9514816896975, "x2": 338.9514816896975, "y2": 257.55558822770956, "segments": [{"x1": 257.55558822770956, "y1": 338.9514816896975, "x2": 338.9514816896975, "y2": 257.55558822770956}], "is_hidden": false, "is_obsolete": false, "is_frame": true, "main_name": "D", "oppo_name": "Frame", "main_valid": true, "oppo_valid": false}, {"edge_idx": 14, "tail_id": 7, "head_id": 0, "tail_x": 0.9342233802803046, "tail_y": 0.3201387867884075, "head_x": 0.9342233802803047, "head_y": 0.6798612132115922, "x1": 338.9514816896975, "y1": 257.55558822770956, "x2": 338.9514816896975, "y2": 142.4444117722905, "segments": [{"x1": 338.9514816896975, "y1": 257.55558822770956, "x2": 338.9514816896975, "y2": 142.4444117722905}], "is_hidden": false, "is_obsolete": false, "is_frame": true, "main_name": "E", "oppo_name": "Frame", "main_valid": true, "oppo_valid": false}, {"edge_idx": 16, "tail_id": 1, "head_id": 8, "tail_x": 0.6798612132115922, "tail_y": 0.9342233802803047, "head_x": 0.45, "head_y": 0.57, "x1": 257.5555882277095, "y1": 61.048518310302505, "x2": 184.0, "y2": 177.60000000000002, "segments": [{"x1": 257.5555882277095, "y1": 61.048518310302505, "x2": 184.0, "y2": 177.60000000000002}], "is_hidden": false, "is_obsolete": false, "is_frame": false, "main_name": "A", "oppo_name": "B", "main_valid": true, "oppo_valid": true}, {"edge_idx": 18, "tail_id": 8, "head_id": 9, "tail_x": 0.45, "tail_y": 0.57, "head_x": 0.58, "head_y": 0.42, "x1": 184.0, "y1": 177.60000000000002, "x2": 225.6, "y2": 225.6, "segments": [{"x1": 184.0, "y1": 177.60000000000002, "x2": 225.6, "y2": 225.6}], "is_hidden": false, "is_obsolete": false, "is_frame": false, "main_name": "A", "oppo_name": "D", "main_valid": true, "oppo_valid": true}, {"edge_idx": 20, "tail_id": 9, "head_id": 0, "tail_x": 0.58, "tail_y": 0.42, "head_x": 0.9342233802803047, "head_y": 0.6798612132115922, "x1": 225.6, "y1": 225.6, "x2": 338.9514816896975, "y2": 142.4444117722905, "segments": [{"x1": 225.6, "y1": 225.6, "x2": 338.9514816896975, "y2": 142.4444117722905}], "is_hidden": false, "is_obsolete": false, "is_frame": false, "main_name": "A", "oppo_name": "E", "main_valid": true, "oppo_valid": true}, {"edge_idx": 22, "tail_id": 3, "head_id": 8, "tail_x": 0.06577661971969528, "tail_y": 0.6798612132115922, "head_x": 0.45, "head_y": 0.57, "x1": 61.048518310302484, "y1": 142.4444117722905, "x2": 184.0, "y2": 177.60000000000002, "segments": [{"x1": 61.048518310302484, "y1": 142.4444117722905, "x2": 184.0, "y2": 177.60000000000002}], "is_hidden": false, "is_obsolete": false, "is_frame": false, "main_name": "B", "oppo_name": "C", "main_valid": true, "oppo_valid": true}, {"edge_idx": 24, "tail_id": 5, "head_id": 8, "tail_x": 0.32013878678840757, "tail_y": 0.06577661971969534, "head_x": 0.45, "head_y": 0.57, "x1": 142.4444117722904, "y1": 338.9514816896975, "x2": 184.0, "y2": 177.60000000000002, "segments": [{"x1": 142.4444117722904, "y1": 338.9514816896975, "x2": 184.0, "y2": 177.60000000000002}], "is_hidden": false, "is_obsolete": false, "is_frame": false, "main_name": "C", "oppo_name": "D", "main_valid": true, "oppo_valid": true}, {"edge_idx": 26, "tail_id": 7, "head_id": 9, "tail_x": 0.9342233802803046, "tail_y": 0.3201387867884075, "head_x": 0.58, "head_y": 0.42, "x1": 338.9514816896975, "y1": 257.55558822770956, "x2": 225.6, "y2": 225.6, "segments": [{"x1": 338.9514816896975, "y1": 257.55558822770956, "x2": 225.6, "y2": 225.6}], "is_hidden": false, "is_obsolete": false, "is_frame": false, "main_name": "D", "oppo_name": "E", "main_valid": true, "oppo_valid": true}];
+
+        const bgCanvas = document.getElementById('bgCanvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        const interCanvas = document.getElementById('interactionCanvas');
+        const interCtx = interCanvas.getContext('2d');
+        const pageLoadClientMs = Date.now();
+
+        const img = new Image();
+        img.onload = () => bgCtx.drawImage(img, 0, 0);
+        img.src = "data:image/png;base64,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";
+
+        let hoverV = null, hoverFace = null, hoverEdge = null;
+        let selectedElement = null;
+        let lockedV = null, lockedFace = null, lockedEdge = null;
+        const tutorialActiveCategory = "highlight";
+        const surveyUiResetToken = "";
+        const reviewUiResetToken = "";
+        if (reviewUiResetToken && sessionStorage.getItem('annotationReviewResetToken') !== reviewUiResetToken) {
+            sessionStorage.removeItem('annotationActiveTool');
+            sessionStorage.removeItem('annotationLineStyle');
+            sessionStorage.removeItem('annotationDrawKind');
+            sessionStorage.setItem('annotationReviewResetToken', reviewUiResetToken);
+        }
+        if (surveyUiResetToken && sessionStorage.getItem('annotationSurveyResetToken') !== surveyUiResetToken) {
+            sessionStorage.removeItem('annotationActiveTool');
+            sessionStorage.removeItem('annotationLineStyle');
+            sessionStorage.removeItem('annotationDrawKind');
+            sessionStorage.setItem('annotationSurveyResetToken', surveyUiResetToken);
+        }
+        let activeCategory = tutorialActiveCategory || sessionStorage.getItem('annotationActiveTool') || null;
+        if (tutorialActiveCategory) sessionStorage.setItem('annotationActiveTool', tutorialActiveCategory);
+        const savedLineStyle = tutorialLineStyle || sessionStorage.getItem('annotationLineStyle') || 'segment';
+        const savedDrawKind = tutorialLineStyle
+            ? (tutorialLineStyle === 'segment' ? 'segment' : 'ray')
+            : sessionStorage.getItem('annotationDrawKind')
+                || (savedLineStyle === 'segment' ? 'segment' : 'ray');
+        document.querySelectorAll('input[name="vertexLineStyle"]').forEach(input => {
+            input.checked = input.value === savedLineStyle;
+            input.addEventListener('change', () => {
+                if (input.checked) sessionStorage.setItem('annotationLineStyle', input.value);
+            });
+        });
+        document.querySelectorAll('input[name="globalDrawKind"]').forEach(input => {
+            input.checked = toolMode === 'Edge'
+                ? input.value === 'extend'
+                : input.value === savedDrawKind;
+        });
+        document.querySelectorAll('input[name="globalRayDirection"]').forEach(input => {
+            input.checked = input.value === savedLineStyle;
+        });
+        if (tutorialLineStyle) {
+            sessionStorage.setItem('annotationLineStyle', tutorialLineStyle);
+            sessionStorage.setItem('annotationDrawKind', tutorialLineStyle === 'segment' ? 'segment' : 'ray');
+        }
+
+        function updateRayDirectionVisibility() {
+            const raySelected = document.querySelector('input[name="globalDrawKind"]:checked')?.value === 'ray';
+            document.getElementById('rayDirectionSettings')?.classList.toggle('hidden', !raySelected);
+        }
+        updateRayDirectionVisibility();
+
+        function isPointInPolygon(mx, my, polyVertices) {
+            let inside = false;
+            for (let i = 0, j = polyVertices.length - 1; i < polyVertices.length; j = i++) {
+                const xi = polyVertices[i].x, yi = polyVertices[i].y;
+                const xj = polyVertices[j].x, yj = polyVertices[j].y;
+                const intersect = ((yi > my) !== (yj > my))
+                    && (mx < (xj - xi) * (my - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function interiorArcSpec(face, vertex, previous, following) {
+            const start = Math.atan2(previous.y - vertex.y, previous.x - vertex.x);
+            const finish = Math.atan2(following.y - vertex.y, following.x - vertex.x);
+            let clockwiseSweep = finish - start;
+            while (clockwiseSweep < 0) clockwiseSweep += 2 * Math.PI;
+            // Probe the middle of the clockwise candidate. If that direction
+            // is outside the polygon, the interior is the complementary arc.
+            const probeRadius = 9;
+            const clockwiseMid = start + clockwiseSweep / 2;
+            const clockwiseInside = isPointInPolygon(
+                vertex.x + probeRadius * Math.cos(clockwiseMid),
+                vertex.y + probeRadius * Math.sin(clockwiseMid),
+                face.vertices
+            );
+            if (clockwiseInside) {
+                return {
+                    start,
+                    end: start + clockwiseSweep,
+                    mid: start + clockwiseSweep / 2,
+                    anticlockwise: false
+                };
+            }
+            const reverseSweep = 2 * Math.PI - clockwiseSweep;
+            return {
+                start: finish,
+                end: finish + reverseSweep,
+                mid: finish + reverseSweep / 2,
+                anticlockwise: false
+            };
+        }
+
+        function unionBoundaryFace(face) {
+            if (!face?.is_obsolete || face.union_partner_idx === null) return face;
+            const partner = facesData.find(f => Number(f.cache_idx) === Number(face.union_partner_idx));
+            if (!partner) return face;
+
+            const edgeMap = new Map();
+            const vertexById = new Map();
+            for (const source of [face, partner]) {
+                const verts = source.vertices;
+                for (let i = 0; i < verts.length; i++) {
+                    const a = verts[i];
+                    const b = verts[(i + 1) % verts.length];
+                    vertexById.set(String(a.id), a);
+                    vertexById.set(String(b.id), b);
+                    const key = [String(a.id), String(b.id)].sort().join('|');
+                    const entry = edgeMap.get(key) || {count: 0, a: String(a.id), b: String(b.id)};
+                    entry.count += 1;
+                    edgeMap.set(key, entry);
+                }
+            }
+
+            const adjacency = new Map();
+            for (const edge of edgeMap.values()) {
+                if (edge.count !== 1) continue;
+                if (!adjacency.has(edge.a)) adjacency.set(edge.a, []);
+                if (!adjacency.has(edge.b)) adjacency.set(edge.b, []);
+                adjacency.get(edge.a).push(edge.b);
+                adjacency.get(edge.b).push(edge.a);
+            }
+            const ids = [...adjacency.keys()];
+            if (ids.length < 3) return face;
+            const orderedIds = [];
+            const start = ids[0];
+            let previous = null;
+            let current = start;
+            for (let guard = 0; guard <= ids.length; guard++) {
+                orderedIds.push(current);
+                const neighbors = adjacency.get(current) || [];
+                const next = neighbors.find(id => id !== previous && (id !== start || orderedIds.length === ids.length))
+                    || neighbors.find(id => id !== previous);
+                if (!next || next === start) break;
+                previous = current;
+                current = next;
+            }
+            let boundaryVertices = orderedIds.map(id => vertexById.get(id)).filter(Boolean);
+            if (boundaryVertices.length < 3) return face;
+            // Remove former constituent corners that became 180-degree points
+            // on U's outer boundary. They are not selectable angles of U.
+            let changed = true;
+            while (changed && boundaryVertices.length >= 3) {
+                changed = false;
+                boundaryVertices = boundaryVertices.filter((current, index, items) => {
+                    const previous = items[(index - 1 + items.length) % items.length];
+                    const following = items[(index + 1) % items.length];
+                    const inX = current.x - previous.x;
+                    const inY = current.y - previous.y;
+                    const outX = following.x - current.x;
+                    const outY = following.y - current.y;
+                    const cross = inX * outY - inY * outX;
+                    const dot = inX * outX + inY * outY;
+                    const scale = Math.max(Math.hypot(inX, inY) * Math.hypot(outX, outY), 1e-12);
+                    const isStraightThrough = Math.abs(cross) <= 1e-7 * scale && dot > 0;
+                    if (isStraightThrough) changed = true;
+                    return !isStraightThrough;
+                });
+            }
+            if (boundaryVertices.length < 3) return face;
+            return {
+                ...face,
+                display: 'U',
+                vertices: boundaryVertices,
+                valid_corner_ids: boundaryVertices.map(v => v.id),
+                is_union_boundary: true,
+            };
+        }
+
+        if (!selectionOnlyDemo && toolMode === "Vertex" && selectedVertexIds.length > 0) {
+            const found = vertices.find(v => String(v.id) === String(selectedVertexIds[selectedVertexIds.length - 1]));
+            if (found) {
+                lockedV = found;
+                showVertexPanel(found);
+                document.getElementById('actionsHeading').classList.remove('hidden');
+                configureToolGrid('vertex');
+            }
+        } else if (!selectionOnlyDemo && toolMode === "Region" && selectedRegionIndices.length > 0) {
+            const found = facesData.find(f => Number(f.cache_idx) === Number(selectedRegionIndices[selectedRegionIndices.length - 1]));
+            if (found) {
+                lockedFace = found;
+                showRegionPanel(found);
+                document.getElementById('actionsHeading').classList.remove('hidden');
+                configureToolGrid('region');
+            }
+        } else if (!selectionOnlyDemo && toolMode === "Angle" && selectedAngle) {
+            const foundV = vertices.find(v => String(v.id) === String(selectedAngle.vertex_id));
+            const rawFoundF = facesData.find(f => Number(f.cache_idx) === Number(selectedAngle.face_idx));
+            const foundF = unionBoundaryFace(rawFoundF);
+            if (foundV && foundF) {
+                lockedV = foundV;
+                lockedFace = foundF;
+                selectedElement = { type: "Angle", data: { v: foundV, f: foundF } };
+                showAnglePanel(foundV, foundF);
+                configureToolGrid('angle');
+            }
+        } else if (!selectionOnlyDemo && toolMode === "Edge" && selectedEdge) {
+            const foundE = edgesData.find(e =>
+                (Number(selectedEdge.edge_idx) >= 0 && Number(e.edge_idx) === Number(selectedEdge.edge_idx)) ||
+                ((Number(e.tail_id) === Number(selectedEdge.tail_id) && Number(e.head_id) === Number(selectedEdge.head_id)) ||
+                 (Number(e.tail_id) === Number(selectedEdge.head_id) && Number(e.head_id) === Number(selectedEdge.tail_id)))
+            );
+            if (foundE) {
+                lockedEdge = foundE;
+                selectedElement = { type: "Edge", data: foundE };
+                showEdgePanel(foundE);
+                configureToolGrid('edge');
+            }
+        } else if (!selectionOnlyDemo && toolMode === "Vertex") {
+            showVertexPanel(null);
+            configureToolGrid('vertex');
+        } else if (!selectionOnlyDemo && toolMode === "Angle") {
+            showAnglePanel(null, null);
+            configureToolGrid('angle');
+        } else if (!selectionOnlyDemo && toolMode === "Edge") {
+            showEdgePanel(null);
+            configureToolGrid('edge');
+        } else if (!selectionOnlyDemo && toolMode === "Region") {
+            showRegionPanel(null);
+            configureToolGrid('region');
+        }
+        if (selectionOnlyDemo && toolMode === "Angle" && selectedAngle) {
+            lockedV = vertices.find(v => String(v.id) === String(selectedAngle.vertex_id)) || null;
+            lockedFace = unionBoundaryFace(
+                facesData.find(f => Number(f.cache_idx) === Number(selectedAngle.face_idx)) || null
+            );
+            if (lockedV && lockedFace) selectedElement = { type: "Angle", data: { v: lockedV, f: lockedFace } };
+        } else if (selectionOnlyDemo && toolMode === "Edge" && selectedEdge) {
+            lockedEdge = edgesData.find(e =>
+                (Number(selectedEdge.edge_idx) >= 0 && Number(e.edge_idx) === Number(selectedEdge.edge_idx)) ||
+                ((Number(e.tail_id) === Number(selectedEdge.tail_id) && Number(e.head_id) === Number(selectedEdge.head_id)) ||
+                 (Number(e.tail_id) === Number(selectedEdge.head_id) && Number(e.head_id) === Number(selectedEdge.tail_id)))
+            ) || null;
+            if (lockedEdge) selectedElement = { type: "Edge", data: lockedEdge };
+        }
+
+        interCanvas.addEventListener('mousemove', function(e) {
+            // The backup implementation freezes an edge after click. Without
+            // this guard, moving the pointer from the diagram toward RUN can
+            // silently replace lockedEdge with the last edge crossed.
+            // Freeze an edge only while it is the operand of Draw Line /
+            // Extend edge. In ordinary selection mode the pointer may move to
+            // another edge so several edges can be retained as e1, e2, e3…
+            if (selectedElement?.type === 'Edge' && activeCategory === 'draw') return;
+            // Angle selections remain replaceable; other selected objects stay
+            // locked until explicitly removed.
+            if (selectedElement && !['Angle', 'Edge'].includes(toolMode)) return;
+
+            const rect = interCanvas.getBoundingClientRect();
+            const mx = (e.clientX - rect.left) * interCanvas.width / rect.width;
+            const my = (e.clientY - rect.top) * interCanvas.height / rect.height;
+
+            hoverV = null; hoverFace = null; hoverEdge = null;
+
+            if (toolMode === "Vertex") {
+                for (let v of vertices) {
+                    if (v.is_obsolete) continue;
+                    if (Math.sqrt((mx-v.x)**2 + (my-v.y)**2) < 20) {
+                        hoverV = v;
+                        lockedV = v;
+                        break;
+                    }
+                }
+
+            } else if (toolMode === "Angle") {
+                // Several regions meet at a vertex. Evaluate every containing
+                // face instead of accepting the first facesData entry, which
+                // made a neighboring ordinary region mask Region U's reflex
+                // interior angle.
+                const containingCandidates = [];
+                const seenCandidateKeys = new Set();
+                for (const rawFace of facesData) {
+                    if (!isPointInPolygon(mx, my, rawFace.vertices)) continue;
+                    const candidate = unionBoundaryFace(rawFace);
+                    const candidateKey = candidate.is_union_boundary
+                        ? 'union'
+                        : String(candidate.cache_idx);
+                    if (seenCandidateKeys.has(candidateKey)) continue;
+                    seenCandidateKeys.add(candidateKey);
+                    let boundaryDistance = Infinity;
+                    for (let i = 0; i < candidate.vertices.length; i++) {
+                        const a = candidate.vertices[i];
+                        const b = candidate.vertices[(i + 1) % candidate.vertices.length];
+                        const dx = b.x - a.x;
+                        const dy = b.y - a.y;
+                        const lengthSq = dx * dx + dy * dy;
+                        let t = lengthSq > 0
+                            ? ((mx - a.x) * dx + (my - a.y) * dy) / lengthSq
+                            : 0;
+                        t = Math.max(0, Math.min(1, t));
+                        boundaryDistance = Math.min(
+                            boundaryDistance,
+                            Math.hypot(mx - (a.x + t * dx), my - (a.y + t * dy))
+                        );
+                    }
+                    containingCandidates.push({face: candidate, boundaryDistance});
+                }
+                containingCandidates.sort((left, right) =>
+                    right.boundaryDistance - left.boundaryDistance
+                    || Number(Boolean(right.face.is_union_boundary))
+                       - Number(Boolean(left.face.is_union_boundary))
+                );
+                let activeContainingFace = containingCandidates[0]?.face || null;
+                if (activeContainingFace) {
+                    let nearestFaceVertex = null;
+                    let strictMinDist = 9999;
+                    for (let v of activeContainingFace.vertices) {
+                        const fullVect = vertices.find(origV => origV.id === v.id);
+                        if (!fullVect) continue;
+                        // Skip if this vertex is not a valid corner
+                        if (!Array.isArray(activeContainingFace.valid_corner_ids) || !activeContainingFace.valid_corner_ids.includes(v.id)) continue;
+                        const d = Math.sqrt((mx - fullVect.x)**2 + (my - fullVect.y)**2);
+                        if (d < strictMinDist) { strictMinDist = d; nearestFaceVertex = fullVect; }
+                    }
+                    if (nearestFaceVertex && strictMinDist < 35) {
+                        hoverV = nearestFaceVertex;
+                        lockedV = nearestFaceVertex;
+                        hoverFace = activeContainingFace;
+                        lockedFace = activeContainingFace;
+                    }
+                }
+
+            } else if (toolMode === "Edge") {
+                let bestEdge = null;
+                let bestDist = 9999;
+                for (let e of edgesData) {
+                    if (e.is_obsolete) continue;
+                    const dx = e.x2 - e.x1;
+                    const dy = e.y2 - e.y1;
+                    const lenSq = dx*dx + dy*dy;
+                    let t = lenSq > 0 ? ((mx-e.x1)*dx + (my-e.y1)*dy) / lenSq : 0;
+                    t = Math.max(0, Math.min(1, t));
+                    const nearX = e.x1 + t*dx;
+                    const nearY = e.y1 + t*dy;
+                    const dist = Math.sqrt((nearX-mx)**2 + (nearY-my)**2);
+                    // At a vertex, several edges can have essentially the same
+                    // distance. Prefer an internal edge over a frame edge in
+                    // that tie; clicking the middle of a frame edge still
+                    // selects the frame edge normally.
+                    const winsByDistance = dist < bestDist - 1;
+                    const winsTie = Math.abs(dist - bestDist) <= 1
+                        && bestEdge?.is_frame && !e.is_frame;
+                    if (winsByDistance || winsTie) {
+                        bestDist = dist;
+                        bestEdge = e;
+                    }
+                }
+                if (bestEdge && bestDist < 18) {
+                    hoverEdge = bestEdge;
+                    lockedEdge = bestEdge;
+                }
+
+            } else if (toolMode === "Region") {
+                let targetFace = null;
+                for (let f of facesData) {
+                    if (isPointInPolygon(mx, my, f.vertices)) {
+                        targetFace = f;
+                        break;
+                    }
+                }
+                if (!targetFace) {
+                    let minFaceDist = 9999;
+                    for (let f of facesData) {
+                        const fd = Math.sqrt((mx - f.cx)**2 + (my - f.cy)**2);
+                        if (fd < minFaceDist && fd < 60) { minFaceDist = fd; targetFace = f; }
+                    }
+                }
+                if (targetFace) {
+                    hoverFace = targetFace;
+                    lockedFace = targetFace;
+                }
+            }
+
+            redraw();
+        });
+
+        interCanvas.addEventListener('click', function(e) {
+            const clickRect = interCanvas.getBoundingClientRect();
+            const clickX = (e.clientX - clickRect.left) * interCanvas.width / clickRect.width;
+            const clickY = (e.clientY - clickRect.top) * interCanvas.height / clickRect.height;
+            interCanvas.dataset.lastClickX = String(clickX);
+            interCanvas.dataset.lastClickY = String(clickY);
+            if (toolMode === "Vertex") {
+                // Resolve the target from the click itself.  Relying on the
+                // preceding mousemove leaves hoverV empty after a component
+                // rerender and can make the second vertex click do nothing.
+                const rect = interCanvas.getBoundingClientRect();
+                const mx = (e.clientX - rect.left) * interCanvas.width / rect.width;
+                const my = (e.clientY - rect.top) * interCanvas.height / rect.height;
+                const clickedV = vertices.find(v =>
+                    !v.is_obsolete && Math.hypot(mx - v.x, my - v.y) < 20
+                );
+                if (clickedV) {
+                    lockedV = clickedV;
+                    hoverV = clickedV;
+                    dispatchAction('select_vertex');
+                    return;
+                }
+            }
+            if (toolMode === "Region" && lockedFace && hoverFace) {
+                dispatchAction('select_region', { bridge_face: lockedFace.cache_idx });
+                return;
+            }
+            if (toolMode === "Angle" && lockedV && lockedFace && hoverV) {
+                dispatchAction('select_angle', {
+                    bridge_face: lockedFace.cache_idx,
+                    bridge_face_name: lockedFace.display
+                });
+                return;
+            }
+            if (toolMode === "Edge" && lockedEdge && hoverEdge) {
+                if (!selectionOnlyDemo) {
+                    // Match the stable pre-multiselect implementation: keep
+                    // the exact hit-tested edge in the browser until RUN.
+                    // A server rerun between click and RUN can reconstruct a
+                    // different edge, especially near shared vertices.
+                    selectedElement = { type: "Edge", data: lockedEdge };
+                    showEdgePanel(lockedEdge);
+                    document.getElementById('selectionSection').classList.remove('hidden');
+                    document.getElementById('selectedEdgeRow')?.remove();
+                    document.getElementById('transientSelectionRow')?.remove();
+                    const selectionList = document.getElementById('selectionList');
+                    const transientEdgeLabel = edgeSelectionText(lockedEdge);
+                    selectionList.insertAdjacentHTML(
+                        'beforeend',
+                        '<div id="transientSelectionRow" class="selection-row">'
+                        + '<span>' + transientEdgeLabel + '</span><button id="removeTransientEdge" class="selection-remove" '
+                        + 'aria-label="Remove selected edge">✕</button></div>'
+                    );
+                    document.getElementById('removeTransientEdge')?.addEventListener('click', () => {
+                        selectedElement = null;
+                        lockedEdge = null;
+                        hoverEdge = null;
+                        stalePanels();
+                        redraw();
+                        updateRunButtonStates();
+                    });
+                    redraw();
+                    updateRunButtonStates();
+                    // Persist only the display/selection record. Extend still
+                    // uses the exact frozen edge and its coordinates.
+                    dispatchAction('select_edge', {
+                        bridge_edge_idx: lockedEdge.edge_idx,
+                        bridge_tail: lockedEdge.tail_id,
+                        bridge_head: lockedEdge.head_id,
+                        bridge_label: edgeNaturalDescription(lockedEdge)
+                    });
+                    return;
+                }
+                dispatchAction('select_edge', {
+                    bridge_edge_idx: lockedEdge.edge_idx,
+                    bridge_tail: lockedEdge.tail_id,
+                    bridge_head: lockedEdge.head_id,
+                    bridge_label: edgeNaturalDescription(lockedEdge)
+                });
+                return;
+            }
+            if (selectedElement) {
+                dispatchAction(
+                    selectedElement.type === 'Angle' ? 'remove_selected_angle' : 'remove_selected_edge'
+                );
+                return;
+            }
+            redraw();
+        });
+
+        function configureToolGrid() {
+            if (selectionOnlyDemo) {
+                document.getElementById('actionsHeading').classList.add('hidden');
+                document.getElementById('toolGrid').classList.add('hidden');
+                document.getElementById('toolInfo').style.display = 'none';
+                return;
+            }
+            document.getElementById('toolGrid').classList.remove('hidden');
+            document.querySelectorAll('.tool-choice').forEach(button => {
+                button.style.display = 'block';
+                button.classList.toggle('active', button.dataset.category === activeCategory);
+            });
+            document.querySelectorAll('.category-section').forEach(section => {
+                section.style.display = section.dataset.category === activeCategory ? 'block' : 'none';
+            });
+            const regionMeasureBtn = document.getElementById('measureRegionBtn');
+            if (regionMeasureBtn && activeCategory === 'measure' && toolMode === 'Region') {
+                regionMeasureBtn.classList.toggle('hidden', selectedRegionIndices.length !== 1);
+            }
+            const info = document.getElementById('toolInfo');
+            const measureInstruction = measureKind === 'distance'
+                ? '<ul><li><strong>Select TWO Vertices</strong> → returns their distance in Output.</li></ul>'
+                : measureKind === 'angle'
+                    ? '<ul><li><strong>Select ONE Angle</strong> → returns its angle measurement in Output.</li></ul>'
+                    : '<ul><li><strong>Select ONE Region</strong> → returns its area in Output.</li></ul>';
+            const instructions = {
+                highlight: '<ul><li><strong>Select ONE Vertex, Angle, Edge, or Region</strong> → highlights that object.</li></ul>',
+                measure: measureInstruction,
+                draw: '<ul><li><strong>Select TWO Vertices</strong> → draws a segment between them.</li><li><strong>Select ONE Vertex</strong> → draws a ray up, down, left, or right.</li><li><strong>Select ONE Edge</strong> → extends the edge in both directions.</li></ul>',
+                merge: '<ul><li><strong>Select TWO Regions</strong> → merges them into one new region. The regions must share an edge.</li></ul>'
+            };
+            if (activeCategory && instructions[activeCategory]) {
+                info.innerHTML = instructions[activeCategory];
+                info.style.display = 'block';
+            } else {
+                info.innerHTML = '';
+                info.style.display = 'none';
+            }
+            requestAnimationFrame(() => {
+                StreamlitBridge.height(Math.max(420, document.documentElement.scrollHeight + 4));
+            });
+            updateRunButtonStates();
+        }
+
+        function setRunDisabled(id, disabled) {
+            const button = document.getElementById(id);
+            if (button) button.disabled = Boolean(disabled);
+        }
+
+        function selectedAngleData() {
+            if (selectedElement?.type === 'Angle' && selectedElement.data?.v && selectedElement.data?.f) {
+                return selectedElement.data;
+            }
+            if (!selectedAngle) return null;
+            const v = vertices.find(candidate => String(candidate.id) === String(selectedAngle.vertex_id));
+            const rawFace = facesData.find(candidate => Number(candidate.cache_idx) === Number(selectedAngle.face_idx));
+            const f = unionBoundaryFace(rawFace);
+            return v && f ? { v, f } : null;
+        }
+
+        function selectedEdgeData() {
+            if (selectedElement?.type === 'Edge' && selectedElement.data) {
+                return selectedElement.data;
+            }
+            if (!selectedEdge) return null;
+            if (lockedEdge) return lockedEdge;
+            return edgesData.find(e =>
+                (Number(selectedEdge.edge_idx) >= 0 && Number(e.edge_idx) === Number(selectedEdge.edge_idx))
+                || (Number(e.tail_id) === Number(selectedEdge.tail_id)
+                    && Number(e.head_id) === Number(selectedEdge.head_id))
+                || (Number(e.tail_id) === Number(selectedEdge.head_id)
+                    && Number(e.head_id) === Number(selectedEdge.tail_id))
+            ) || null;
+        }
+
+        function totalSelectedInputs() {
+            return selectedVertexIds.length + selectedRegionIndices.length
+                + selectedAngles.length + selectedEdges.length;
+        }
+
+        function updateRunButtonStates() {
+            const drawKind = document.querySelector('input[name="globalDrawKind"]:checked')?.value || 'segment';
+            const rayDirection = document.querySelector('input[name="globalRayDirection"]:checked')?.value || '';
+            const lineStyle = drawKind === 'ray' ? rayDirection : drawKind;
+            const totalSelections = totalSelectedInputs();
+            const oneVertex = selectedVertexIds.length === 1;
+            const twoVertices = selectedVertexIds.length === 2;
+            const oneRegion = selectedRegionIndices.length === 1;
+            const twoRegions = selectedRegionIndices.length === 2;
+            const oneAngle = selectedAngles.length === 1;
+            const oneEdge = selectedEdges.length === 1;
+            const exactlyOneVertex = oneVertex && totalSelections === 1;
+            const exactlyTwoVertices = twoVertices && totalSelections === 2;
+            const exactlyOneRegion = oneRegion && totalSelections === 1;
+            const exactlyTwoRegions = twoRegions && totalSelections === 2;
+            const angleSelected = oneAngle && totalSelections === 1 && Boolean(selectedAngleData());
+            const edgeSelected = oneEdge && totalSelections === 1 && Boolean(selectedEdgeData());
+            const edgeSideSelected = Boolean(document.querySelector('input[name="edgeSide"]:checked'));
+
+            setRunDisabled('submitBtn', !exactlyOneVertex);
+            setRunDisabled('runVertexLineBtn', lineStyle === 'segment' ? !exactlyTwoVertices : (!rayDirection || !exactlyOneVertex));
+            setRunDisabled('measureDistanceSingleBtn', !exactlyTwoVertices);
+            setRunDisabled('confirmConnectBtn', !exactlyTwoVertices);
+            setRunDisabled('measureDistanceBtn', !exactlyTwoVertices);
+            setRunDisabled('commitAngleBtn', !angleSelected);
+            setRunDisabled('measureAngleBtn', !angleSelected);
+            setRunDisabled('edgeHighlightRun', !(edgeSelected && edgeSideSelected));
+            setRunDisabled('extendEdgeBtn', !edgeSelected);
+            setRunDisabled('commitRegionBtn', !exactlyOneRegion);
+            setRunDisabled('commitUnionHighlightBtn', !exactlyOneRegion);
+            setRunDisabled('measureRegionBtn', !exactlyOneRegion);
+            setRunDisabled('execUnionBtn', !(exactlyTwoRegions && !hasExistingUnion));
+
+            let requirement = '';
+            if (activeCategory === 'highlight') {
+                const ready = toolMode === 'Vertex' ? exactlyOneVertex
+                    : toolMode === 'Angle' ? angleSelected
+                    : toolMode === 'Edge' ? (edgeSelected && edgeSideSelected)
+                    : exactlyOneRegion;
+                if (!ready) requirement = toolMode === 'Edge'
+                    ? 'Select one edge and choose an adjacent region.'
+                    : `Select exactly one ${toolMode.toLowerCase()}.`;
+            } else if (activeCategory === 'measure') {
+                if (measureKind === 'distance' && !exactlyTwoVertices) requirement = 'Select exactly two vertices.';
+                else if (measureKind === 'angle' && !angleSelected) requirement = 'Select exactly one angle.';
+                else if (measureKind === 'area' && !exactlyOneRegion) requirement = 'Select exactly one region.';
+            } else if (activeCategory === 'draw') {
+                if (toolMode === 'Vertex') {
+                    const ready = lineStyle === 'segment' ? exactlyTwoVertices : Boolean(rayDirection) && exactlyOneVertex;
+                    if (!ready) requirement = drawKind === 'ray' && !rayDirection
+                        ? 'Choose a ray direction.'
+                        : lineStyle === 'segment' ? 'Select exactly two vertices.' : 'Select exactly one vertex.';
+                } else if (toolMode === 'Edge' && !edgeSelected) requirement = 'Select exactly one edge.';
+                else if (!['Vertex', 'Edge'].includes(toolMode)) requirement = 'Choose Vertex or Edge under Selection.';
+            } else if (activeCategory === 'merge' && !(exactlyTwoRegions && !hasExistingUnion)) {
+                requirement = hasExistingUnion
+                    ? 'Clear the existing union before creating another.'
+                    : 'Select exactly two neighboring regions.';
+            }
+            const requirementBox = document.getElementById('runRequirement');
+            requirementBox.textContent = requirement;
+            requirementBox.style.display = requirement ? 'block' : 'none';
+        }
+
+        document.querySelectorAll('.tool-choice').forEach(button => {
+            button.addEventListener('click', () => {
+                activeCategory = button.dataset.category;
+                sessionStorage.setItem('annotationActiveTool', activeCategory);
+                configureToolGrid();
+            });
+        });
+
+        document.querySelectorAll('input[name="globalDrawKind"]').forEach(input => {
+            input.addEventListener('change', () => {
+                if (!input.checked) return;
+                const targetMode = input.value === 'extend' ? 'Edge' : 'Vertex';
+                sessionStorage.setItem('annotationDrawKind', input.value);
+                if (input.value === 'segment') {
+                    sessionStorage.setItem('annotationLineStyle', 'segment');
+                    document.querySelectorAll('input[name="vertexLineStyle"]').forEach(styleInput => {
+                        styleInput.checked = styleInput.value === 'segment';
+                    });
+                }
+                updateRayDirectionVisibility();
+                if (targetMode !== toolMode) {
+                    dispatchAction('set_tool_mode', {bridge_mode: targetMode});
+                } else {
+                    updateRunButtonStates();
+                }
+            });
+        });
+        document.querySelectorAll('input[name="globalMeasureKind"]').forEach(input => {
+            input.addEventListener('change', () => {
+                if (!input.checked) return;
+                const targetModes = {distance: 'Vertex', angle: 'Angle', area: 'Region'};
+                dispatchAction('set_measure_kind', {
+                    bridge_measure_kind: input.value,
+                    bridge_mode: targetModes[input.value]
+                });
+            });
+        });
+        document.querySelectorAll('input[name="globalRayDirection"]').forEach(input => {
+            input.addEventListener('change', () => {
+                if (!input.checked) return;
+                sessionStorage.setItem('annotationDrawKind', 'ray');
+                sessionStorage.setItem('annotationLineStyle', input.value);
+                document.querySelectorAll('input[name="vertexLineStyle"]').forEach(styleInput => {
+                    styleInput.checked = styleInput.value === input.value;
+                });
+                updateRunButtonStates();
+            });
+        });
+        configureToolGrid();
+
+        document.querySelectorAll('input[name="vertexLineStyle"], input[name="edgeSide"]').forEach(input => {
+            input.addEventListener('change', updateRunButtonStates);
+        });
+
+        function stalePanels() {
+            document.getElementById('transientSelectionRow')?.remove();
+            if (selectedVertexIds.length === 0 && selectedRegionIndices.length === 0) {
+                document.getElementById('selectionSection').classList.add('hidden');
+            }
+            document.getElementById('placeholderText').classList.remove('hidden');
+            document.getElementById('vertexPanel').classList.add('hidden');
+            document.getElementById('anglePanel').classList.add('hidden');
+            document.getElementById('edgePanel').classList.add('hidden');
+            document.getElementById('regionPanel').classList.add('hidden');
+            lockedV = null; lockedFace = null; lockedEdge = null;
+        }
+
+        function showVertexPanel(v) {
+            document.getElementById('placeholderText').classList.add('hidden');
+            document.getElementById('anglePanel').classList.add('hidden');
+            document.getElementById('edgePanel').classList.add('hidden');
+            document.getElementById('regionPanel').classList.add('hidden');
+            document.getElementById('vertexPanel').classList.remove('hidden');
+
+            if (selectedVertexIds.length >= 2) {
+                document.getElementById('normalForm').classList.add('hidden');
+                document.getElementById('connectionForm').classList.remove('hidden');
+                const btn = document.getElementById('confirmConnectBtn');
+                btn.disabled = false;
+                btn.style.opacity = 1.0;
+                const measureBtn = document.getElementById('measureDistanceBtn');
+                measureBtn.disabled = false;
+                measureBtn.style.opacity = 1.0;
+            } else {
+                document.getElementById('normalForm').classList.remove('hidden');
+                document.getElementById('connectionForm').classList.add('hidden');
+            }
+        }
+
+        function showAnglePanel(v, face) {
+            document.getElementById('placeholderText').classList.add('hidden');
+            document.getElementById('vertexPanel').classList.add('hidden');
+            document.getElementById('edgePanel').classList.add('hidden');
+            document.getElementById('regionPanel').classList.add('hidden');
+            document.getElementById('anglePanel').classList.remove('hidden');
+        }
+
+        function edgeMarkerLabel(e) {
+            const selectedEdgeIndex = selectedEdges.findIndex(edge =>
+                (Number(edge.tail_id) === Number(e.tail_id) && Number(edge.head_id) === Number(e.head_id))
+                || (Number(edge.tail_id) === Number(e.head_id) && Number(edge.head_id) === Number(e.tail_id))
+            );
+            return edgePreviewLabels[
+                selectedEdgeIndex >= 0 ? selectedEdgeIndex : selectedEdges.length
+            ] || 'e1';
+        }
+
+        function edgeNaturalDescription(e) {
+            const boundedRegionNames = [];
+            if (e.main_valid) boundedRegionNames.push(e.main_name);
+            if (e.oppo_valid && !boundedRegionNames.includes(e.oppo_name)) {
+                boundedRegionNames.push(e.oppo_name);
+            }
+            if (boundedRegionNames.length >= 2) {
+                return `edge between ${boundedRegionNames[0]} and ${boundedRegionNames[1]}`;
+            }
+            if (boundedRegionNames.length === 1) {
+                return `frame edge of ${boundedRegionNames[0]}`;
+            }
+            return 'selected edge';
+        }
+
+        function edgeSelectionText(e) {
+            return `edge ${edgeMarkerLabel(e)} (${edgeNaturalDescription(e)})`;
+        }
+
+        function showEdgePanel(e) {
+            document.getElementById('placeholderText').classList.add('hidden');
+            document.getElementById('vertexPanel').classList.add('hidden');
+            document.getElementById('anglePanel').classList.add('hidden');
+            document.getElementById('regionPanel').classList.add('hidden');
+            document.getElementById('edgePanel').classList.remove('hidden');
+            if (!e) {
+                document.getElementById('edgeHiddenWarning').classList.add('hidden');
+                document.getElementById('edgeActiveContent').classList.remove('hidden');
+                document.getElementById('edgeSelectionBox').classList.add('hidden');
+                document.getElementById('edgeMainChoice').style.display = 'none';
+                document.getElementById('edgeOppoChoice').style.display = 'none';
+                return;
+            }
+            document.getElementById('edgeSelectionBox').classList.remove('hidden');
+            if (e.is_hidden) {
+                document.getElementById('edgeHiddenWarning').classList.remove('hidden');
+                document.getElementById('edgeActiveContent').classList.add('hidden');
+            } else {
+                document.getElementById('edgeHiddenWarning').classList.add('hidden');
+                document.getElementById('edgeActiveContent').classList.remove('hidden');
+                document.getElementById('edge_label_span').innerText = edgeSelectionText(e);
+                const mainChoice = document.getElementById('edgeMainChoice');
+                const oppoChoice = document.getElementById('edgeOppoChoice');
+                document.getElementById('edgeMainLabel').innerText = "Edge of " + e.main_name;
+                document.getElementById('edgeOppoLabel').innerText = "Edge of " + e.oppo_name;
+                mainChoice.style.display = e.main_valid ? 'flex' : 'none';
+                oppoChoice.style.display = e.oppo_valid ? 'flex' : 'none';
+            }
+        }
+
+        function showRegionPanel(face) {
+            document.getElementById('placeholderText').classList.add('hidden');
+            document.getElementById('vertexPanel').classList.add('hidden');
+            document.getElementById('anglePanel').classList.add('hidden');
+            document.getElementById('edgePanel').classList.add('hidden');
+            document.getElementById('regionPanel').classList.remove('hidden');
+
+            if (!face) {
+                document.getElementById('mergedFormationAlert').classList.add('hidden');
+                document.getElementById('normalRegionBox').classList.toggle('hidden', Boolean(lastRunMessage));
+                document.getElementById('region_label_span').innerText = 'No region selected';
+                document.getElementById('commitRegionBtn').classList.remove('hidden');
+                document.getElementById('commitUnionHighlightBtn').classList.add('hidden');
+                document.getElementById('measureRegionBtn').classList.remove('hidden');
+                document.getElementById('globalBufferBox').classList.toggle(
+                    'hidden', selectedRegionIndices.length !== 2
+                );
+                return;
+            }
+
+            const isObsolete = face.cache_idx in obsoleteFacesUnionInfo;
+            const isInBuffer = selectedRegionIndices.includes(face.cache_idx);
+            const bufferIsFull = selectedRegionIndices.length >= 2;
+
+            if (isObsolete) {
+                document.getElementById('mergedFormationAlert').classList.remove('hidden');
+                document.getElementById('normalRegionBox').classList.add('hidden');
+                document.getElementById('commitRegionBtn').classList.add('hidden');
+                document.getElementById('commitUnionHighlightBtn').classList.remove('hidden');
+            } else {
+                document.getElementById('mergedFormationAlert').classList.add('hidden');
+                document.getElementById('normalRegionBox').classList.remove('hidden');
+                document.getElementById('region_label_span').innerText = "Region " + face.display;
+                document.getElementById('commitRegionBtn').classList.remove('hidden');
+                document.getElementById('commitUnionHighlightBtn').classList.add('hidden');
+            }
+
+            const addBtn = document.getElementById('addToBufferBtn');
+            const removeBtn = document.getElementById('removeFromBufferBtn');
+            const clearUnionBtn = document.getElementById('clearUnionBtn');
+            const bufWarn = document.getElementById('bufferWarning');
+            if (clearUnionBtn) {
+                clearUnionBtn.classList.toggle('hidden', !hasExistingUnion);
+            }
+
+            document.getElementById('unionConstructionSection').classList.add('hidden');
+            if (isInBuffer) {
+                addBtn.style.display = 'none';
+                removeBtn.style.display = 'block';
+                bufWarn.classList.remove('hidden');
+                bufWarn.innerText = "Region " + face.letter + " is inside your union buffer.";
+            } else {
+                addBtn.style.display = 'block';
+                removeBtn.style.display = 'none';
+                bufWarn.classList.add('hidden');
+                if (hasExistingUnion || bufferIsFull || isObsolete) {
+                    addBtn.disabled = true;
+                    addBtn.style.opacity = 0.5;
+                    if (hasExistingUnion) {
+                        bufWarn.classList.remove('hidden');
+                        bufWarn.innerText = "An active union already exists.";
+                    } else if (bufferIsFull) {
+                        bufWarn.classList.remove('hidden');
+                        bufWarn.innerText = "Buffer is full (max 2 regions).";
+                    }
+                } else {
+                    addBtn.disabled = false;
+                    addBtn.style.opacity = 1.0;
+                }
+            }
+
+            const globalBox = document.getElementById('globalBufferBox');
+            if (selectedRegionIndices.length === 2) {
+                document.getElementById('commitRegionBtn').classList.add('hidden');
+                document.getElementById('measureRegionBtn').classList.add('hidden');
+                globalBox.classList.remove('hidden');
+                document.getElementById('staged_letters_span').innerText = selectedRegionIndices.map(idx => {
+                    const selectedFace = facesData.find(f => Number(f.cache_idx) === Number(idx));
+                    return selectedFace ? selectedFace.letter : '?';
+                }).join(', ');
+                const execBtn = document.getElementById('execUnionBtn');
+                const canExecute = !hasExistingUnion;
+                execBtn.disabled = !canExecute;
+                execBtn.style.opacity = canExecute ? 1.0 : 0.5;
+            } else {
+                document.getElementById('measureRegionBtn').classList.remove('hidden');
+                globalBox.classList.add('hidden');
+            }
+        }
+
+        function redraw() {
+            interCtx.clearRect(0, 0, 400, 400);
+
+            // Persistent live selections match compositional_survey.py exactly.
+            for (const selectedIdx of selectedRegionIndices) {
+                const rawFace = facesData.find(item => Number(item.cache_idx) === Number(selectedIdx));
+                const f = unionBoundaryFace(rawFace);
+                if (!f || !f.vertices.length) continue;
+                interCtx.beginPath();
+                interCtx.moveTo(f.vertices[0].x, f.vertices[0].y);
+                for (let i = 1; i < f.vertices.length; i++) interCtx.lineTo(f.vertices[i].x, f.vertices[i].y);
+                interCtx.closePath();
+                interCtx.fillStyle = 'rgba(150,150,150,0.745)';
+                interCtx.fill();
+                interCtx.strokeStyle = 'rgba(0,0,0,1)';
+                interCtx.lineWidth = 4;
+                interCtx.stroke();
+            }
+            for (const selectedId of selectedVertexIds) {
+                const v = vertices.find(item => String(item.id) === String(selectedId));
+                if (!v) continue;
+                interCtx.beginPath();
+                interCtx.arc(v.x, v.y, 15, 0, 2*Math.PI);
+                interCtx.strokeStyle = 'rgba(0,255,204,1)';
+                interCtx.lineWidth = 4;
+                interCtx.stroke();
+                const vertexLabel = selectedVertexLabels[String(selectedId)];
+                if (vertexLabel) {
+                    interCtx.font = '600 15px -apple-system, BlinkMacSystemFont, sans-serif';
+                    interCtx.lineWidth = 4;
+                    interCtx.strokeStyle = 'white';
+                    interCtx.strokeText(vertexLabel, v.x + 11, v.y - 18);
+                    interCtx.fillStyle = 'rgb(0,0,255)';
+                    interCtx.fillText(vertexLabel, v.x + 11, v.y - 18);
+                }
+            }
+
+            // Angle and Edge selections remain visible when the user switches
+            // to another Selection type, just like Vertex and Region.
+            for (let angleIndex = 0; angleIndex < selectedAngles.length; angleIndex++) {
+                const persistentAngle = selectedAngles[angleIndex];
+                const angleV = vertices.find(v => String(v.id) === String(persistentAngle.vertex_id));
+                const angleF = unionBoundaryFace(
+                    facesData.find(f => Number(f.cache_idx) === Number(persistentAngle.face_idx))
+                );
+                if (angleV && angleF) {
+                    const idx = angleF.vertices.findIndex(v => String(v.id) === String(angleV.id));
+                    if (idx !== -1) {
+                        const n = angleF.vertices.length;
+                        const prev = angleF.vertices[(idx - 1 + n) % n];
+                        const next = angleF.vertices[(idx + 1) % n];
+                        const arcSpec = interiorArcSpec(angleF, angleV, prev, next);
+                        const sameVertexSlot = selectedAngles
+                            .slice(0, angleIndex)
+                            .filter(angle => String(angle.vertex_id) === String(persistentAngle.vertex_id))
+                            .length;
+                        const angleRadius = 19 + sameVertexSlot * 8;
+                        interCtx.beginPath();
+                        interCtx.arc(
+                            angleV.x, angleV.y, angleRadius,
+                            arcSpec.start, arcSpec.end, arcSpec.anticlockwise
+                        );
+                        interCtx.strokeStyle = 'rgba(203,32,107,1)';
+                        interCtx.lineWidth = 3;
+                        interCtx.stroke();
+                        interCtx.font = '600 15px -apple-system, BlinkMacSystemFont, sans-serif';
+                        interCtx.lineWidth = 4;
+                        interCtx.strokeStyle = 'white';
+                        const angleLabel = anglePreviewLabels[angleIndex];
+                        const labelX = angleV.x + (angleRadius + 17) * Math.cos(arcSpec.mid);
+                        const labelY = angleV.y + (angleRadius + 17) * Math.sin(arcSpec.mid);
+                        interCtx.save();
+                        interCtx.textAlign = 'center';
+                        interCtx.textBaseline = 'middle';
+                        interCtx.strokeText(angleLabel, labelX, labelY);
+                        interCtx.fillStyle = 'rgba(203,32,107,1)';
+                        interCtx.fillText(angleLabel, labelX, labelY);
+                        interCtx.restore();
+                    }
+                }
+            }
+            for (let edgeIndex = 0; edgeIndex < selectedEdges.length; edgeIndex++) {
+                const persistentSelectedEdge = selectedEdges[edgeIndex];
+                const persistentEdge = edgesData.find(e =>
+                    (Number(e.tail_id) === Number(persistentSelectedEdge.tail_id) && Number(e.head_id) === Number(persistentSelectedEdge.head_id)) ||
+                    (Number(e.tail_id) === Number(persistentSelectedEdge.head_id) && Number(e.head_id) === Number(persistentSelectedEdge.tail_id))
+                );
+                if (persistentEdge) {
+                    const segs = persistentEdge.segments?.length
+                        ? persistentEdge.segments
+                        : [{x1:persistentEdge.x1, y1:persistentEdge.y1, x2:persistentEdge.x2, y2:persistentEdge.y2}];
+                    for (const seg of segs) {
+                        interCtx.beginPath();
+                        interCtx.moveTo(seg.x1, seg.y1);
+                        interCtx.lineTo(seg.x2, seg.y2);
+                        interCtx.strokeStyle = persistentEdge.is_hidden ? 'rgba(150,150,150,0.6)' : 'rgba(0,255,255,0.92)';
+                        interCtx.lineWidth = 14;
+                        interCtx.stroke();
+                        if (!persistentEdge.is_hidden) {
+                            for (const point of [[seg.x1, seg.y1], [seg.x2, seg.y2]]) {
+                                interCtx.beginPath();
+                                interCtx.arc(point[0], point[1], 7, 0, 2*Math.PI);
+                                interCtx.fillStyle = 'rgba(0,255,255,0.92)';
+                                interCtx.fill();
+                            }
+                        }
+                    }
+                    if (segs.length) {
+                        const seg = segs[0];
+                        const dx = seg.x2 - seg.x1;
+                        const dy = seg.y2 - seg.y1;
+                        const length = Math.max(1, Math.hypot(dx, dy));
+                        let nx = -dy / length;
+                        let ny = dx / length;
+                        if (Math.abs(nx) >= Math.abs(ny)) {
+                            if (nx > 0) { nx = -nx; ny = -ny; }
+                        } else if (ny > 0) {
+                            nx = -nx; ny = -ny;
+                        }
+                        const x = (seg.x1 + seg.x2) / 2 + 30 * nx;
+                        const y = (seg.y1 + seg.y2) / 2 + 30 * ny;
+                        interCtx.font = '600 15px -apple-system, BlinkMacSystemFont, sans-serif';
+                        interCtx.lineWidth = 4;
+                        interCtx.strokeStyle = 'white';
+                        const edgeLabel = edgePreviewLabels[edgeIndex];
+                        interCtx.save();
+                        interCtx.textAlign = 'center';
+                        interCtx.textBaseline = 'middle';
+                        interCtx.strokeText(edgeLabel, x, y);
+                        interCtx.fillStyle = 'rgb(0,100,130)';
+                        interCtx.fillText(edgeLabel, x, y);
+                        interCtx.restore();
+                    }
+                }
+            }
+
+            const renderLock = selectedElement !== null;
+            const targetV = renderLock && selectedElement.type === 'Angle'
+                ? selectedElement.data.v
+                : (renderLock ? lockedV : hoverV);
+            const targetFace = renderLock && selectedElement.type === 'Angle'
+                ? selectedElement.data.f
+                : (renderLock ? lockedFace : hoverFace);
+            const targetEdge = renderLock && selectedElement.type === 'Edge'
+                ? selectedElement.data
+                : (renderLock ? lockedEdge : hoverEdge);
+            const primaryColor = renderLock ? '#FF4B4B' : '#00FFCC';
+            const strokeWidth = renderLock ? 5 : 4;
+
+            if (toolMode === "Vertex" && targetV && !targetV.is_obsolete) {
+                interCtx.beginPath();
+                interCtx.arc(targetV.x, targetV.y, 15, 0, 2*Math.PI);
+                interCtx.strokeStyle = primaryColor;
+                interCtx.lineWidth = strokeWidth;
+                interCtx.stroke();
+
+            } else if (toolMode === "Angle" && targetV && targetFace) {
+                const fverts = targetFace.vertices;
+                const idx = fverts.findIndex(fv => fv.id === targetV.id);
+                if (idx !== -1) {
+                    const n = fverts.length;
+                    const prev = fverts[(idx - 1 + n) % n];
+                    const next = fverts[(idx + 1) % n];
+                    const arcSpec = interiorArcSpec(targetFace, targetV, prev, next);
+                    const selectedAngleIndex = selectedAngles.findIndex(angle =>
+                        String(angle.vertex_id) === String(targetV.id)
+                        && Number(angle.face_idx) === Number(targetFace.cache_idx)
+                    );
+                    const priorAngles = selectedAngleIndex >= 0
+                        ? selectedAngles.slice(0, selectedAngleIndex)
+                        : selectedAngles;
+                    const sameVertexSlot = priorAngles.filter(angle =>
+                        String(angle.vertex_id) === String(targetV.id)
+                    ).length;
+                    const activeAngleRadius = (renderLock ? 19 : 22) + sameVertexSlot * 8;
+
+                    if (!renderLock) {
+                        interCtx.beginPath();
+                        interCtx.moveTo(targetV.x, targetV.y);
+                        interCtx.lineTo(prev.x, prev.y);
+                        interCtx.strokeStyle = 'rgba(255,160,0,0.7)';
+                        interCtx.lineWidth = strokeWidth;
+                        interCtx.stroke();
+                        interCtx.beginPath();
+                        interCtx.moveTo(targetV.x, targetV.y);
+                        interCtx.lineTo(next.x, next.y);
+                        interCtx.stroke();
+                    }
+
+                    interCtx.beginPath();
+                    interCtx.arc(
+                        targetV.x, targetV.y, activeAngleRadius,
+                        arcSpec.start, arcSpec.end, arcSpec.anticlockwise
+                    );
+                    interCtx.strokeStyle = renderLock ? 'rgba(203,32,107,1)' : 'rgba(255,100,0,0.9)';
+                    interCtx.lineWidth = 3;
+                    interCtx.stroke();
+                    if (renderLock) {
+                        const activeAngleLabel = anglePreviewLabels[
+                            selectedAngleIndex >= 0 ? selectedAngleIndex : selectedAngles.length
+                        ];
+                        interCtx.font = '600 15px -apple-system, BlinkMacSystemFont, sans-serif';
+                        interCtx.lineWidth = 4;
+                        interCtx.strokeStyle = 'white';
+                        const activeLabelX = targetV.x + (activeAngleRadius + 17) * Math.cos(arcSpec.mid);
+                        const activeLabelY = targetV.y + (activeAngleRadius + 17) * Math.sin(arcSpec.mid);
+                        interCtx.save();
+                        interCtx.textAlign = 'center';
+                        interCtx.textBaseline = 'middle';
+                        interCtx.strokeText(activeAngleLabel, activeLabelX, activeLabelY);
+                        interCtx.fillStyle = 'rgba(203,32,107,1)';
+                        interCtx.fillText(activeAngleLabel, activeLabelX, activeLabelY);
+                        interCtx.restore();
+                    }
+                }
+
+            }  else if (toolMode === "Edge" && targetEdge) {
+                    const segs = (targetEdge.segments && targetEdge.segments.length > 0)
+                        ? targetEdge.segments
+                        : [{ x1: targetEdge.x1, y1: targetEdge.y1, x2: targetEdge.x2, y2: targetEdge.y2 }];
+                    const edgeColor = targetEdge.is_hidden
+                        ? 'rgba(150,150,150,0.6)'
+                        : (renderLock ? 'rgba(0,255,255,0.92)' : 'rgba(255,152,0,0.9)');
+                    const edgeWidth = renderLock ? 14 : 6;
+                    for (let seg of segs) {
+                        interCtx.beginPath();
+                        interCtx.moveTo(seg.x1, seg.y1);
+                        interCtx.lineTo(seg.x2, seg.y2);
+                        interCtx.strokeStyle = edgeColor;
+                        interCtx.lineWidth = edgeWidth;
+                        interCtx.stroke();
+                        if (renderLock && !targetEdge.is_hidden) {
+                            for (const point of [[seg.x1, seg.y1], [seg.x2, seg.y2]]) {
+                                interCtx.beginPath();
+                                interCtx.arc(point[0], point[1], 7, 0, 2*Math.PI);
+                                interCtx.fillStyle = 'rgba(0,255,255,0.92)';
+                                interCtx.fill();
+                            }
+                        }
+                    }
+                    if (renderLock && segs.length > 0) {
+                        const selectedEdgeIndex = selectedEdges.findIndex(edge =>
+                            (Number(edge.tail_id) === Number(targetEdge.tail_id) && Number(edge.head_id) === Number(targetEdge.head_id))
+                            || (Number(edge.tail_id) === Number(targetEdge.head_id) && Number(edge.head_id) === Number(targetEdge.tail_id))
+                        );
+                        const activeEdgeLabel = edgePreviewLabels[
+                            selectedEdgeIndex >= 0 ? selectedEdgeIndex : selectedEdges.length
+                        ];
+                        const labelSeg = segs[0];
+                        const dx = labelSeg.x2 - labelSeg.x1;
+                        const dy = labelSeg.y2 - labelSeg.y1;
+                        const length = Math.max(1, Math.hypot(dx, dy));
+                        let nx = -dy / length;
+                        let ny = dx / length;
+                        if (Math.abs(nx) >= Math.abs(ny)) {
+                            if (nx > 0) { nx = -nx; ny = -ny; }
+                        } else if (ny > 0) {
+                            nx = -nx; ny = -ny;
+                        }
+                        const labelX = (labelSeg.x1 + labelSeg.x2) / 2 + 30 * nx;
+                        const labelY = (labelSeg.y1 + labelSeg.y2) / 2 + 30 * ny;
+                        interCtx.font = '600 15px -apple-system, BlinkMacSystemFont, sans-serif';
+                        interCtx.lineWidth = 4;
+                        interCtx.strokeStyle = 'white';
+                        interCtx.save();
+                        interCtx.textAlign = 'center';
+                        interCtx.textBaseline = 'middle';
+                        interCtx.strokeText(activeEdgeLabel, labelX, labelY);
+                        interCtx.fillStyle = 'rgb(0,100,130)';
+                        interCtx.fillText(activeEdgeLabel, labelX, labelY);
+                        interCtx.restore();
+                    }
+
+
+            } else if (toolMode === "Region" && targetFace) {
+                let facesToDraw = [targetFace];
+                if (targetFace.is_obsolete && targetFace.union_partner_idx !== null) {
+                    const partner = facesData.find(f => f.cache_idx === targetFace.union_partner_idx);
+                    if (partner) facesToDraw.push(partner);
+                }
+
+                const fillColor = 'rgba(150,150,150,0.45)';
+                const strokeColor = 'rgba(0,0,0,1.0)';
+
+                for (let f of facesToDraw) {
+                    const fverts = f.vertices;
+                    if (fverts.length > 0) {
+                        interCtx.beginPath();
+                        interCtx.moveTo(fverts[0].x, fverts[0].y);
+                        for (let i = 1; i < fverts.length; i++) {
+                            interCtx.lineTo(fverts[i].x, fverts[i].y);
+                        }
+                        interCtx.closePath();
+                        interCtx.fillStyle = fillColor;
+                        interCtx.fill();
+                    }
+                }
+
+                if (renderLock && facesToDraw.length === 1) {
+                    const fverts = facesToDraw[0].vertices;
+                    if (fverts.length > 0) {
+                        interCtx.beginPath();
+                        interCtx.moveTo(fverts[0].x, fverts[0].y);
+                        for (let i = 1; i < fverts.length; i++) {
+                            interCtx.lineTo(fverts[i].x, fverts[i].y);
+                        }
+                        interCtx.closePath();
+                        interCtx.strokeStyle = strokeColor;
+                        interCtx.lineWidth = 4;
+                        interCtx.stroke();
+                    }
+                } else if (renderLock) {
+                    const faceAVerts = new Set(facesToDraw[0].vertices.map(v => v.id));
+                    const faceBVerts = new Set(facesToDraw[1].vertices.map(v => v.id));
+
+                    for (let f of facesToDraw) {
+                        const fverts = f.vertices;
+                        const n = fverts.length;
+                        for (let i = 0; i < n; i++) {
+                            const v1 = fverts[i];
+                            const v2 = fverts[(i + 1) % n];
+                            const isShared = faceAVerts.has(v1.id) && faceAVerts.has(v2.id)
+                                          && faceBVerts.has(v1.id) && faceBVerts.has(v2.id);
+                            if (isShared) continue;
+
+                            interCtx.beginPath();
+                            interCtx.moveTo(v1.x, v1.y);
+                            interCtx.lineTo(v2.x, v2.y);
+                            interCtx.strokeStyle = strokeColor;
+                            interCtx.lineWidth = 4;
+                            interCtx.stroke();
+                        }
+                    }
+                }
+            }
+        }
+
+        function dispatchAction(actionName, extraParams) {
+            if (!lockedV && !['set_tool_mode','set_measure_kind','practice_select_geom','continue_selection_review','select_angle','measure_angle','select_edge','remove_selected_angle','remove_selected_edge','select_region','remove_selected_region','cancel_connection','commit_edge','extend_edge','measure_edge','commit_region','measure_region','add_to_buffer','remove_from_buffer','clear_buffer','clear_union','execute_union','commit_union_highlight'].includes(actionName)) {
+                alert("Please click/select a vertex first!");
+                return;
+            }
+            const targetId = lockedV ? lockedV.id : "none";
+            const payload = {
+                action_id: actionName + "_" + Date.now() + "_" + Math.random().toString(36).slice(2),
+                bridge_act: actionName,
+                bridge_tgt: String(targetId),
+                participant_id: "participant_20260811_175205_ba3124cf",
+                client_timestamp: new Date().toISOString(),
+                client_elapsed_ms: String(Date.now() - pageLoadClientMs),
+                bridge_click_x: interCanvas.dataset.lastClickX || "",
+                bridge_click_y: interCanvas.dataset.lastClickY || ""
+            };
+            if (extraParams) {
+                for (const [k, v] of Object.entries(extraParams)) {
+                    payload[k] = String(v);
+                }
+            }
+            StreamlitBridge.value(payload);
+        }
+
+        // Keep Angle → Measure independent of the later listener-registration
+        // block.  Some Streamlit/browser combinations can interrupt that block
+        // after the component is rendered, leaving a visibly enabled RUN button
+        // with no click handler.
+        function runMeasureAngle() {
+            if (selectedAngles.length !== 1 || totalSelectedInputs() !== 1) {
+                alert('Select exactly one angle and remove any extra selections before clicking RUN.');
+                return;
+            }
+            let activeAngle = selectedAngleData();
+            if ((!activeAngle?.v || !activeAngle?.f)
+                    && selectedAngle?.vertex_id != null
+                    && selectedAngle?.face_idx != null) {
+                const v = vertices.find(candidate =>
+                    String(candidate.id) === String(selectedAngle.vertex_id));
+                const rawFace = facesData.find(candidate =>
+                    Number(candidate.cache_idx) === Number(selectedAngle.face_idx));
+                const f = unionBoundaryFace(rawFace);
+                if (v && f) activeAngle = {v, f};
+            }
+            if (!activeAngle?.v || !activeAngle?.f) {
+                alert('Select one angle before clicking RUN.');
+                return;
+            }
+            dispatchAction('measure_angle', {
+                bridge_tgt: activeAngle.v.id,
+                bridge_face: activeAngle.f.cache_idx
+            });
+        }
+
+        document.querySelectorAll('input[name="toolMode"]').forEach((input) => {
+            input.addEventListener('change', (event) => {
+                if (event.target.checked && event.target.value !== toolMode) {
+                    dispatchAction('set_tool_mode', {bridge_mode: event.target.value});
+                }
+            });
+        });
+
+        document.getElementById('submitBtn')?.addEventListener('click', () => dispatchAction('commit_vertex'));
+        document.getElementById('runVertexLineBtn')?.addEventListener('click', () => {
+            const style = document.querySelector('input[name="vertexLineStyle"]:checked')?.value;
+            if (style === 'segment') {
+                if (selectedVertexIds.length === 2) dispatchAction('confirm_connection');
+                else alert('Select two vertices for a segment.');
+            } else if (['up', 'down', 'left', 'right'].includes(style)) {
+                dispatchAction('commit_ray', { bridge_direction: style });
+            }
+            else alert('Choose a line style.');
+        });
+        document.getElementById('measureDistanceSingleBtn')?.addEventListener('click', () => {
+            if (selectedVertexIds.length === 2) dispatchAction('measure_distance');
+            else alert('Select two vertices to measure distance.');
+        });
+        document.getElementById('confirmConnectBtn')?.addEventListener('click', () => dispatchAction('confirm_connection'));
+        document.getElementById('measureDistanceBtn')?.addEventListener('click', () => dispatchAction('measure_distance'));
+        document.getElementById('cancelConnectBtn')?.addEventListener('click', () => dispatchAction('cancel_connection'));
+
+        document.getElementById('commitAngleBtn')?.addEventListener('click', () => {
+            if (selectedAngles.length !== 1 || totalSelectedInputs() !== 1) return;
+            const activeAngle = selectedAngleData();
+            if (!activeAngle?.v || !activeAngle?.f) return;
+            dispatchAction('commit_angle', {
+                bridge_tgt: activeAngle.v.id,
+                bridge_face: activeAngle.f.cache_idx
+            });
+        });
+        document.getElementById('edgeHighlightRun')?.addEventListener('click', () => {
+            if (selectedEdges.length !== 1 || totalSelectedInputs() !== 1) return;
+            const activeEdge = selectedEdgeData();
+            if (!activeEdge) return;
+            const side = document.querySelector('input[name="edgeSide"]:checked')?.value;
+            if (!side) { alert("Choose an adjacent region first."); return; }
+            dispatchAction('commit_edge', { bridge_edge_idx: activeEdge.edge_idx, bridge_side: side, bridge_tail: activeEdge.tail_id, bridge_head: activeEdge.head_id });
+        });
+        document.getElementById('extendEdgeBtn')?.addEventListener('click', () => {
+            if (selectedEdges.length !== 1 || totalSelectedInputs() !== 1) return;
+            const activeEdge = selectedEdgeData();
+            if (!activeEdge) return;
+            dispatchAction('extend_edge', {
+                bridge_edge_idx: activeEdge.edge_idx,
+                bridge_tail: activeEdge.tail_id,
+                bridge_head: activeEdge.head_id,
+                bridge_tail_x: activeEdge.tail_x,
+                bridge_tail_y: activeEdge.tail_y,
+                bridge_head_x: activeEdge.head_x,
+                bridge_head_y: activeEdge.head_y
+            });
+        });
+        document.getElementById('commitRegionBtn')?.addEventListener('click', () => {
+            if (!lockedFace) return;
+            dispatchAction('commit_region', { bridge_face: lockedFace.cache_idx });
+        });
+        document.getElementById('commitUnionHighlightBtn')?.addEventListener('click', () => {
+            if (!lockedFace) return;
+            dispatchAction('commit_union_highlight', { bridge_face: lockedFace.cache_idx });
+        });
+        document.getElementById('measureRegionBtn')?.addEventListener('click', () => {
+            if (selectedRegionIndices.length === 1 && totalSelectedInputs() === 1) {
+                dispatchAction('measure_region', { bridge_face: selectedRegionIndices[0] });
+            }
+        });
+        document.getElementById('addToBufferBtn')?.addEventListener('click', () => {
+            if (!lockedFace) return;
+            dispatchAction('add_to_buffer', { bridge_face: lockedFace.cache_idx });
+        });
+        document.getElementById('removeFromBufferBtn')?.addEventListener('click', () => {
+            if (!lockedFace) return;
+            dispatchAction('remove_from_buffer', { bridge_face: lockedFace.cache_idx });
+        });
+        document.getElementById('clearBufferBtn')?.addEventListener('click', () => dispatchAction('clear_buffer'));
+        document.getElementById('clearUnionBtn')?.addEventListener('click', () => dispatchAction('clear_union'));
+        document.getElementById('execUnionBtn')?.addEventListener('click', () => dispatchAction('execute_union'));
+        document.getElementById('continueSelectionReview')?.addEventListener('click', () => {
+            dispatchAction('continue_selection_review');
+        });
+        document.querySelectorAll('.selection-remove').forEach((button) => {
+            button.addEventListener('click', () => {
+                if (button.dataset.kind === 'vertex') {
+                    const selectedVertex = vertices.find(v => String(v.id) === String(button.dataset.id));
+                    if (selectedVertex) lockedV = selectedVertex;
+                    dispatchAction('remove_selected_vertex');
+                } else if (button.dataset.kind === 'region') {
+                    dispatchAction('remove_selected_region', { bridge_face: button.dataset.id });
+                } else if (button.dataset.kind === 'angle') {
+                    dispatchAction('remove_selected_angle', {
+                        bridge_selection_index: button.dataset.id
+                    });
+                } else if (button.dataset.kind === 'edge') {
+                    dispatchAction('remove_selected_edge', {
+                        bridge_selection_index: button.dataset.id
+                    });
+                }
+            });
+        });
+
+        redraw();
+        StreamlitBridge.ready();
+        StreamlitBridge.height(Math.max(420, document.documentElement.scrollHeight + 4));
+    </script>
+</body>
+</html>
