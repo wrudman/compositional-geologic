@@ -5061,9 +5061,14 @@ question_number = st.session_state.survey_question_index + 1
 top_left, top_right = st.columns([3, 1], gap="small")
 with top_left:
     if IS_PRACTICE:
-        st.caption("Practice")
+        progress_label = "Practice"
     else:
-        st.caption(f"Question {question_number} of {len(QUESTION_BANK)}")
+        progress_label = f"Question {question_number} of {len(QUESTION_BANK)}"
+    st.markdown(
+        f'<div style="color:#4b5563; font-size:0.95rem; font-weight:600; '
+        f'margin:0 0 0.35rem 0;">{html.escape(progress_label)}</div>',
+        unsafe_allow_html=True,
+    )
     raw_question_text = (
         practice_question_text_for_step(PRACTICE_STEP)
         if IS_PRACTICE
