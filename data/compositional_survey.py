@@ -36,7 +36,7 @@ st.markdown(
     """
     <style>
     .block-container {
-        padding-top: 1.5rem;
+        padding-top: 3.5rem;
         padding-bottom: 1.25rem;
     }
     div[data-testid="stVerticalBlock"] {
