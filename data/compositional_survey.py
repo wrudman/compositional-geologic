@@ -5066,15 +5066,33 @@ if st.session_state.survey_completed and not st.session_state.post_survey_comple
 #             RIGHT: quick actions + scratch pad + output)
 # ============================================================
 question_number = st.session_state.survey_question_index + 1
+if (
+    not IS_PRACTICE
+    and st.session_state.get("last_question_scroll_index")
+    != st.session_state.survey_question_index
+):
+    components.html(
+        """
+        <script>
+        setTimeout(function () {
+          try { window.parent.scrollTo({top: 0, left: 0, behavior: "instant"}); }
+          catch (err) { window.parent.scrollTo(0, 0); }
+        }, 0);
+        </script>
+        """,
+        height=0,
+    )
+    st.session_state.last_question_scroll_index = (
+        st.session_state.survey_question_index
+    )
 top_left, top_right = st.columns([3, 1], gap="small")
 with top_left:
     if IS_PRACTICE:
-        progress_label = "Practice"
-        st.markdown(
-            f'<div style="color:#4b5563; font-size:0.95rem; font-weight:600; '
-            f'margin:0 0 0.35rem 0;">{progress_label}</div>',
-            unsafe_allow_html=True,
-        )
+        st.caption("Practice")
+    else:
+        # Match the annotation survey: progress is its own line immediately
+        # above the question prompt.
+        st.caption(f"Question {question_number} of {len(QUESTION_BANK)}")
     raw_question_text = (
         practice_question_text_for_step(PRACTICE_STEP)
         if IS_PRACTICE
@@ -5090,12 +5108,6 @@ with top_left:
         f'{paragraph}</div>'
         for index, paragraph in enumerate(question_paragraphs)
     )
-    if not IS_PRACTICE:
-        progress_prefix = (
-            f'<span style="color:#4b5563; font-size:0.9em; font-weight:700;">'
-            f'Question {question_number} of {len(QUESTION_BANK)} ·</span> '
-        )
-        question_text = question_text.replace(">", f">{progress_prefix}", 1)
     tutorial_title_height = "2.7em" if IS_PRACTICE else "auto"
     st.markdown(
         f'<div style="font-size:18px; font-weight:600; line-height:1.35; '
