@@ -5070,13 +5070,11 @@ top_left, top_right = st.columns([3, 1], gap="small")
 with top_left:
     if IS_PRACTICE:
         progress_label = "Practice"
-    else:
-        progress_label = f"Question {question_number} of {len(QUESTION_BANK)}"
-    st.markdown(
-        f'<div style="color:#4b5563; font-size:0.95rem; font-weight:600; '
-        f'margin:0 0 0.35rem 0;">{html.escape(progress_label)}</div>',
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            f'<div style="color:#4b5563; font-size:0.95rem; font-weight:600; '
+            f'margin:0 0 0.35rem 0;">{progress_label}</div>',
+            unsafe_allow_html=True,
+        )
     raw_question_text = (
         practice_question_text_for_step(PRACTICE_STEP)
         if IS_PRACTICE
@@ -5092,6 +5090,12 @@ with top_left:
         f'{paragraph}</div>'
         for index, paragraph in enumerate(question_paragraphs)
     )
+    if not IS_PRACTICE:
+        progress_prefix = (
+            f'<span style="color:#4b5563; font-size:0.9em; font-weight:700;">'
+            f'Question {question_number} of {len(QUESTION_BANK)} ·</span> '
+        )
+        question_text = question_text.replace(">", f">{progress_prefix}", 1)
     tutorial_title_height = "2.7em" if IS_PRACTICE else "auto"
     st.markdown(
         f'<div style="font-size:18px; font-weight:600; line-height:1.35; '
