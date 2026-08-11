@@ -9,10 +9,13 @@ a separate verb.
 
 THE SEVEN VERBS
 ---------------
-    vertex      get a point
+    find        get a described object
+                vertex:
                   one region            -> a corner of it
                   two or more regions   -> the point where they meet
                   the frame             -> a frame corner
+                edge:
+                  one region + what lies opposite -> that edge
     neighbors   get regions
                   a point               -> the regions meeting there
                   a region              -> the regions bordering it
@@ -51,12 +54,30 @@ def setup(map):
 # VERB 1 — VERTEX     (get a point)
 # ==============================================================================
 
+def find(*objs, object="vertex", which="all", on_frame=False):
+    """Find a described vertex or edge.
+
+    Examples:
+        find(A, object="vertex", which="rightmost")
+        find(A, B, object="edge")
+        find(A, "Outside", object="edge")
+    """
+    if object == "edge":
+        if len(objs) < 2:
+            raise ValueError("Finding an edge requires two or more regions.")
+        return _engine.edge_among(*objs)
+    if object != "vertex":
+        raise ValueError('object must be "vertex" or "edge".')
+    return vertex(*objs, which=which, on_frame=on_frame)
+
+
 def vertex(*objs, which="all", on_frame=False):
     """
     Returns a vertex (or, with which="all", every vertex).
 
     ONE REGION            -> a corner of it, chosen by `which`:
         "all", "leftmost", "rightmost", "topmost", "bottommost",
+        "bottom_left", "bottom_right", "top_left", "top_right",
         "sharpest", "widest"
     THE FRAME ("frame")   -> a frame corner, chosen by `which`:
         "all", "top_left", "top_right", "bottom_left", "bottom_right"
@@ -76,7 +97,27 @@ def vertex(*objs, which="all", on_frame=False):
 
 
 # ==============================================================================
-# VERB 2 — NEIGHBORS     (get regions)
+# VERB 2 — EDGE       (get a boundary edge)
+# ==============================================================================
+
+def edge(region, *meets):
+    """
+    Return the unique edge of ``region`` that meets the supplied regions.
+
+    Use the string ``"Outside"`` for the outside of the frame. A returned edge
+    can contain several collinear topology segments but behaves as one
+    question-level edge.
+
+    Examples:
+        edge(A, B)
+        edge(A, B, C)
+        edge(A, "Outside")
+    """
+    return _engine.edge_by_meeting(region, *meets)
+
+
+# ==============================================================================
+# VERB 3 — NEIGHBORS     (get regions)
 # ==============================================================================
 
 def neighbors(obj, kind="edge", start=None, go_counterclockwise=True):
@@ -128,6 +169,13 @@ def draw(a, b=None, kind="segment"):
     kind: "segment" (default) or "full" (the infinite line through the points).
           (kind is ignored when drawing a ray.)
     """
+    if b is None and isinstance(a, (list, tuple)) and a:
+        points = [endpoint for segment in a for endpoint in (segment.tail, segment.head)]
+        pa, pb = max(
+            ((first, second) for first in points for second in points if first is not second),
+            key=lambda pair: _engine.dist(pair[0], pair[1]),
+        )
+        return _engine.extend(pa, pb) if kind == "full" else _engine.segment(pa, pb)
     if b is None and hasattr(a, "head") and hasattr(a, "tail"):
         pa, pb = a.tail, a.head
         return _engine.extend(pa, pb) if kind == "full" else _engine.segment(pa, pb)
@@ -190,6 +238,7 @@ def measure(*args, what):
         "area"    a region -> its area
         "edge_count" a region -> how many boundary edges it has
                      ("sides" is retained as a backwards-compatible alias)
+        "frame_edge_count" a region -> how many of its edges lie on the frame
         "regions" the frame -> how many bounded regions are in the diagram
         "orientation" three ordered vertices -> clockwise or counterclockwise
 
@@ -224,6 +273,9 @@ def measure(*args, what):
     if what in ("edge_count", "sides"):
         return _engine.side_count(items[0])
 
+    if what == "frame_edge_count":
+        return _engine.frame_edge_count(items[0])
+
     if what == "regions":
         if len(items) != 1 or items[0] != "frame":
             raise ValueError('what="regions" requires the frame.')
@@ -235,7 +287,8 @@ def measure(*args, what):
         return _engine.orientation(items[0], items[1], items[2])
 
     raise ValueError(
-        'what must be one of: distance, angle, area, edge_count, regions, orientation.'
+        'what must be one of: distance, angle, area, edge_count, '
+        'frame_edge_count, regions, orientation.'
     )
 
 
@@ -304,6 +357,10 @@ _CORNER_MODES = {
     "bottommost": _engine.bottommost,
     "sharpest":   _engine.sharpest_corner,
     "widest":     _engine.widest_corner,
+    "bottom_left":  lambda region: _engine.diagonal_corner(region, "bottom_left"),
+    "bottom_right": lambda region: _engine.diagonal_corner(region, "bottom_right"),
+    "top_left":     lambda region: _engine.diagonal_corner(region, "top_left"),
+    "top_right":    lambda region: _engine.diagonal_corner(region, "top_right"),
 }
 
 
@@ -313,7 +370,8 @@ def _region_corner(region, which):
     if which not in _CORNER_MODES:
         raise ValueError(
             'region corner must be one of: "all", "leftmost", "rightmost", '
-            '"topmost", "bottommost", "sharpest", "widest".')
+            '"topmost", "bottommost", "bottom_left", "bottom_right", '
+            '"top_left", "top_right", "sharpest", "widest".')
     return _CORNER_MODES[which](region)
 
 
@@ -382,4 +440,5 @@ def _line_len(line):
 
 
 # The seven human verbs — the entire public vocabulary.
-VERBS = ["vertex", "neighbors", "draw", "intersect", "merge", "measure", "sort"]
+# ``vertex`` and ``edge`` remain compatibility helpers; new traces use ``find``.
+VERBS = ["find", "neighbors", "draw", "intersect", "merge", "measure", "sort"]
