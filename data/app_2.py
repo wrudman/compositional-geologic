@@ -5769,7 +5769,7 @@ demo_line_style = {4: "segment", 5: "right"}.get(
 component_display_side = 390 if selection_only_demo else DISPLAY_SIDE
 component_control_width = 315 if selection_only_demo else 276
 component_min_height = component_display_side + (
-    20 if selection_review_demo else (80 if selection_only_demo else 20)
+    20 if selection_review_demo else (130 if selection_only_demo else 20)
 )
 component_body_display = "grid" if selection_only_demo else "flex"
 component_body_columns = (
@@ -7430,7 +7430,17 @@ html_code = f"""
 
         redraw();
         StreamlitBridge.ready();
-        StreamlitBridge.height(Math.max({component_min_height}, document.documentElement.scrollHeight + 4));
+        function reportComponentHeight() {{
+            StreamlitBridge.height(Math.max(
+                {component_min_height},
+                document.documentElement.scrollHeight + 8,
+                document.body.scrollHeight + 8
+            ));
+        }}
+        reportComponentHeight();
+        requestAnimationFrame(reportComponentHeight);
+        window.addEventListener('load', reportComponentHeight);
+        setTimeout(reportComponentHeight, 150);
     </script>
 </body>
 </html>
