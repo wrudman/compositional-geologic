@@ -88,6 +88,9 @@ CODE_VERSION = (
 SURVEY_QUESTION_COUNT = 12
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL")
+MIN_FORMAL_SURVEY_RECORDING_SECONDS = int(
+    os.environ.get("MIN_FORMAL_SURVEY_RECORDING_SECONDS", "300")
+)
 
 # Two complementary forms drawn from the 24-question bank. Each contains
 # 3 easy, 6 medium, and 3 hard diagrams and covers the major tool families.
@@ -4692,7 +4695,35 @@ def current_dataset_metadata():
     )
     return metadata
 
+def formal_survey_is_recordable():
+    """Only retain participants who spent five minutes in the formal survey."""
+    tutorial_summary = st.session_state.get("tutorial_summary") or {}
+    if tutorial_summary.get("completion_status") != "completed":
+        return False
+    started_at = st.session_state.get("survey_started_timestamp")
+    if not started_at:
+        return False
+    if st.session_state.get("survey_completed"):
+        ended_at = st.session_state.get("survey_completed_timestamp")
+        if not ended_at:
+            ended_at = _ts()
+            # Freeze the formal-survey endpoint. Time spent on the post-survey
+            # questionnaire must not make a sub-five-minute run eligible later.
+            st.session_state.survey_completed_timestamp = ended_at
+    else:
+        ended_at = _ts()
+    if not ended_at:
+        return False
+    elapsed = elapsed_between_timestamps(started_at, ended_at)
+    return (
+        elapsed is not None
+        and elapsed >= MIN_FORMAL_SURVEY_RECORDING_SECONDS
+    )
+
+
 def save_survey_results():
+    if not formal_survey_is_recordable():
+        return None
     compact_responses = {
         str(question_id): compact_response_record(question_id, response)
         for question_id, response in st.session_state.get(
