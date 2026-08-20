@@ -191,6 +191,9 @@ TIME_LIMIT_SECONDS = None
 SURVEY_QUESTION_COUNT = 12
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+MIN_FORMAL_SURVEY_RECORDING_SECONDS = int(
+    os.environ.get("MIN_FORMAL_SURVEY_RECORDING_SECONDS", "300")
+)
 QUESTION_FORM_ASSIGNMENT_VERSION = "compositional_questions_v2_12_question_forms"
 SURVEY_FORM_QUESTION_IDS = {
     "A": {
@@ -2442,6 +2445,22 @@ def save_results_json(data: dict) -> str:
     return path
 
 
+def formal_survey_is_recordable(data: dict) -> bool:
+    """Only retain participants who spent five minutes in the formal survey."""
+    tutorial_summary = data.get("tutorial_summary") or {}
+    if tutorial_summary.get("completion_status") != "completed":
+        return False
+    started_at = data.get("survey_start_time")
+    if not started_at:
+        return False
+    ended_at = data.get("survey_end_time") if data.get("completed") else _ts()
+    elapsed = elapsed_between_timestamps(started_at, ended_at)
+    return (
+        elapsed is not None
+        and elapsed >= MIN_FORMAL_SURVEY_RECORDING_SECONDS
+    )
+
+
 def save_results_postgres(data: dict) -> bool:
     """Upsert one durable JSONB snapshot per survey instance on Render."""
     if not DATABASE_URL:
@@ -2492,8 +2511,10 @@ def save_results_postgres(data: dict) -> bool:
     return True
 
 
-def save_results(data: dict) -> str:
+def save_results(data: dict):
     """Persist to Postgres on Render, with local JSON retained as a fallback."""
+    if not formal_survey_is_recordable(data):
+        return None
     if DATABASE_URL:
         try:
             save_results_postgres(data)
@@ -2701,6 +2722,8 @@ def load_or_create_session():
     return create_new_data()
 
 def save_session(data):
+    if not formal_survey_is_recordable(data):
+        return
     data["participant_id"] = PARTICIPANT_ID
     data["survey_instance"] = SURVEY_INSTANCE_ID
     data["condition"] = SURVEY_CONDITION
@@ -3683,10 +3706,10 @@ if data.get("completed") and data.get("post_survey_completed"):
     data["result_file"] = result_path
     save_session(data)
     st.title("Survey Complete")
-    st.write("Thank you. Your responses have been saved.")
+    st.write("Thank you for participating.")
     if result_path == "Postgres":
         st.caption("Your response was stored securely.")
-    else:
+    elif result_path:
         st.caption(f"Saved result file: {result_path}")
     st.stop()
 
