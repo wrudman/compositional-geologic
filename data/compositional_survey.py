@@ -78,32 +78,30 @@ components.html(
 DISPLAY_SIDE = 400          # compact enough to keep the initial workspace in one viewport
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
-SURVEY_VERSION = "compositional_questions_v2_12_question_forms"
-RESPONSE_SCHEMA_VERSION = "3.8"
+SURVEY_VERSION = "compositional_questions_v4_round3_hard_full24"
+RESPONSE_SCHEMA_VERSION = "3.9"
 CODE_VERSION = (
     os.environ.get("RENDER_GIT_COMMIT")
     or os.environ.get("GIT_COMMIT")
     or "local"
 )
-SURVEY_QUESTION_COUNT = 12
+SURVEY_QUESTION_COUNT = 24
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 MIN_FORMAL_SURVEY_RECORDING_SECONDS = int(
     os.environ.get("MIN_FORMAL_SURVEY_RECORDING_SECONDS", "300")
 )
 
-# Two complementary forms drawn from the 24-question bank. Each contains
-# 3 easy, 6 medium, and 3 hard diagrams and covers the major tool families.
+# Retain the historical A/B assignment labels for result-schema compatibility,
+# but both labels now receive the complete 24-question hard-mode bank.
 SURVEY_FORM_QUESTION_IDS = {
     "A": {
-        "15", "23", "24",                  # hard
-        "12", "21", "11", "4", "25", "13",  # medium
-        "9", "18", "26",                   # easy
+        "1", "2", "4", "5", "8", "9", "10", "11", "12", "13", "14", "15",
+        "16", "18", "19", "20", "21", "22", "23", "26", "30", "31", "32", "33",
     },
     "B": {
-        "19", "2", "1",                    # hard
-        "5", "16", "27", "20", "28", "14",  # medium
-        "8", "10", "22",                   # easy
+        "1", "2", "4", "5", "8", "9", "10", "11", "12", "13", "14", "15",
+        "16", "18", "19", "20", "21", "22", "23", "26", "30", "31", "32", "33",
     },
 }
 
@@ -188,6 +186,12 @@ PRACTICE_TOOL_GUIDE_TEXT = """
 We’ll start with **Find**, using its **Vertex** mode. Some questions may ask for a vertex with a property, such as the **rightmost vertex of a region**.
 
 **Try this:** Select **Region A**, choose **rightmost**, then click **RUN**. The tool will label the vertex it finds.
+"""
+
+PRACTICE_FRAME_COUNT_GUIDE_TEXT = """
+We’ll start by using the **frame** to count every region in the diagram.
+
+Choose **Measure**, select **FRAME**, choose **region count**, then click **RUN**. In this tutorial, FRAME is used only to count all regions—not to find a corner of the practice frame.
 """
 
 PRACTICE_NEIGHBORS_GUIDE_TEXT = """
@@ -672,6 +676,13 @@ def find_dataset_path():
     explicit_path = st.query_params.get("dataset_path") or os.environ.get("GEOMETRY_SURVEY_DATASET")
     if explicit_path and os.path.exists(explicit_path):
         return explicit_path
+    canonical_path = os.path.join(
+        os.getcwd(),
+        "Balanced_24_Diagram_Question_Pairs",
+        "dataset_24_balanced.json",
+    )
+    if os.path.exists(canonical_path):
+        return canonical_path
     candidates = []
     for root, _, files in os.walk(os.getcwd()):
         for filename in ("dataset_24_balanced.json", "dataset_25_balanced.json"):
@@ -681,13 +692,22 @@ def find_dataset_path():
 
 def normalize_dataset_item(item, item_index):
     question = item.get("question", item)
+    structure_metrics = item.get("structure_metrics", {})
+    generator_mode = item.get("generator_mode", "current")
+    structure_complexity = (
+        "high" if str(generator_mode).startswith("high") else "current"
+    )
     question_id = question.get("question_id", item.get("pair_id", f"q_{item_index:03d}"))
     return {
         "question_id": str(question_id),
         "pair_id": item.get("pair_id", f"pair_{item_index:03d}"),
         "seed": item.get("seed", question.get("seed", 42)),
-        "num_regions": item.get("region_count", question.get("num_regions", 8)),
-        "diagram_complexity": item.get("diagram_complexity", ""),
+        "num_regions": item.get(
+            "region_count",
+            structure_metrics.get("region_count", question.get("num_regions", 8)),
+        ),
+        "diagram_complexity": item.get("diagram_complexity", generator_mode),
+        "structure_complexity": structure_complexity,
         "question_text": question.get("question_text", ""),
         "answer": question.get("answer", ""),
         "answer_type": question.get("answer_type", "fill_in_the_blank"),
@@ -848,7 +868,8 @@ def _answer_tokens(value):
 def _normalized_region_pairs(value):
     """Canonicalize unordered region pairs while preserving pair membership."""
     text = _normalize_answer_notation(value).strip()
-    if text.lower() == "none":
+    none_candidate = text.rstrip(".,;:!?").strip()
+    if none_candidate.lower() == "none":
         return [("none",)]
 
     pair_contents = re.findall(r"\(([^()]*)\)", text)
@@ -1116,6 +1137,7 @@ const Streamlit={
   value:function(v){send("streamlit:setComponentValue",{value:v,dataType:"json"});}
 };
 var SIDE=460, SHAPES=null, imgEl=null, clickN=0, SELECT_TYPE='region';
+var pageLoadClientMs=Date.now();
 var bg=document.getElementById('bg'), ov=document.getElementById('ov');
 var bgx=bg.getContext('2d'), ovx=ov.getContext('2d');
 
@@ -1194,7 +1216,13 @@ ov.addEventListener('mousemove',function(e){var r=ov.getBoundingClientRect();
   paint(pick(e.clientX-r.left, e.clientY-r.top));});
 ov.addEventListener('mouseleave',function(){ovx.clearRect(0,0,SIDE,SIDE);});
 ov.addEventListener('click',function(e){var r=ov.getBoundingClientRect();
-  clickN++; Streamlit.value({x:Math.round(e.clientX-r.left),y:Math.round(e.clientY-r.top),n:clickN});});
+  clickN++; Streamlit.value({
+    x:Math.round(e.clientX-r.left),
+    y:Math.round(e.clientY-r.top),
+    n:clickN,
+    client_timestamp:new Date().toISOString(),
+    client_elapsed_ms:Date.now()-pageLoadClientMs
+  });});
 window.addEventListener("message",function(e){
   if(!e.data||e.data.type!=="streamlit:render")return;
   var a=e.data.args||{}; setup(a.image, a.shapes, a.side||460, a.select_type||'region');});
@@ -1418,7 +1446,13 @@ def reset_tool_state_for_question(question):
     if question.get("is_practice"):
         res_map = build_circular_practice_map(num_regions, maxX, maxY)
     else:
-        res_map = BuildRandomMap.BuildRandomMap(num_regions, maxX, maxY, seed)
+        res_map = BuildRandomMap.BuildRandomMap(
+            num_regions,
+            maxX,
+            maxY,
+            seed,
+            structure_complexity=question.get("structure_complexity", "current"),
+        )
     map_helpers.use_map(res_map)
     T.setup(res_map)
 
@@ -1475,6 +1509,11 @@ if "post_survey_responses" not in st.session_state:
     saved_post_survey = SAVED_SURVEY.get("post_survey_responses", {})
     st.session_state.post_survey_responses = (
         saved_post_survey if isinstance(saved_post_survey, dict) else {}
+    )
+if "participant_background" not in st.session_state:
+    saved_background = SAVED_SURVEY.get("participant_background", {})
+    st.session_state.participant_background = (
+        saved_background if isinstance(saved_background, dict) else {}
     )
 if "tutorial_summary" not in st.session_state:
     saved_tutorial_summary = SAVED_SURVEY.get("tutorial_summary", {})
@@ -1580,6 +1619,7 @@ IS_PRACTICE = (
 )
 if IS_PRACTICE:
     st.session_state.setdefault("practice_step", "select")
+    st.session_state.setdefault("practice_frame_count_done", False)
     st.session_state.setdefault("practice_rightmost_vertex_done", False)
     st.session_state.setdefault("practice_neighbors_done", False)
     st.session_state.setdefault("practice_ordered_neighbors_done", False)
@@ -1869,6 +1909,7 @@ def continue_after_practice_feedback(stage):
     """Move to the next guided tool only after the participant reads feedback."""
     mark_tutorial_step_completed(stage)
     next_step = {
+        "frame_count": ("find", "Region"),
         "rightmost": ("neighbors", "Region"),
         "neighbors": ("neighbors", "Region"),
         "ordered_neighbors": ("draw line", "Vertex"),
@@ -1929,6 +1970,7 @@ def continue_after_practice_feedback(stage):
         current_index = TUTORIAL_GUIDED_STAGES.index(stage)
         start_tutorial_step(TUTORIAL_GUIDED_STAGES[current_index + 1])
         practice_mode_resets = {
+            "frame_count": "rad_vtx_corner",
             "rightmost": "rad_vtx_onframe",
             "ordered_neighbors": "rad_style",
             "draw": "rad_intersect",
@@ -2003,6 +2045,16 @@ def practice_rightmost_vertex_done():
             return True
     return False
 
+def practice_frame_count_done():
+    if st.session_state.get("practice_frame_count_done"):
+        return True
+    return any(
+        isinstance(call, dict)
+        and call.get("tool") == "measure"
+        and 'measure("frame", what="regions")' in str(call.get("input", ""))
+        for call in st.session_state.get("tool_calls", [])
+    )
+
 def practice_neighbors_done():
     if st.session_state.get("practice_neighbors_done"):
         return True
@@ -2072,6 +2124,8 @@ def practice_question_text_for_step(step):
 
 def current_practice_tool_stage():
     """Return the guided tool step currently awaiting completion."""
+    if not practice_frame_count_done():
+        return "frame_count"
     if not practice_rightmost_vertex_done():
         return "rightmost"
     if not practice_neighbors_done():
@@ -2092,6 +2146,7 @@ def current_practice_tool_stage():
 
 TUTORIAL_GUIDED_STAGES = (
     "selection_practice",
+    "frame_count",
     "rightmost",
     "neighbors",
     "ordered_neighbors",
@@ -2292,9 +2347,12 @@ def _selection_event_object(obj):
     record.update(_object_geometry(obj))
     return record
 
-def record_selection_event(action, obj=None, selection_before=None):
+def record_selection_event(
+    action, obj=None, selection_before=None, interaction_metadata=None
+):
     """Record UI selection history separately from executed tool calls."""
     events = st.session_state.setdefault("selection_events", [])
+    server_timestamp = _ts()
     event = {
         "order": len(events) + 1,
         "action": action,
@@ -2302,9 +2360,21 @@ def record_selection_event(action, obj=None, selection_before=None):
         "selection_after": [
             _selection_event_object(item) for item in st.session_state.selection
         ],
-        "timestamp": _ts(),
+        "timestamp": server_timestamp,
+        "server_timestamp": server_timestamp,
         "survey_elapsed_seconds": survey_elapsed_seconds(),
     }
+    metadata = interaction_metadata if isinstance(interaction_metadata, dict) else {}
+    if metadata.get("client_timestamp"):
+        event["client_timestamp"] = metadata["client_timestamp"]
+    if metadata.get("client_elapsed_ms") is not None:
+        event["client_elapsed_ms"] = metadata["client_elapsed_ms"]
+    if metadata.get("x") is not None and metadata.get("y") is not None:
+        event["click_coordinates"] = {
+            "x": metadata["x"],
+            "y": metadata["y"],
+            "coordinate_system": "display_canvas",
+        }
     if selection_before is not None:
         event["selection_before"] = [
             _selection_event_object(item) for item in selection_before
@@ -2333,11 +2403,13 @@ def record_selection_event(action, obj=None, selection_before=None):
 def record_interface_event(action, details=None):
     """Record a UI-only action without counting it as a reasoning tool call."""
     events = st.session_state.setdefault("selection_events", [])
+    server_timestamp = _ts()
     event = {
         "order": len(events) + 1,
         "action": action,
         "event_type": "interface",
-        "timestamp": _ts(),
+        "timestamp": server_timestamp,
+        "server_timestamp": server_timestamp,
         "survey_elapsed_seconds": survey_elapsed_seconds(),
     }
     if details:
@@ -2539,6 +2611,20 @@ def _face_label_lp_d(face):
     if idx is not None and idx in cache:
         return cache[idx]
     return Graph.LetterPointFace(face)
+
+def _union_label_lp_d(union_face, source_faces):
+    """Choose an interior label point for the merged polygon.
+
+    A vertex average is biased toward whichever boundary contains more bends
+    and can land beside (or outside) a concave union.  Treat the union as a
+    normal face instead; if a malformed legacy pseudo-face cannot be sampled,
+    use the roomier of the two source-face label positions.
+    """
+    try:
+        return Graph.LetterPointFace(union_face)
+    except Exception:
+        return max((_face_label_lp_d(face) for face in source_faces),
+                   key=lambda item: item[1])
 
 def highlight_region_solid(odraw, face, fill=GRAY_SOLID, draw_label=True):
     """Opaque recolor of a region (new solid color, not a translucent film).
@@ -3714,6 +3800,7 @@ def record_tool_call(
         ],
         "selection_context_timing": "after_execution",
     }
+    call["server_timestamp"] = call["timestamp"]
     calls.append(call)
     if IS_PRACTICE:
         call["tutorial_phase"] = tutorial_phase
@@ -3779,6 +3866,7 @@ def undo_last():
             continue
         st.session_state[k] = v
     events = st.session_state.setdefault("selection_events", [])
+    undo_timestamp = _ts()
     undo_event = {
             "order": len(events) + 1,
             "action": "undo",
@@ -3793,7 +3881,8 @@ def undo_last():
                 _selection_event_object(item)
                 for item in st.session_state.get("selection", [])
             ],
-            "timestamp": _ts(),
+            "timestamp": undo_timestamp,
+            "server_timestamp": undo_timestamp,
             "survey_elapsed_seconds": survey_elapsed_seconds(),
         }
     events.append(undo_event)
@@ -3845,7 +3934,10 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
     add_log(participant_output_for_tool(tool, call_str, result, output_text))
     record_tool_call(tool, call_str.split("(", 1)[0], call_str, _tool_output(result), output_text)
     if st.session_state.get("practice_step") == "tools":
-        if tool == "neighbors" and 'neighbors(A, "edge")' in call_str:
+        if tool == "measure" and 'measure("frame", what="regions")' in call_str:
+            st.session_state.practice_frame_count_done = True
+            st.session_state.practice_pending_feedback = "frame_count"
+        elif tool == "neighbors" and 'neighbors(A, "edge")' in call_str:
             st.session_state.practice_neighbors_done = True
             st.session_state.practice_pending_feedback = "neighbors"
         elif (
@@ -4236,20 +4328,11 @@ def run_tool(tool, modes):
             fu = T.merge(fa, fb)
             uname = next_name("U")
             fu.letter = uname
-            pair_vertices = []
-            seen_pair_vertices = set()
-            for source_face in (fa, fb):
-                for vertex in source_face.vertices:
-                    if id(vertex) not in seen_pair_vertices:
-                        seen_pair_vertices.add(id(vertex))
-                        pair_vertices.append(vertex)
-            label_point = Graph.Vector(
-                sum(vertex.p.x for vertex in pair_vertices) / len(pair_vertices),
-                sum(vertex.p.y for vertex in pair_vertices) / len(pair_vertices),
-            )
+            label_point, label_clearance = _union_label_lp_d(fu, (fa, fb))
             st.session_state.unions.append(
                 {"name": uname, "face": fu, "pair": (fa, fb),
-                 "label_xy": DrawGraph.V2P(label_point)})
+                 "label_xy": DrawGraph.V2P(label_point),
+                 "label_clearance": label_clearance})
             st.session_state.union_consumed += [fa, fb]
             add_program(f"{uname} = merge({fa.letter}, {fb.letter})")
             add_log(f"Created merged Region **{uname}** from Regions {fa.letter} and {fb.letter}.")
@@ -4432,7 +4515,10 @@ def show_completed_practice_step():
         for obj in objects:
             add_to_selection(obj)
 
-    if stage == "rightmost":
+    if stage == "frame_count":
+        select("frame")
+        run_tool("measure", {"what": "regions"})
+    elif stage == "rightmost":
         select(faces["A"])
         run_tool("find", {"object": "vertex", "which": "rightmost"})
     elif stage == "neighbors":
@@ -4803,6 +4889,7 @@ def save_survey_results():
         "responses": compact_responses,
         "score_summary": score_summary,
         "tool_usage_summary": tool_summary,
+        "participant_background": st.session_state.get("participant_background", {}),
         "post_survey_responses": st.session_state.get("post_survey_responses", {}),
         "tutorial_summary": tutorial_summary,
     }
@@ -4827,24 +4914,48 @@ if not st.session_state.landing_choice_made:
         "Please use **only the tools provided within the survey interface**. Do not "
         "use any external tools or assistance, including pen and paper, calculators, "
         "other websites, or AI tools.\n\n"
-        "Please complete the survey in one sitting using a laptop or desktop computer.\n\n"
-        "Click Start Tutorial when you are ready."
+        "Please complete the survey in one sitting using a laptop or desktop computer."
     )
 
-    if st.button(
-        "Start Tutorial",
-        type="primary",
-        use_container_width=False,
-    ):
-        st.session_state.landing_choice_made = True
-        st.session_state.entry_route = "tutorial"
-        tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
-        if not tutorial_summary.get("started_at"):
-            tutorial_summary["started_at"] = _ts()
-        tutorial_summary["completion_status"] = "in_progress"
-        start_tutorial_step("selection_practice")
-        save_survey_results()
-        st.rerun()
+    saved_background = st.session_state.get("participant_background", {})
+    if "pre_math_use_frequency" not in st.session_state and "math_use_frequency" in saved_background:
+        st.session_state.pre_math_use_frequency = saved_background["math_use_frequency"]
+    if "pre_stem_background" not in st.session_state and "stem_background" in saved_background:
+        st.session_state.pre_stem_background = saved_background["stem_background"]
+    with st.form("pre_survey_background_form"):
+        st.markdown("### A little about you")
+        st.caption("Before starting the tutorial, please answer these two brief background questions.")
+        math_use_frequency = st.radio(
+            "How often do you use mathematics in your studies or work? *",
+            [1, 2, 3, 4, 5], index=None, horizontal=True,
+            key="pre_math_use_frequency",
+        )
+        st.caption("1 = Never · 2 = Rarely · 3 = Sometimes · 4 = Often · 5 = Very often")
+        stem_background = st.radio(
+            "Are you currently studying, or have you previously studied, a STEM-related subject? *",
+            ["Yes, currently", "Yes, previously", "No", "Prefer not to say"],
+            index=None, horizontal=True, key="pre_stem_background",
+        )
+        start_tutorial = st.form_submit_button("Start Tutorial", type="primary")
+    if start_tutorial:
+        if math_use_frequency is None or stem_background is None:
+            st.error("Please answer both background questions before continuing.")
+        else:
+            st.session_state.participant_background = {
+                "math_use_frequency": math_use_frequency,
+                "stem_background": stem_background,
+                "placement": "pre_tutorial",
+                "submitted_at": _ts(),
+            }
+            st.session_state.landing_choice_made = True
+            st.session_state.entry_route = "tutorial"
+            tutorial_summary = st.session_state.setdefault("tutorial_summary", {})
+            if not tutorial_summary.get("started_at"):
+                tutorial_summary["started_at"] = _ts()
+            tutorial_summary["completion_status"] = "in_progress"
+            start_tutorial_step("selection_practice")
+            save_survey_results()
+            st.rerun()
     st.stop()
 
 if st.session_state.survey_completed and st.session_state.post_survey_completed:
@@ -4957,8 +5068,8 @@ if st.session_state.survey_completed and not st.session_state.post_survey_comple
         if missing_preview_fields:
             st.error("Please answer the highlighted questions before continuing.")
         st.caption(
-            "Required questions are marked with *. For each statement, select "
-            "1 (Strongly disagree) to 5 (Strongly agree)."
+            "Required questions are marked with *. Each item uses a 1–5 scale; "
+            "the scale labels are shown below the response options."
         )
         five_point_scale(
             "The tutorial was easy to understand.",
@@ -5172,6 +5283,11 @@ with answer_panel.container(key="answer_panel_content"):
             and PRACTICE_STEP == "tools"
             and practice_rightmost_vertex_done()
         )
+        practice_frame_count_complete = (
+            IS_PRACTICE
+            and PRACTICE_STEP == "tools"
+            and practice_frame_count_done()
+        )
         practice_neighbor_done = (
             IS_PRACTICE
             and PRACTICE_STEP == "tools"
@@ -5226,7 +5342,12 @@ with answer_panel.container(key="answer_panel_content"):
                     mark_tutorial_completed()
                     st.rerun()
             elif pending_feedback:
-                if pending_feedback == "rightmost":
+                if pending_feedback == "frame_count":
+                    message = (
+                        "Great — Measure counted every region in the practice diagram. "
+                        "Select FRAME whenever a question asks for the total number of regions."
+                    )
+                elif pending_feedback == "rightmost":
                     output = (
                         practice_last_output("find", 'which="rightmost"')
                         or practice_last_output("vertex", 'which="rightmost"')
@@ -5292,8 +5413,10 @@ with answer_panel.container(key="answer_panel_content"):
                 st.markdown(PRACTICE_ORDERED_NEIGHBORS_GUIDE_TEXT)
             elif practice_rightmost_done:
                 st.markdown(PRACTICE_NEIGHBORS_GUIDE_TEXT)
-            else:
+            elif practice_frame_count_complete:
                 st.markdown(PRACTICE_TOOL_GUIDE_TEXT)
+            else:
+                st.markdown(PRACTICE_FRAME_COUNT_GUIDE_TEXT)
         if IS_PRACTICE and PRACTICE_STEP == "tools":
             pass
         else:
@@ -5953,7 +6076,11 @@ with col_ctrl:
                 "switch Selection to Angle, then Vertex, then Edge. The checklist will "
                 "show your progress. Refer to Definitions on the right if needed."
             )
-    if not IS_PRACTICE and st.button("Select FRAME", use_container_width=True):
+    show_select_frame = (
+        not IS_PRACTICE
+        or (PRACTICE_STEP == "tools" and current_practice_tool_stage() == "frame_count")
+    )
+    if show_select_frame and st.button("Select FRAME", use_container_width=True):
         push_undo()
         add_to_selection("frame")
         record_selection_event("select", "frame")
@@ -6000,10 +6127,11 @@ with col_ctrl:
             st.session_state.undo_stack = []
             st.session_state.counters = {"v": 1, "L": 1, "U": 1, "r": 1, "a": 1, "e": 1}
             st.session_state.practice_step = "tools"
-            st.session_state.active_tool = "find"
+            st.session_state.active_tool = "measure"
             st.session_state.selection_filter = "Region"
             st.session_state.rad_vtx_corner = None
             st.session_state.definitions_open = False
+            st.session_state.practice_frame_count_done = False
             st.session_state.practice_rightmost_vertex_done = False
             st.session_state.practice_neighbors_done = False
             st.session_state.practice_ordered_neighbors_done = False
@@ -6018,7 +6146,7 @@ with col_ctrl:
             st.session_state.practice_guided_complete = False
             st.session_state.practice_direction_answered = False
             st.session_state.practice_direction_correct = None
-            start_tutorial_step("rightmost")
+            start_tutorial_step("frame_count")
             save_survey_results()
             st.rerun()
 
@@ -6083,11 +6211,11 @@ with diagram_panel:
             if kind == "vertex":
                 _name, meta = point_name_with_meta(obj)
                 add_to_selection(obj, meta)
-                record_selection_event("select", obj)
+                record_selection_event("select", obj, interaction_metadata=coords)
                 st.rerun()
             elif kind == "region":
                 add_to_selection(obj)
-                record_selection_event("select", obj)
+                record_selection_event("select", obj, interaction_metadata=coords)
                 st.rerun()
             elif kind == "angle":
                 existing_entry = next(
@@ -6102,7 +6230,7 @@ with diagram_panel:
                     st.session_state.annotations.append(ann)
                 if obj not in st.session_state.selection:
                     add_to_selection(obj)
-                    record_selection_event("select", obj)
+                    record_selection_event("select", obj, interaction_metadata=coords)
                 st.rerun()
             elif kind == "edge":
                 opts = edge_options(obj)
@@ -6111,7 +6239,9 @@ with diagram_panel:
                     if edge_name(edge_obj) is None:
                         st.session_state.named_edges.append((next_name("e"), edge_obj))
                     if add_edge_to_selection(edge_obj):
-                        record_selection_event("select", edge_obj)
+                        record_selection_event(
+                            "select", edge_obj, interaction_metadata=coords
+                        )
                     st.rerun()
                 elif len(opts) > 1:
                     st.session_state.pending_edge_options = opts

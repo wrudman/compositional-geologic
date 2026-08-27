@@ -60,14 +60,27 @@ def EdgesCheck(vertices,edges,faces):
     for e in edges:
         if not(EdgeCheck(e,vertices,edges,faces)):
             return  False;
-    for i in range(len(edges)-2):
-        for j in range(i+2,len(edges)):    
-            if (not(EdgesMeet(edges[i],edges[j])) and
-                Graph.crossLines(edges[i].tail.p, edges[i].head.p,
-                                edges[j].tail.p, edges[j].head.p)):
+    # Check each geometric (undirected) segment exactly once.  The old check
+    # assumed reverse half-edges were adjacent in `edges` and skipped nearby
+    # list indices.  After splitting, that ordering is not guaranteed, so a
+    # real crossing could be missed and a face could become self-intersecting.
+    geometric_edges = []
+    seen = set()
+    for e in edges:
+        key = frozenset((e.tail.num, e.head.num))
+        if key not in seen:
+            seen.add(key)
+            geometric_edges.append(e)
+    for i in range(len(geometric_edges)-1):
+        for j in range(i+1,len(geometric_edges)):
+            ea = geometric_edges[i]
+            eb = geometric_edges[j]
+            if (not(EdgesMeet(ea,eb)) and
+                Graph.crossLines(ea.tail.p, ea.head.p,
+                                 eb.tail.p, eb.head.p)):
                 print("Edges Cross", i, j)
-                Graph.ShowEdge(edges[i])
-                Graph.ShowEdge(edges[j])
+                Graph.ShowEdge(ea)
+                Graph.ShowEdge(eb)
                 return False
     return True
 
@@ -93,10 +106,48 @@ def EdgesMeet(ea,eb):
             ea.head == eb.tail or ea.head == eb.head)
 
 def FacesCheck(vertices,edges,faces):
+    width = max(v.p.x for v in vertices) - min(v.p.x for v in vertices)
+    height = max(v.p.y for v in vertices) - min(v.p.y for v in vertices)
+    min_clearance = 0.02 * min(width, height)
     for f in faces:
         if not(FaceCheck(f)):
             return False
+        if f.bounded and FaceHasNarrowNeck(f, min_clearance):
+            return False
     return True
+
+
+def PointSegmentDistance(p, a, b):
+    dx = b.x - a.x
+    dy = b.y - a.y
+    length_squared = dx * dx + dy * dy
+    if length_squared == 0:
+        return Graph.pointDist(p, a)
+    t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length_squared
+    t = max(0.0, min(1.0, t))
+    projection = Graph.Vector(a.x + t * dx, a.y + t * dy)
+    return Graph.pointDist(p, projection)
+
+
+def SegmentDistance(ea, eb):
+    return min(
+        PointSegmentDistance(ea.tail.p, eb.tail.p, eb.head.p),
+        PointSegmentDistance(ea.head.p, eb.tail.p, eb.head.p),
+        PointSegmentDistance(eb.tail.p, ea.tail.p, ea.head.p),
+        PointSegmentDistance(eb.head.p, ea.tail.p, ea.head.p),
+    )
+
+
+def FaceHasNarrowNeck(face, min_clearance):
+    """Reject visually pinched faces whose nonincident boundaries nearly touch."""
+    ee = face.edges
+    for i in range(len(ee) - 1):
+        for j in range(i + 1, len(ee)):
+            if EdgesMeet(ee[i], ee[j]):
+                continue
+            if SegmentDistance(ee[i], ee[j]) < min_clearance:
+                return True
+    return False
     
     
 

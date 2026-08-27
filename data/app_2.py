@@ -179,7 +179,7 @@ def tool_draw_label_edge_list_extension(
 DISPLAY_SIDE = 400
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
-SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v19_12_question_forms"
+SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v21_round3_hard_full24"
 RESPONSE_SCHEMA_VERSION = "3.9"
 SURVEY_CONDITION = "annotation"
 CODE_VERSION = (
@@ -188,23 +188,21 @@ CODE_VERSION = (
     or "local"
 )
 TIME_LIMIT_SECONDS = None
-SURVEY_QUESTION_COUNT = 12
+SURVEY_QUESTION_COUNT = 24
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 MIN_FORMAL_SURVEY_RECORDING_SECONDS = int(
     os.environ.get("MIN_FORMAL_SURVEY_RECORDING_SECONDS", "300")
 )
-QUESTION_FORM_ASSIGNMENT_VERSION = "compositional_questions_v2_12_question_forms"
+QUESTION_FORM_ASSIGNMENT_VERSION = "compositional_questions_v4_round3_hard_full24"
 SURVEY_FORM_QUESTION_IDS = {
     "A": {
-        "15", "23", "24",
-        "12", "21", "11", "4", "25", "13",
-        "9", "18", "26",
+        "1", "2", "4", "5", "8", "9", "10", "11", "12", "13", "14", "15",
+        "16", "18", "19", "20", "21", "22", "23", "26", "30", "31", "32", "33",
     },
     "B": {
-        "19", "2", "1",
-        "5", "16", "27", "20", "28", "14",
-        "8", "10", "22",
+        "1", "2", "4", "5", "8", "9", "10", "11", "12", "13", "14", "15",
+        "16", "18", "19", "20", "21", "22", "23", "26", "30", "31", "32", "33",
     },
 }
 ANSWER_HINTS_HUMAN = {
@@ -494,6 +492,14 @@ def find_dataset_path():
     if explicit_path and os.path.exists(explicit_path):
         return explicit_path
 
+    canonical_path = os.path.join(
+        os.getcwd(),
+        "Balanced_24_Diagram_Question_Pairs",
+        "dataset_24_balanced.json",
+    )
+    if os.path.exists(canonical_path):
+        return canonical_path
+
     candidates = []
     for root, _, files in os.walk(os.getcwd()):
         if "dataset_24_balanced.json" in files:
@@ -510,13 +516,22 @@ def find_dataset_path():
 
 def normalize_dataset_item(item: dict, item_index: int) -> dict:
     question = item.get("question", item)
+    structure_metrics = item.get("structure_metrics", {})
+    generator_mode = item.get("generator_mode", "current")
+    structure_complexity = (
+        "high" if str(generator_mode).startswith("high") else "current"
+    )
     question_id = question.get("question_id", item.get("pair_id", f"q_{item_index:03d}"))
     return {
         "question_id": str(question_id),
         "pair_id": item.get("pair_id", f"pair_{item_index:03d}"),
         "seed": item.get("seed", question.get("seed", 42)),
-        "num_regions": item.get("region_count", question.get("num_regions", 8)),
-        "diagram_complexity": item.get("diagram_complexity", ""),
+        "num_regions": item.get(
+            "region_count",
+            structure_metrics.get("region_count", question.get("num_regions", 8)),
+        ),
+        "diagram_complexity": item.get("diagram_complexity", generator_mode),
+        "structure_complexity": structure_complexity,
         "question_text": question.get("question_text", ""),
         "answer": question.get("answer", ""),
         "answer_type": question.get("answer_type", "fill_in_the_blank"),
@@ -1437,6 +1452,7 @@ def create_annotation_session_for_question(question: dict):
             maxX,
             maxY,
             seed=question.get("seed", 42),
+            structure_complexity=question.get("structure_complexity", "current"),
         )
     img_size = (int(200 + 800 * maxX), int(200 + 800 * maxY))
     return AnnotationSession(res_map, img_size)

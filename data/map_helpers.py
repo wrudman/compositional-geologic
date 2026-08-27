@@ -22,9 +22,10 @@ EXAMPLE (Question 10 - sort u, v, w by distance from p)
     w = vertex_overlap(I, L, H, on_frame=True)
     sort([u, v, w], key=lambda pt: dist(pt, p))
 
-This module depends only on the shared geometry modules Graph and FinalizeFaces.
-It does NOT import anything from the Questions module - every operation it needs
-is implemented privately below.
+Most operations depend only on the shared geometry modules Graph and
+FinalizeFaces. Infinite-line intersection uses the benchmark's canonical
+``Questions.TraceSegment`` routine so Q12 tool results and dataset answers
+cannot silently diverge.
 """
 
 import numpy as np
@@ -534,6 +535,49 @@ def widest_corner(region):
     return max(region.trueVertices[1:], key=lambda v: Graph.angleAtFace(v, region))
 
 
+def diagonal_corner(region, position):
+    """Return the corner selected by the generator's diagonal description."""
+    candidates = []
+    corners = region.trueVertices[1:]
+    for vertex in corners:
+        alternatives = [other for other in corners if other is not vertex]
+        bottom_left = bottom_right = top_left = top_right = True
+        for other in alternatives:
+            if other.p.x - vertex.p.x < -epsilon:
+                bottom_left = top_left = False
+            elif vertex.p.x - other.p.x < -epsilon:
+                bottom_right = top_right = False
+            if other.p.y - vertex.p.y < -epsilon:
+                bottom_left = bottom_right = False
+            elif vertex.p.y - other.p.y < -epsilon:
+                top_left = top_right = False
+            if (other.p.x - vertex.p.x < smallDist and
+                    other.p.y - vertex.p.y < smallDist):
+                bottom_left = False
+            if (vertex.p.x - other.p.x < smallDist and
+                    other.p.y - vertex.p.y < smallDist):
+                bottom_right = False
+            if (other.p.x - vertex.p.x < smallDist and
+                    vertex.p.y - other.p.y < smallDist):
+                top_left = False
+            if (vertex.p.x - other.p.x < smallDist and
+                    vertex.p.y - other.p.y < smallDist):
+                top_right = False
+        matches = {
+            "bottom_left": bottom_left,
+            "bottom_right": bottom_right,
+            "top_left": top_left,
+            "top_right": top_right,
+        }
+        if matches.get(position, False):
+            candidates.append(vertex)
+    if len(candidates) != 1:
+        raise ValueError(
+            f'Region does not have a unique "{position}" described vertex.'
+        )
+    return candidates[0]
+
+
 def frame_corner(position):
     """
     Returns the vertex at one of the four corners of the outer diagram frame.
@@ -562,6 +606,102 @@ def vertices(region):
         sort(vertices(A), key=lambda v: angle_at(v, A))
     """
     return region.trueVertices[1:]
+
+
+def described_edges(region):
+    """Return uniquely describable boundary edges and what each one meets.
+
+    One geometric edge may contain several collinear half-edge segments after
+    topology splitting.  The returned ``segments`` keep those pieces together.
+    """
+    groups = []
+    true_vertices = region.trueVertices[:-1]
+    for index, start in enumerate(true_vertices):
+        stop = true_vertices[(index + 1) % len(true_vertices)]
+        start_index = region.vertices.index(start)
+        stop_index = region.vertices.index(stop)
+        if start_index < stop_index:
+            segments = region.edges[start_index:stop_index]
+        else:
+            segments = (
+                region.edges[start_index:]
+                + region.edges[:stop_index]
+            )
+        meets = []
+        has_outside = False
+        for segment in segments:
+            opposite = segment.reverse.leftFace
+            if opposite.bounded:
+                if opposite not in meets:
+                    meets.append(opposite)
+            else:
+                has_outside = True
+        key = (
+            tuple(sorted(id(face) for face in meets)),
+            has_outside,
+        )
+        groups.append({
+            "segments": tuple(segments),
+            "meets": tuple(sorted(meets, key=lambda face: face.letter)),
+            "meets_outside": has_outside,
+            "description_key": key,
+        })
+
+    # A referring expression must identify exactly one geometric edge.
+    key_counts = {}
+    for group in groups:
+        key = group["description_key"]
+        key_counts[key] = key_counts.get(key, 0) + 1
+    return [
+        group for group in groups
+        if key_counts[group["description_key"]] == 1
+    ]
+
+
+def edge_by_meeting(region, *meeting_objects):
+    """Find the unique edge of ``region`` meeting the given regions/Outside."""
+    requested_faces = {
+        item for item in meeting_objects
+        if item != "Outside"
+    }
+    requested_outside = "Outside" in meeting_objects
+    matches = [
+        group
+        for group in described_edges(region)
+        if set(group["meets"]) == requested_faces
+        and group["meets_outside"] == requested_outside
+    ]
+    if len(matches) != 1:
+        raise ValueError("The description does not identify a unique edge.")
+    return matches[0]["segments"]
+
+
+def edge_among(*regions):
+    """Return the unique geometric edge identified by an unordered region set."""
+    if len(regions) < 2:
+        raise ValueError("Finding an edge requires two or more regions.")
+
+    candidates = []
+    seen_geometry = set()
+    for owner in regions:
+        others = [region for region in regions if region is not owner]
+        try:
+            segments = edge_by_meeting(owner, *others)
+        except ValueError:
+            continue
+        geometry_key = frozenset(
+            frozenset((id(segment), id(segment.reverse)))
+            for segment in segments
+        )
+        if geometry_key not in seen_geometry:
+            seen_geometry.add(geometry_key)
+            candidates.append(segments)
+
+    if len(candidates) != 1:
+        raise ValueError(
+            "The selected regions do not identify one unique edge."
+        )
+    return candidates[0]
 
 
 # ==============================================================================
@@ -620,6 +760,15 @@ def side_count(region):
     return region.numSides
 
 
+def frame_edge_count(region):
+    """Return the number of the region's boundary edges lying on the frame."""
+    return sum(
+        1
+        for edge in region.edges
+        if not edge.reverse.leftFace.bounded
+    )
+
+
 def x_of(point):
     """
     Returns the x-coordinate (left-right position) of the point.
@@ -628,7 +777,9 @@ def x_of(point):
     Example:
         sort([u, v, w], key=x_of)   # left to right
     """
-    return point.p.x
+    if hasattr(point, "p"):
+        return point.p.x
+    return (point.box[0] + point.box[1]) / 2
 
 
 def y_of(point):
@@ -639,7 +790,9 @@ def y_of(point):
     Example:
         sort([u, v, w], key=y_of)   # bottom to top
     """
-    return point.p.y
+    if hasattr(point, "p"):
+        return point.p.y
+    return (point.box[2] + point.box[3]) / 2
 
 
 # ==============================================================================
@@ -748,6 +901,18 @@ def regions_crossed(line):
         return set(faces)
     pa, pb = line['a'], line['b']
     infinite = (line['type'] == 'extend')
+    if infinite:
+        # Keep the public tool exactly aligned with the Q12 answer generator,
+        # including its treatment of lines coinciding with region boundaries.
+        import Questions as _questions
+        frame_a, frame_b = _questions.GetFrameIntersections(
+            pa, pb, _MAP.bounds
+        )
+        return set(
+            _questions.TraceSegment(
+                frame_a, frame_b, _MAP, min_dist=0.0005
+            )
+        )
     faces, _ = _line_crosses_faces(pa, pb, infinite, _MAP)
     return set(faces)
 

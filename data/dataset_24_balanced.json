@@ -1,393 +1,3981 @@
 {
-  "dataset_version": "demo_24_v1",
-  "dataset_role": "internal_demo",
-  "generated_at": "2026-07-05 11:21:43",
-  "total_pairs": 24,
-  "region_count_quota": {
-    "3": 2,
-    "4": 2,
-    "5": 2,
-    "6": 3,
-    "7": 3,
-    "8": 3,
-    "9": 3,
-    "10": 2,
-    "11": 2,
-    "12": 2
+  "dataset_version": "round3_all_hard_24_20260827_v1",
+  "dataset_role": "production_human_round3",
+  "generator_mode": "high",
+  "hard_only": true,
+  "question_targeting_policy": "complex_local_targets",
+  "line_path_question_policy": {
+    "question_ids": [
+      12,
+      18,
+      19
+    ],
+    "counting_rule": "distinct_regions",
+    "target_long_4_plus_proportion": 1.0,
+    "accepted_item_counts": {
+      "total": 3,
+      "long": 3,
+      "short_medium": 0
+    },
+    "actual_long_4_plus_proportion": 1.0,
+    "selection_rule": "hard_filter",
+    "quota_rule": "deterministic_from_accepted_items"
   },
-  "medium_region_counts_with_extra_diagram": [
-    6,
-    7,
-    8,
-    9
-  ],
-  "excluded_question_ids": [
-    3,
-    6,
-    7,
-    17
-  ],
-  "active_question_ids": [
-    1,
-    2,
-    4,
-    5,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
-    24,
-    25,
-    26,
-    27,
-    28
-  ],
+  "question2_edge_count_policy": {
+    "minimum_edges_per_region": 5,
+    "allowed_edge_count_differences": [
+      0,
+      1,
+      2
+    ],
+    "target_yes_probability_when_both_available": 0.5,
+    "selection_rule": "hard_filter"
+  },
+  "question1_edge_neighbor_policy": {
+    "minimum_diagram_regions": 6,
+    "minimum_target_region_edges": 6,
+    "answer_length_range": [
+      4,
+      6
+    ],
+    "requires_vertex_only_distractor": true,
+    "selection_rule": "hard_filter"
+  },
+  "question5_vertex_only_pair_policy": {
+    "minimum_diagram_regions": 6,
+    "answer_pair_count_range": [
+      2,
+      4
+    ],
+    "minimum_edge_sharing_distractor_pairs": 2,
+    "minimum_noncontact_distractor_pairs": 2,
+    "requires_internal_answer_contact": true,
+    "selection_rule": "hard_filter"
+  },
+  "line_path_visual_clearance_policy": {
+    "question_ids": [
+      12,
+      18,
+      19
+    ],
+    "minimum_clearance_fraction_of_frame_diagonal": 0.012,
+    "interior_sample_fractions": [
+      0.25,
+      0.5,
+      0.75
+    ],
+    "purpose": "reject near-boundary paths that are mathematically but not visually unambiguous",
+    "selection_rule": "hard_filter"
+  },
+  "question4_boundary_trace_policy": {
+    "hard_probability": 1.0,
+    "hard_answer_sequence_range": [
+      4,
+      6
+    ],
+    "simple_medium_probability": 0.0,
+    "simple_medium_answer_sequence_range": [
+      1,
+      3
+    ],
+    "prefer_repeated_region_in_hard_band": true,
+    "selection_rule": "hard_filter"
+  },
+  "question13_meeting_regions_policy": {
+    "hard_probability": 1.0,
+    "hard_answer_length_minimum": 4,
+    "simple_medium_probability": 0.0,
+    "standard_mode_note": "Three-region junctions remain available outside high mode.",
+    "selection_rule": "hard_filter"
+  },
+  "question22_segment_intersection_policy": {
+    "minimum_segment_length_fraction_of_frame_diagonal": 0.3,
+    "minimum_bounding_box_overlap_fraction_per_axis": 0.03,
+    "target_yes_probability": 0.5,
+    "yes_intersection_parameter_range": [
+      0.15,
+      0.85
+    ],
+    "no_case": "finite-segment near miss with intersecting infinite lines",
+    "accepted_item_counts": {
+      "total": 1,
+      "yes": 1,
+      "no": 0
+    },
+    "selection_rule": "hard_filter"
+  },
+  "question24_region_distance_policy": {
+    "minimum_far_to_close_ratio": 1.3,
+    "maximum_far_to_close_ratio": 1.6,
+    "minimum_close_distance_fraction_of_frame_diagonal": 0.05,
+    "selection_rule": "hard_filter"
+  },
+  "question10_distance_sort_policy": {
+    "comparison_count": 3,
+    "moderate_probability": 1.0,
+    "moderate_adjacent_ratio_range": [
+      1.3,
+      1.6
+    ],
+    "simple_probability": 0.0,
+    "simple_minimum_adjacent_ratio": 1.6,
+    "minimum_distance_fraction_of_frame_diagonal": 0.08,
+    "selection_rule": "hard_filter"
+  },
+  "question11_angle_sort_policy": {
+    "angle_count": 4,
+    "minimum_adjacent_sorted_gap_degrees": 12,
+    "maximum_adjacent_sorted_gap_degrees": 60,
+    "purpose": "challenging but visually answerable without measurement tools",
+    "selection_rule": "hard_filter"
+  },
+  "question15_union_neighbor_policy": {
+    "minimum_diagram_regions": 5,
+    "minimum_edge_neighbors": 3,
+    "maximum_edge_neighbors": 5,
+    "minimum_union_edges": 5,
+    "requires_vertex_only_distractor": true,
+    "selection_rule": "hard_filter"
+  },
+  "question16_union_area_policy": {
+    "comparison_count": 3,
+    "union_rank": "unrestricted",
+    "minimum_adjacent_sorted_ratio": 1.3,
+    "maximum_adjacent_sorted_ratio": 1.6,
+    "selection_rule": "hard_filter"
+  },
+  "question27_largest_area_policy": {
+    "minimum_largest_to_second_ratio": 1.3,
+    "maximum_largest_to_second_ratio": 1.5,
+    "selection_rule": "hard_filter"
+  },
+  "classification_note": "The high label is a generation setting only. Use structure_metrics as raw data for later classification.",
+  "acceptance_rule": "Every accepted diagram has at least ceil((region_count - 1) * 0.40) successful Path splits and at least two successful Path bends per required Path split.",
+  "master_seed": 2026082703,
+  "generated_at": "2026-08-27 22:18:07",
+  "total_items": 24,
+  "region_count_design": "4 items for counts 6-8 and 3 items for counts 9-12",
+  "question_usage": {
+    "1": 1,
+    "2": 1,
+    "4": 1,
+    "5": 1,
+    "8": 1,
+    "9": 1,
+    "10": 1,
+    "11": 1,
+    "12": 1,
+    "13": 1,
+    "14": 1,
+    "15": 1,
+    "16": 1,
+    "18": 1,
+    "19": 1,
+    "20": 1,
+    "21": 1,
+    "22": 1,
+    "23": 1,
+    "26": 1,
+    "30": 1,
+    "31": 1,
+    "32": 1,
+    "33": 1
+  },
+  "question_nonselection_counts": {
+    "1": 42,
+    "2": 42,
+    "4": 42,
+    "5": 42,
+    "8": 42,
+    "9": 42,
+    "10": 42,
+    "11": 42,
+    "12": 42,
+    "13": 42,
+    "14": 42,
+    "15": 42,
+    "16": 42,
+    "18": 42,
+    "19": 42,
+    "20": 42,
+    "21": 42,
+    "22": 42,
+    "23": 42,
+    "26": 42,
+    "30": 42,
+    "31": 42,
+    "32": 42,
+    "33": 42
+  },
   "items": [
     {
-      "pair_id": "pair_019",
-      "region_count": 11,
-      "diagram_complexity": "hard",
-      "seed": 861839602,
-      "image_path": "images_color/pair_019_regions_11_seed_861839602_color.png",
-      "question": {
-        "question_id": 15,
-        "question_text": "Let U be the union of regions J and I. Which regions share an edge with U?\n\nA region that touches U only at a vertex does not count.\nEnter \"None\" if there are none.\n",
-        "answer": "{C, E, F}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_023",
-      "region_count": 8,
-      "diagram_complexity": "medium",
-      "seed": 656830641,
-      "image_path": "images_color/pair_023_regions_8_seed_656830641_color.png",
-      "question": {
-        "question_id": 12,
-        "question_text": "Let e₁ be the edge of A that meets region G. Extend e₁ in both directions to form straight line L1. Which distinct regions’ interiors does L1 pass through?\n\nDo not include a region if the line only coincides with its boundary without entering its interior.\nEnter \"None\" if there are none.\n",
-        "answer": "{B}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_001",
-      "region_count": 12,
-      "diagram_complexity": "hard",
-      "seed": 6181927,
-      "image_path": "images_color/pair_001_regions_12_seed_6181927_color.png",
-      "question": {
-        "question_id": 23,
-        "question_text": "Which pairs of regions share a vertex that is the leftmost vertex of one region and the rightmost vertex of the other?\n\nEnter \"None\" if there are none.\n",
-        "answer": "{(E, J)}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_010",
-      "region_count": 8,
-      "diagram_complexity": "medium",
-      "seed": 887627510,
-      "image_path": "images_color/pair_010_regions_8_seed_887627510_color.png",
-      "question": {
-        "question_id": 5,
-        "question_text": "Which pairs of regions share a vertex but do not share an edge?\n\nEnter \"None\" if there are none.\n",
-        "answer": "{(A, G), (D, H), (F, G)}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_012",
-      "region_count": 9,
-      "diagram_complexity": "medium",
-      "seed": 285211244,
-      "image_path": "images_color/pair_012_regions_9_seed_285211244_color.png",
-      "question": {
-        "question_id": 16,
-        "question_text": "Let U be the union of regions H and A. Order regions U, G, and D from smallest to largest by area.\n",
-        "answer": "[G, D, U]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_017",
-      "region_count": 5,
-      "diagram_complexity": "easy",
-      "seed": 45455951,
-      "image_path": "images_color/pair_017_regions_5_seed_45455951_color.png",
-      "question": {
-        "question_id": 9,
-        "question_text": "How many edges does region B have?",
-        "answer": "3",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_002",
-      "region_count": 9,
-      "diagram_complexity": "medium",
-      "seed": 789836143,
-      "image_path": "images_color/pair_002_regions_9_seed_789836143_color.png",
-      "question": {
-        "question_id": 20,
-        "question_text": "Let v₁ be the bottommost vertex of F. Let v₂ be the vertex at the bottom right of the overall diagram. Let v₃ be the leftmost vertex of G. \nOrder v₁, v₂, and v₃ from left to right.",
-        "answer": "[v₁, v₃, v₂]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_007",
-      "region_count": 6,
-      "diagram_complexity": "medium",
-      "seed": 918006635,
-      "image_path": "images_color/pair_007_regions_6_seed_918006635_color.png",
-      "question": {
-        "question_id": 27,
-        "question_text": "Which region has the largest area?",
-        "answer": "A",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_008",
-      "region_count": 8,
-      "diagram_complexity": "medium",
-      "seed": 534749268,
-      "image_path": "images_color/pair_008_regions_8_seed_534749268_color.png",
-      "question": {
-        "question_id": 11,
-        "question_text": "Region C has 4 interior angles, labeled as follows: (1) a₁ is the angle at the rightmost vertex of C; (2) a₂ is the angle at the topmost vertex of C; (3) a₃ is the angle at the leftmost vertex of C; and (4) a₄ is the angle at the vertex not on the frame where regions C and G meet and no other labeled region meets. Order angles a₁, a₂, a₃, and a₄ from smallest to largest.",
-        "answer": "[a₃, a₁, a₂, a₄]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_009",
-      "region_count": 4,
-      "diagram_complexity": "easy",
-      "seed": 726574521,
-      "image_path": "images_color/pair_009_regions_4_seed_726574521_color.png",
-      "question": {
-        "question_id": 8,
-        "question_text": "Which regions have 5 edges?\n\nEnter \"None\" if there are none.\n",
-        "answer": "{B}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_004",
-      "region_count": 7,
-      "diagram_complexity": "medium",
-      "seed": 237230862,
-      "image_path": "images_color/pair_004_regions_7_seed_237230862_color.png",
+      "item_id": "item_000",
+      "generator_mode": "high_internal_test",
+      "seed": 471213834,
+      "image_path": "images_color/item_000_regions_9_seed_471213834_color.png",
+      "structure_metrics": {
+        "region_count": 9,
+        "total_vertex_count": 23,
+        "interior_vertex_count": 14,
+        "frame_vertex_count": 9,
+        "undirected_edge_count": 31,
+        "nonconvex_region_count": 6,
+        "face_vertex_counts": [
+          12,
+          4,
+          4,
+          8,
+          6,
+          7,
+          6,
+          5,
+          10
+        ],
+        "mean_vertices_per_region": 6.888888888888889,
+        "max_vertices_in_region": 12
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 8,
+        "successful_path_split_count": 5,
+        "successful_linear_split_count": 3,
+        "successful_path_split_ratio": 0.625,
+        "successful_path_bend_count": 8,
+        "successful_split_trace": [
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
       "question": {
         "question_id": 21,
-        "question_text": "Let v₁ be the vertex at the bottom left of the overall diagram. Let v₂ be the vertex at the top left of the overall diagram. Let v₃ be the vertex at the top right of the overall diagram. Following the cycle v₁ → v₂ → v₃ → v₁, is the direction clockwise or counterclockwise?",
-        "answer": "clockwise",
+        "question_text": "Let v₁ be the leftmost vertex of D. Let v₂ be the rightmost vertex of A. Let v₃ be the vertex of G with the widest angle. Following the cycle v₁ → v₂ → v₃ → v₁, is the direction clockwise or counterclockwise?",
+        "answer": "counterclockwise",
         "answer_type": "two_choice",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 21,
+          "bindings": [
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "D"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "leftmost"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₂",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "A"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "rightmost"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₃",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "G"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "widest"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "measure",
+            "args": [
+              {
+                "node": "variable",
+                "name": "v₁"
+              },
+              {
+                "node": "variable",
+                "name": "v₂"
+              },
+              {
+                "node": "variable",
+                "name": "v₃"
+              }
+            ],
+            "kwargs": {
+              "what": {
+                "node": "literal",
+                "value": "orientation"
+              }
+            }
+          },
+          "tool_call_site_count": 4,
+          "description_resolution_count": 0
+        },
         "choices": [
           "Clockwise",
           "Counterclockwise"
+        ],
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_001",
+      "generator_mode": "high_internal_test",
+      "seed": 886301694,
+      "image_path": "images_color/item_001_regions_7_seed_886301694_color.png",
+      "structure_metrics": {
+        "region_count": 7,
+        "total_vertex_count": 19,
+        "interior_vertex_count": 8,
+        "frame_vertex_count": 11,
+        "undirected_edge_count": 25,
+        "nonconvex_region_count": 4,
+        "face_vertex_counts": [
+          4,
+          10,
+          4,
+          7,
+          4,
+          7,
+          10
+        ],
+        "mean_vertices_per_region": 6.571428571428571,
+        "max_vertices_in_region": 10
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 6,
+        "successful_path_split_count": 4,
+        "successful_linear_split_count": 2,
+        "successful_path_split_ratio": 0.6666666666666666,
+        "successful_path_bend_count": 7,
+        "successful_split_trace": [
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          }
         ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 3,
+        "minimum_successful_path_bends": 6
+      },
+      "question": {
+        "question_id": 20,
+        "question_text": "Let v₁ be the leftmost vertex of E. Let v₂ be the vertex of A with the widest angle. Let v₃ be the top right vertex of B. \nOrder v₁, v₂, and v₃ from bottom to top.",
+        "answer": "[v₃, v₁, v₂]",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 20,
+          "bindings": [
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "E"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "leftmost"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₂",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "A"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "widest"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₃",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "B"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "top_right"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "sort",
+            "args": [
+              [
+                {
+                  "node": "variable",
+                  "name": "v₁"
+                },
+                {
+                  "node": "variable",
+                  "name": "v₂"
+                },
+                {
+                  "node": "variable",
+                  "name": "v₃"
+                }
+              ]
+            ],
+            "kwargs": {
+              "by": {
+                "node": "literal",
+                "value": "bottom_top"
+              }
+            }
+          },
+          "tool_call_site_count": 4,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
       }
     },
     {
-      "pair_id": "pair_022",
-      "region_count": 7,
-      "diagram_complexity": "medium",
-      "seed": 431965149,
-      "image_path": "images_color/pair_022_regions_7_seed_431965149_color.png",
-      "question": {
-        "question_id": 28,
-        "question_text": "Is region A entirely above or entirely below region C?",
-        "answer": "above",
-        "answer_type": "two_choice",
-        "choices": [
-          "Above",
-          "Below"
+      "item_id": "item_002",
+      "generator_mode": "high_internal_test",
+      "seed": 585391762,
+      "image_path": "images_color/item_002_regions_9_seed_585391762_color.png",
+      "structure_metrics": {
+        "region_count": 9,
+        "total_vertex_count": 25,
+        "interior_vertex_count": 15,
+        "frame_vertex_count": 10,
+        "undirected_edge_count": 33,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          6,
+          4,
+          10,
+          7,
+          4,
+          6,
+          11,
+          9,
+          8
+        ],
+        "mean_vertices_per_region": 7.222222222222222,
+        "max_vertices_in_region": 11
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 8,
+        "successful_path_split_count": 6,
+        "successful_linear_split_count": 2,
+        "successful_path_split_ratio": 0.75,
+        "successful_path_bend_count": 10,
+        "successful_split_trace": [
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          }
         ]
-      }
-    },
-    {
-      "pair_id": "pair_018",
-      "region_count": 12,
-      "diagram_complexity": "hard",
-      "seed": 36320900,
-      "image_path": "images_color/pair_018_regions_12_seed_36320900_color.png",
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
       "question": {
-        "question_id": 19,
-        "question_text": "Let v₁ be the vertex not on the frame where regions I and D meet and no other labeled region meets. Starting at v₁, travel vertically downward until you reach the bottom edge of the frame. List the regions whose interiors you pass through, in the order encountered.\n\nDo not include a region if the line only coincides with its boundary without entering its interior.\nIf the line enters and exits a region more than once, list it multiple times.\n",
-        "answer": "[I]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_011",
-      "region_count": 6,
-      "diagram_complexity": "medium",
-      "seed": 400788404,
-      "image_path": "images_color/pair_011_regions_6_seed_400788404_color.png",
-      "question": {
-        "question_id": 25,
-        "question_text": "Does any edge of region B lie on the frame?\n\nTouching the frame only at a vertex does not count.",
-        "answer": "Yes",
-        "answer_type": "two_choice",
-        "choices": [
-          "Yes",
-          "No"
-        ]
-      }
-    },
-    {
-      "pair_id": "pair_006",
-      "region_count": 3,
-      "diagram_complexity": "easy",
-      "seed": 34402817,
-      "image_path": "images_color/pair_006_regions_3_seed_34402817_color.png",
-      "question": {
-        "question_id": 18,
-        "question_text": "Let v₁ be the vertex not on the frame where regions C and B meet and no other labeled region meets. Let v₂ be the vertex at the top left of the overall diagram. Consider the straight line segment from v₁ to v₂. List, in order, the regions whose interiors the segment passes through.\n\nIf the segment only touches or runs along a region’s boundary without entering its interior, do not include that region. If it enters the same region more than once, list that region each time.\n",
-        "answer": "[C, A]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_021",
-      "region_count": 9,
-      "diagram_complexity": "medium",
-      "seed": 241812139,
-      "image_path": "images_color/pair_021_regions_9_seed_241812139_color.png",
-      "question": {
-        "question_id": 4,
-        "question_text": "Let v₁ be the rightmost vertex of G. Starting at v₁, trace the boundary of region G clockwise until you return to v₁. List, in order, the regions on the other side of G’s boundary.\n\nTreat the area outside the frame as a region labeled “Outside”.\n",
-        "answer": "[Outside, D, E, H]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_013",
-      "region_count": 7,
-      "diagram_complexity": "medium",
-      "seed": 299805,
-      "image_path": "images_color/pair_013_regions_7_seed_299805_color.png",
-      "question": {
-        "question_id": 13,
-        "question_text": "Let v₁ be the bottommost vertex of C. Which regions meet at v₁?",
-        "answer": "{A, B, C, E, G}",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_005",
-      "region_count": 10,
-      "diagram_complexity": "hard",
-      "seed": 876187947,
-      "image_path": "images_color/pair_005_regions_10_seed_876187947_color.png",
-      "question": {
-        "question_id": 24,
-        "question_text": "Which region is closer to I: E or A?\n\nThe distance between two regions is defined as the distance between their closest points.\n",
-        "answer": "A",
-        "answer_type": "two_choice",
-        "choices": [
-          "E",
-          "A"
-        ]
-      }
-    },
-    {
-      "pair_id": "pair_003",
-      "region_count": 5,
-      "diagram_complexity": "easy",
-      "seed": 141214201,
-      "image_path": "images_color/pair_003_regions_5_seed_141214201_color.png",
-      "question": {
-        "question_id": 10,
-        "question_text": "Let v₁ be the rightmost vertex of C. Let v₂ be the leftmost vertex of A. Let v₃ be the vertex at the top right of the overall diagram. Let v₄ be the leftmost vertex of B. \nOrder v₂, v₃, and v₄ from closest to farthest from v₁.",
-        "answer": "[v₃, v₂, v₄]",
-        "answer_type": "fill_in_the_blank"
-      }
-    },
-    {
-      "pair_id": "pair_014",
-      "region_count": 4,
-      "diagram_complexity": "easy",
-      "seed": 868633815,
-      "image_path": "images_color/pair_014_regions_4_seed_868633815_color.png",
-      "question": {
-        "question_id": 22,
-        "question_text": "Let v₁ be the bottommost vertex of B. Let v₂ be the vertex at the bottom left of the overall diagram. Let v₃ be the rightmost vertex of B. Let v₄ be the vertex of C with the widest angle. \nDoes the line segment between v₁ and v₂ cross the line segment between v₃ and v₄?",
+        "question_id": 33,
+        "question_text": "Let U be the union of regions B and C. Do U and region I have the same number of edges?",
         "answer": "No",
         "answer_type": "two_choice",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 33,
+          "bindings": [
+            {
+              "name": "U",
+              "expression": {
+                "node": "call",
+                "function": "merge",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "B"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "C"
+                  }
+                ]
+              }
+            }
+          ],
+          "return": {
+            "node": "operation",
+            "operator": "equal",
+            "args": [
+              {
+                "node": "call",
+                "function": "measure",
+                "args": [
+                  {
+                    "node": "variable",
+                    "name": "U"
+                  }
+                ],
+                "kwargs": {
+                  "what": {
+                    "node": "literal",
+                    "value": "edge_count"
+                  }
+                }
+              },
+              {
+                "node": "call",
+                "function": "measure",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "I"
+                  }
+                ],
+                "kwargs": {
+                  "what": {
+                    "node": "literal",
+                    "value": "edge_count"
+                  }
+                }
+              }
+            ]
+          },
+          "tool_call_site_count": 3,
+          "description_resolution_count": 0
+        },
         "choices": [
           "Yes",
           "No"
-        ]
+        ],
+        "targeting_policy": "complex_local_targets"
       }
     },
     {
-      "pair_id": "pair_000",
-      "region_count": 11,
-      "diagram_complexity": "hard",
-      "seed": 795104374,
-      "image_path": "images_color/pair_000_regions_11_seed_795104374_color.png",
+      "item_id": "item_003",
+      "generator_mode": "high_internal_test",
+      "seed": 486074684,
+      "image_path": "images_color/item_003_regions_12_seed_486074684_color.png",
+      "structure_metrics": {
+        "region_count": 12,
+        "total_vertex_count": 27,
+        "interior_vertex_count": 15,
+        "frame_vertex_count": 12,
+        "undirected_edge_count": 38,
+        "nonconvex_region_count": 6,
+        "face_vertex_counts": [
+          4,
+          8,
+          6,
+          6,
+          6,
+          10,
+          4,
+          5,
+          5,
+          10,
+          5,
+          7
+        ],
+        "mean_vertices_per_region": 6.333333333333333,
+        "max_vertices_in_region": 10
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 11,
+        "successful_path_split_count": 7,
+        "successful_linear_split_count": 4,
+        "successful_path_split_ratio": 0.6363636363636364,
+        "successful_path_bend_count": 10,
+        "successful_split_trace": [
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 5,
+        "minimum_successful_path_bends": 10
+      },
+      "question": {
+        "question_id": 15,
+        "question_text": "Let U be the union of regions J and A. Which regions share an edge with U?\n\nA region that touches U only at a vertex does not count.\nEnter \"None\" if there are none.\n",
+        "answer": "{B, C, D, F, K}",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 15,
+          "bindings": [
+            {
+              "name": "U",
+              "expression": {
+                "node": "call",
+                "function": "merge",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "J"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "A"
+                  }
+                ]
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "neighbors",
+            "args": [
+              {
+                "node": "variable",
+                "name": "U"
+              },
+              {
+                "node": "literal",
+                "value": "edge"
+              }
+            ]
+          },
+          "tool_call_site_count": 2,
+          "description_resolution_count": 0
+        },
+        "union_neighbor_policy": {
+          "minimum_diagram_regions": 5,
+          "minimum_edge_neighbors": 3,
+          "maximum_edge_neighbors": 5,
+          "minimum_union_edges": 5,
+          "requires_vertex_only_distractor": true
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_004",
+      "generator_mode": "high_internal_test",
+      "seed": 947388950,
+      "image_path": "images_color/item_004_regions_12_seed_947388950_color.png",
+      "structure_metrics": {
+        "region_count": 12,
+        "total_vertex_count": 26,
+        "interior_vertex_count": 14,
+        "frame_vertex_count": 12,
+        "undirected_edge_count": 37,
+        "nonconvex_region_count": 7,
+        "face_vertex_counts": [
+          7,
+          5,
+          6,
+          5,
+          4,
+          13,
+          6,
+          6,
+          5,
+          4,
+          4,
+          9
+        ],
+        "mean_vertices_per_region": 6.166666666666667,
+        "max_vertices_in_region": 13
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 11,
+        "successful_path_split_count": 6,
+        "successful_linear_split_count": 5,
+        "successful_path_split_ratio": 0.5454545454545454,
+        "successful_path_bend_count": 10,
+        "successful_split_trace": [
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VV",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 5,
+        "minimum_successful_path_bends": 10
+      },
+      "question": {
+        "question_id": 9,
+        "question_text": "How many edges does region G have?",
+        "answer": "8",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 9,
+          "bindings": [],
+          "return": {
+            "node": "call",
+            "function": "measure",
+            "args": [
+              {
+                "node": "entity",
+                "entity_type": "region",
+                "name": "G"
+              }
+            ],
+            "kwargs": {
+              "what": {
+                "node": "literal",
+                "value": "edge_count"
+              }
+            }
+          },
+          "tool_call_site_count": 1,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_005",
+      "generator_mode": "high_internal_test",
+      "seed": 155405782,
+      "image_path": "images_color/item_005_regions_10_seed_155405782_color.png",
+      "structure_metrics": {
+        "region_count": 10,
+        "total_vertex_count": 23,
+        "interior_vertex_count": 13,
+        "frame_vertex_count": 10,
+        "undirected_edge_count": 32,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          4,
+          6,
+          10,
+          4,
+          5,
+          4,
+          7,
+          10,
+          6,
+          8
+        ],
+        "mean_vertices_per_region": 6.4,
+        "max_vertices_in_region": 10
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 9,
+        "successful_path_split_count": 6,
+        "successful_linear_split_count": 3,
+        "successful_path_split_ratio": 0.6666666666666666,
+        "successful_path_bend_count": 8,
+        "successful_split_trace": [
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
+      "question": {
+        "question_id": 30,
+        "question_text": "Let U be the union of regions F and D. Let v₁ be the bottommost vertex of U. Starting at v₁, trace the boundary of U clockwise until you return to v₁. List, in order, the regions on the other side of U’s boundary.\n\nTreat the area outside the frame as a region labeled “Outside”.\nIf you leave a region and encounter it again later, list it again.\n",
+        "answer": "[E, A, B, A, I, J]",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 30,
+          "bindings": [
+            {
+              "name": "U",
+              "expression": {
+                "node": "call",
+                "function": "merge",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "D"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "variable",
+                    "name": "U"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "bottommost"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "neighbors",
+            "args": [
+              {
+                "node": "variable",
+                "name": "U"
+              },
+              {
+                "node": "literal",
+                "value": "ordered"
+              }
+            ],
+            "kwargs": {
+              "start": {
+                "node": "variable",
+                "name": "v₁"
+              },
+              "go_counterclockwise": {
+                "node": "literal",
+                "value": false
+              }
+            }
+          },
+          "tool_call_site_count": 3,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_006",
+      "generator_mode": "high_internal_test",
+      "seed": 871254455,
+      "image_path": "images_color/item_006_regions_6_seed_871254455_color.png",
+      "structure_metrics": {
+        "region_count": 6,
+        "total_vertex_count": 16,
+        "interior_vertex_count": 10,
+        "frame_vertex_count": 6,
+        "undirected_edge_count": 21,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          6,
+          4,
+          7,
+          6,
+          10,
+          9
+        ],
+        "mean_vertices_per_region": 7.0,
+        "max_vertices_in_region": 10
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 5,
+        "successful_path_split_count": 5,
+        "successful_linear_split_count": 0,
+        "successful_path_split_ratio": 1.0,
+        "successful_path_bend_count": 9,
+        "successful_split_trace": [
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 2,
+        "minimum_successful_path_bends": 4
+      },
       "question": {
         "question_id": 2,
-        "question_text": "Do region J and region C have the same number of edges?\n",
+        "question_text": "Do region D and region C have the same number of edges?\n",
         "answer": "Yes",
         "answer_type": "two_choice",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 2,
+          "bindings": [],
+          "return": {
+            "node": "operation",
+            "operator": "equal",
+            "args": [
+              {
+                "node": "call",
+                "function": "measure",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "D"
+                  }
+                ],
+                "kwargs": {
+                  "what": {
+                    "node": "literal",
+                    "value": "edge_count"
+                  }
+                }
+              },
+              {
+                "node": "call",
+                "function": "measure",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "C"
+                  }
+                ],
+                "kwargs": {
+                  "what": {
+                    "node": "literal",
+                    "value": "edge_count"
+                  }
+                }
+              }
+            ]
+          },
+          "tool_call_site_count": 2,
+          "description_resolution_count": 0
+        },
         "choices": [
           "Yes",
           "No"
-        ]
+        ],
+        "edge_count_comparison_policy": {
+          "minimum_edges_per_region": 5,
+          "allowed_edge_count_differences": [
+            0,
+            1,
+            2
+          ],
+          "target_yes_probability_when_both_available": 0.5
+        },
+        "targeting_policy": "complex_local_targets"
       }
     },
     {
-      "pair_id": "pair_016",
-      "region_count": 3,
-      "diagram_complexity": "easy",
-      "seed": 342770875,
-      "image_path": "images_color/pair_016_regions_3_seed_342770875_color.png",
+      "item_id": "item_007",
+      "generator_mode": "high_internal_test",
+      "seed": 868960007,
+      "image_path": "images_color/item_007_regions_6_seed_868960007_color.png",
+      "structure_metrics": {
+        "region_count": 6,
+        "total_vertex_count": 16,
+        "interior_vertex_count": 8,
+        "frame_vertex_count": 8,
+        "undirected_edge_count": 21,
+        "nonconvex_region_count": 4,
+        "face_vertex_counts": [
+          8,
+          8,
+          9,
+          4,
+          5,
+          6
+        ],
+        "mean_vertices_per_region": 6.666666666666667,
+        "max_vertices_in_region": 9
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 5,
+        "successful_path_split_count": 3,
+        "successful_linear_split_count": 2,
+        "successful_path_split_ratio": 0.6,
+        "successful_path_bend_count": 4,
+        "successful_split_trace": [
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 2,
+        "minimum_successful_path_bends": 4
+      },
+      "question": {
+        "question_id": 23,
+        "question_text": "Which pairs of regions share a vertex that is the bottommost vertex of one region and the topmost vertex of the other?\n\nEnter \"None\" if there are none.\n",
+        "answer": "None",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 23,
+          "bindings": [],
+          "return": {
+            "node": "operation",
+            "operator": "filter_region_pairs",
+            "args": [
+              {
+                "node": "entity",
+                "entity_type": "collection",
+                "name": "all_labeled_regions"
+              }
+            ],
+            "predicate": {
+              "node": "operation",
+              "operator": "equal",
+              "args": [
+                {
+                  "node": "call",
+                  "function": "find",
+                  "args": [
+                    {
+                      "node": "variable",
+                      "name": "first"
+                    }
+                  ],
+                  "kwargs": {
+                    "object": {
+                      "node": "literal",
+                      "value": "vertex"
+                    },
+                    "which": {
+                      "node": "literal",
+                      "value": "bottommost"
+                    }
+                  }
+                },
+                {
+                  "node": "call",
+                  "function": "find",
+                  "args": [
+                    {
+                      "node": "variable",
+                      "name": "second"
+                    }
+                  ],
+                  "kwargs": {
+                    "object": {
+                      "node": "literal",
+                      "value": "vertex"
+                    },
+                    "which": {
+                      "node": "literal",
+                      "value": "topmost"
+                    }
+                  }
+                }
+              ]
+            },
+            "exclude_equal": true
+          },
+          "tool_call_site_count": 2,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_008",
+      "generator_mode": "high_internal_test",
+      "seed": 930598579,
+      "image_path": "images_color/item_008_regions_10_seed_930598579_color.png",
+      "structure_metrics": {
+        "region_count": 10,
+        "total_vertex_count": 23,
+        "interior_vertex_count": 13,
+        "frame_vertex_count": 10,
+        "undirected_edge_count": 32,
+        "nonconvex_region_count": 4,
+        "face_vertex_counts": [
+          5,
+          4,
+          6,
+          8,
+          4,
+          4,
+          7,
+          5,
+          17,
+          4
+        ],
+        "mean_vertices_per_region": 6.4,
+        "max_vertices_in_region": 17
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 9,
+        "successful_path_split_count": 7,
+        "successful_linear_split_count": 2,
+        "successful_path_split_ratio": 0.7777777777777778,
+        "successful_path_bend_count": 10,
+        "successful_split_trace": [
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
+      "question": {
+        "question_id": 32,
+        "question_text": "Consider all regions that share an edge with region G. Among those regions, which has the largest area?",
+        "answer": "J",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 32,
+          "bindings": [],
+          "return": {
+            "node": "operation",
+            "operator": "argmax",
+            "args": [
+              {
+                "node": "call",
+                "function": "neighbors",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "G"
+                  },
+                  {
+                    "node": "literal",
+                    "value": "edge"
+                  }
+                ]
+              }
+            ],
+            "key": {
+              "node": "call",
+              "function": "measure",
+              "args": [
+                {
+                  "node": "variable",
+                  "name": "candidate"
+                }
+              ],
+              "kwargs": {
+                "what": {
+                  "node": "literal",
+                  "value": "area"
+                }
+              }
+            }
+          },
+          "tool_call_site_count": 2,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_009",
+      "generator_mode": "high_internal_test",
+      "seed": 652763969,
+      "image_path": "images_color/item_009_regions_8_seed_652763969_color.png",
+      "structure_metrics": {
+        "region_count": 8,
+        "total_vertex_count": 19,
+        "interior_vertex_count": 13,
+        "frame_vertex_count": 6,
+        "undirected_edge_count": 26,
+        "nonconvex_region_count": 6,
+        "face_vertex_counts": [
+          6,
+          11,
+          6,
+          7,
+          5,
+          4,
+          11,
+          4
+        ],
+        "mean_vertices_per_region": 6.75,
+        "max_vertices_in_region": 11
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 7,
+        "successful_path_split_count": 6,
+        "successful_linear_split_count": 1,
+        "successful_path_split_ratio": 0.8571428571428571,
+        "successful_path_bend_count": 8,
+        "successful_split_trace": [
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VV",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 3,
+        "minimum_successful_path_bends": 6
+      },
+      "question": {
+        "question_id": 14,
+        "question_text": "Let U be the union of regions H and C. How many edges does U have? \n",
+        "answer": "5",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 14,
+          "bindings": [
+            {
+              "name": "U",
+              "expression": {
+                "node": "call",
+                "function": "merge",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "H"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "C"
+                  }
+                ]
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "measure",
+            "args": [
+              {
+                "node": "variable",
+                "name": "U"
+              }
+            ],
+            "kwargs": {
+              "what": {
+                "node": "literal",
+                "value": "edge_count"
+              }
+            }
+          },
+          "tool_call_site_count": 2,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_010",
+      "generator_mode": "high_internal_test",
+      "seed": 179834012,
+      "image_path": "images_color/item_010_regions_7_seed_179834012_color.png",
+      "structure_metrics": {
+        "region_count": 7,
+        "total_vertex_count": 21,
+        "interior_vertex_count": 13,
+        "frame_vertex_count": 8,
+        "undirected_edge_count": 27,
+        "nonconvex_region_count": 7,
+        "face_vertex_counts": [
+          9,
+          7,
+          9,
+          6,
+          6,
+          8,
+          8
+        ],
+        "mean_vertices_per_region": 7.571428571428571,
+        "max_vertices_in_region": 9
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 6,
+        "successful_path_split_count": 4,
+        "successful_linear_split_count": 2,
+        "successful_path_split_ratio": 0.6666666666666666,
+        "successful_path_bend_count": 9,
+        "successful_split_trace": [
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 3,
+        "minimum_successful_path_bends": 6
+      },
+      "question": {
+        "question_id": 22,
+        "question_text": "Let v₁ be the bottom left vertex of G. Let v₂ be the vertex not on the frame where regions A and F meet and no other labeled region meets. Let v₃ be the vertex at the top left of the overall diagram. Let v₄ be the bottommost vertex of C. \nDoes the line segment between v₁ and v₂ cross the line segment between v₃ and v₄?",
+        "answer": "Yes",
+        "answer_type": "two_choice",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 22,
+          "bindings": [
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "G"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "bottom_left"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₂",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "A"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "on_frame": {
+                    "node": "literal",
+                    "value": false
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₃",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "frame",
+                    "name": "frame"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "top_left"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₄",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "C"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "bottommost"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "intersect",
+            "args": [
+              {
+                "node": "call",
+                "function": "draw",
+                "args": [
+                  {
+                    "node": "variable",
+                    "name": "v₁"
+                  },
+                  {
+                    "node": "variable",
+                    "name": "v₂"
+                  }
+                ]
+              },
+              {
+                "node": "call",
+                "function": "draw",
+                "args": [
+                  {
+                    "node": "variable",
+                    "name": "v₃"
+                  },
+                  {
+                    "node": "variable",
+                    "name": "v₄"
+                  }
+                ]
+              }
+            ]
+          },
+          "tool_call_site_count": 7,
+          "description_resolution_count": 0
+        },
+        "choices": [
+          "Yes",
+          "No"
+        ],
+        "segment_intersection_policy": {
+          "minimum_segment_length_fraction_of_frame_diagonal": 0.3,
+          "minimum_bounding_box_overlap_fraction_per_axis": 0.03,
+          "target_answer": "Yes",
+          "yes_intersection_parameter_range": [
+            0.15,
+            0.85
+          ],
+          "no_case": "finite-segment near miss with intersecting infinite lines"
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_011",
+      "generator_mode": "high_internal_test",
+      "seed": 548294382,
+      "image_path": "images_color/item_011_regions_11_seed_548294382_color.png",
+      "structure_metrics": {
+        "region_count": 11,
+        "total_vertex_count": 29,
+        "interior_vertex_count": 14,
+        "frame_vertex_count": 15,
+        "undirected_edge_count": 39,
+        "nonconvex_region_count": 4,
+        "face_vertex_counts": [
+          5,
+          9,
+          9,
+          4,
+          4,
+          5,
+          4,
+          5,
+          13,
+          12,
+          4
+        ],
+        "mean_vertices_per_region": 6.7272727272727275,
+        "max_vertices_in_region": 13
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 10,
+        "successful_path_split_count": 7,
+        "successful_linear_split_count": 3,
+        "successful_path_split_ratio": 0.7,
+        "successful_path_bend_count": 10,
+        "successful_split_trace": [
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
+      "question": {
+        "question_id": 1,
+        "question_text": "Which regions share an edge with region H?\n\nA region that touches region H only at a vertex does not count.\nEnter \"None\" if there are none.\n",
+        "answer": "{C, D, E, F, G}",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 1,
+          "bindings": [],
+          "return": {
+            "node": "call",
+            "function": "neighbors",
+            "args": [
+              {
+                "node": "entity",
+                "entity_type": "region",
+                "name": "H"
+              },
+              {
+                "node": "literal",
+                "value": "edge"
+              }
+            ]
+          },
+          "tool_call_site_count": 1,
+          "description_resolution_count": 0
+        },
+        "edge_neighbor_policy": {
+          "minimum_diagram_regions": 6,
+          "minimum_target_region_edges": 6,
+          "answer_length_range": [
+            4,
+            6
+          ],
+          "requires_vertex_only_distractor": true
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_012",
+      "generator_mode": "high_internal_test",
+      "seed": 399594754,
+      "image_path": "images_color/item_012_regions_11_seed_399594754_color.png",
+      "structure_metrics": {
+        "region_count": 11,
+        "total_vertex_count": 26,
+        "interior_vertex_count": 15,
+        "frame_vertex_count": 11,
+        "undirected_edge_count": 36,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          4,
+          5,
+          4,
+          7,
+          12,
+          11,
+          5,
+          6,
+          5,
+          5,
+          8
+        ],
+        "mean_vertices_per_region": 6.545454545454546,
+        "max_vertices_in_region": 12
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 10,
+        "successful_path_split_count": 6,
+        "successful_linear_split_count": 4,
+        "successful_path_split_ratio": 0.6,
+        "successful_path_bend_count": 9,
+        "successful_split_trace": [
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
+      "question": {
+        "question_id": 5,
+        "question_text": "Which pairs of regions share a vertex but do not share an edge?\n\nEnter \"None\" if there are none.\n",
+        "answer": "{(A, E), (E, H), (G, J), (H, J)}",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 5,
+          "bindings": [],
+          "return": {
+            "node": "operation",
+            "operator": "unordered_unique_pairs",
+            "args": [
+              {
+                "node": "operation",
+                "operator": "flat_map",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "collection",
+                    "name": "all_labeled_regions"
+                  }
+                ],
+                "body": {
+                  "node": "call",
+                  "function": "neighbors",
+                  "args": [
+                    {
+                      "node": "variable",
+                      "name": "region"
+                    },
+                    {
+                      "node": "literal",
+                      "value": "vertex"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "tool_call_site_count": 1,
+          "description_resolution_count": 0
+        },
+        "vertex_only_pair_policy": {
+          "minimum_diagram_regions": 6,
+          "answer_pair_count_range": [
+            2,
+            4
+          ],
+          "minimum_edge_sharing_distractor_pairs": 2,
+          "minimum_noncontact_distractor_pairs": 2,
+          "requires_internal_answer_contact": true
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_013",
+      "generator_mode": "high_internal_test",
+      "seed": 394864046,
+      "image_path": "images_color/item_013_regions_11_seed_394864046_color.png",
+      "structure_metrics": {
+        "region_count": 11,
+        "total_vertex_count": 29,
+        "interior_vertex_count": 17,
+        "frame_vertex_count": 12,
+        "undirected_edge_count": 39,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          8,
+          6,
+          9,
+          11,
+          5,
+          6,
+          5,
+          5,
+          6,
+          10,
+          6
+        ],
+        "mean_vertices_per_region": 7.0,
+        "max_vertices_in_region": 11
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 10,
+        "successful_path_split_count": 5,
+        "successful_linear_split_count": 5,
+        "successful_path_split_ratio": 0.5,
+        "successful_path_bend_count": 9,
+        "successful_split_trace": [
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VV",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
+      "question": {
+        "question_id": 13,
+        "question_text": "Let v₁ be the rightmost vertex of K. Which regions meet at v₁?",
+        "answer": "{D, F, J, K}",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 13,
+          "bindings": [
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "K"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "rightmost"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "neighbors",
+            "args": [
+              {
+                "node": "variable",
+                "name": "v₁"
+              }
+            ]
+          },
+          "tool_call_site_count": 2,
+          "description_resolution_count": 0
+        },
+        "meeting_regions_band": "hard_4_plus",
+        "answer_region_count": 4,
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_014",
+      "generator_mode": "high_internal_test",
+      "seed": 246305624,
+      "image_path": "images_color/item_014_regions_6_seed_246305624_color.png",
+      "structure_metrics": {
+        "region_count": 6,
+        "total_vertex_count": 16,
+        "interior_vertex_count": 6,
+        "frame_vertex_count": 10,
+        "undirected_edge_count": 21,
+        "nonconvex_region_count": 4,
+        "face_vertex_counts": [
+          10,
+          4,
+          6,
+          7,
+          7,
+          4
+        ],
+        "mean_vertices_per_region": 6.333333333333333,
+        "max_vertices_in_region": 10
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 5,
+        "successful_path_split_count": 4,
+        "successful_linear_split_count": 1,
+        "successful_path_split_ratio": 0.8,
+        "successful_path_bend_count": 5,
+        "successful_split_trace": [
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 2,
+        "minimum_successful_path_bends": 4
+      },
+      "question": {
+        "question_id": 4,
+        "question_text": "Let v₁ be the vertex on the left edge of the frame where regions B and F meet. Starting at v₁, trace the boundary of region B counterclockwise until you return to v₁. List, in order, the regions on the other side of B’s boundary.\n\nTreat the area outside the frame as a region labeled “Outside”.\nIf you leave a region and encounter it again later, list it again.\n",
+        "answer": "[Outside, A, Outside, C, D, F]",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 4,
+          "bindings": [
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "B"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "on_frame": {
+                    "node": "literal",
+                    "value": true
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "neighbors",
+            "args": [
+              {
+                "node": "entity",
+                "entity_type": "region",
+                "name": "B"
+              },
+              {
+                "node": "literal",
+                "value": "ordered"
+              }
+            ],
+            "kwargs": {
+              "start": {
+                "node": "variable",
+                "name": "v₁"
+              },
+              "go_counterclockwise": {
+                "node": "literal",
+                "value": true
+              }
+            }
+          },
+          "tool_call_site_count": 2,
+          "description_resolution_count": 0
+        },
+        "boundary_trace_band": "hard_4_to_6",
+        "answer_sequence_length": 6,
+        "has_repeated_region": true,
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_015",
+      "generator_mode": "high_internal_test",
+      "seed": 446124614,
+      "image_path": "images_color/item_015_regions_10_seed_446124614_color.png",
+      "structure_metrics": {
+        "region_count": 10,
+        "total_vertex_count": 23,
+        "interior_vertex_count": 16,
+        "frame_vertex_count": 7,
+        "undirected_edge_count": 32,
+        "nonconvex_region_count": 7,
+        "face_vertex_counts": [
+          8,
+          5,
+          9,
+          9,
+          6,
+          6,
+          6,
+          5,
+          7,
+          6
+        ],
+        "mean_vertices_per_region": 6.7,
+        "max_vertices_in_region": 9
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 9,
+        "successful_path_split_count": 7,
+        "successful_linear_split_count": 2,
+        "successful_path_split_ratio": 0.7777777777777778,
+        "successful_path_bend_count": 12,
+        "successful_split_trace": [
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
+      "question": {
+        "question_id": 16,
+        "question_text": "Let U be the union of regions H and C. Order regions U, G, and J from smallest to largest by area.\n",
+        "answer": "[J, G, U]",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 16,
+          "bindings": [
+            {
+              "name": "U",
+              "expression": {
+                "node": "call",
+                "function": "merge",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "H"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "C"
+                  }
+                ]
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "sort",
+            "args": [
+              [
+                {
+                  "node": "variable",
+                  "name": "U"
+                },
+                {
+                  "node": "entity",
+                  "entity_type": "region",
+                  "name": "G"
+                },
+                {
+                  "node": "entity",
+                  "entity_type": "region",
+                  "name": "J"
+                }
+              ]
+            ],
+            "kwargs": {
+              "by": {
+                "node": "literal",
+                "value": "area"
+              }
+            }
+          },
+          "tool_call_site_count": 2,
+          "description_resolution_count": 0
+        },
+        "union_area_ratio_policy": {
+          "comparison_count": 3,
+          "union_rank": "unrestricted",
+          "minimum_adjacent_sorted_ratio": 1.3,
+          "maximum_adjacent_sorted_ratio": 1.6
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_016",
+      "generator_mode": "high_internal_test",
+      "seed": 130020113,
+      "image_path": "images_color/item_016_regions_9_seed_130020113_color.png",
+      "structure_metrics": {
+        "region_count": 9,
+        "total_vertex_count": 19,
+        "interior_vertex_count": 10,
+        "frame_vertex_count": 9,
+        "undirected_edge_count": 27,
+        "nonconvex_region_count": 6,
+        "face_vertex_counts": [
+          6,
+          4,
+          6,
+          6,
+          7,
+          4,
+          9,
+          5,
+          7
+        ],
+        "mean_vertices_per_region": 6.0,
+        "max_vertices_in_region": 9
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 8,
+        "successful_path_split_count": 5,
+        "successful_linear_split_count": 3,
+        "successful_path_split_ratio": 0.625,
+        "successful_path_bend_count": 8,
+        "successful_split_trace": [
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 4,
+        "minimum_successful_path_bends": 8
+      },
       "question": {
         "question_id": 26,
         "question_text": "How many labeled regions are there in the diagram?",
-        "answer": "3",
-        "answer_type": "fill_in_the_blank"
+        "answer": "9",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 26,
+          "bindings": [],
+          "return": {
+            "node": "call",
+            "function": "measure",
+            "args": [
+              {
+                "node": "entity",
+                "entity_type": "frame",
+                "name": "frame"
+              }
+            ],
+            "kwargs": {
+              "what": {
+                "node": "literal",
+                "value": "regions"
+              }
+            }
+          },
+          "tool_call_site_count": 1,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
       }
     },
     {
-      "pair_id": "pair_020",
-      "region_count": 6,
-      "diagram_complexity": "medium",
-      "seed": 377007424,
-      "image_path": "images_color/pair_020_regions_6_seed_377007424_color.png",
+      "item_id": "item_017",
+      "generator_mode": "high_internal_test",
+      "seed": 359370335,
+      "image_path": "images_color/item_017_regions_8_seed_359370335_color.png",
+      "structure_metrics": {
+        "region_count": 8,
+        "total_vertex_count": 21,
+        "interior_vertex_count": 13,
+        "frame_vertex_count": 8,
+        "undirected_edge_count": 28,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          9,
+          9,
+          5,
+          11,
+          4,
+          8,
+          5,
+          5
+        ],
+        "mean_vertices_per_region": 7.0,
+        "max_vertices_in_region": 11
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 7,
+        "successful_path_split_count": 6,
+        "successful_linear_split_count": 1,
+        "successful_path_split_ratio": 0.8571428571428571,
+        "successful_path_bend_count": 11,
+        "successful_split_trace": [
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 3,
+        "minimum_successful_path_bends": 6
+      },
       "question": {
-        "question_id": 14,
-        "question_text": "Let U be the union of regions D and B. How many edges does U have? \n",
-        "answer": "5",
-        "answer_type": "fill_in_the_blank"
+        "question_id": 8,
+        "question_text": "Which regions have 4 edges?\n\nEnter \"None\" if there are none.\n",
+        "answer": "{A, F, H}",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 8,
+          "bindings": [],
+          "return": {
+            "node": "operation",
+            "operator": "filter",
+            "args": [
+              {
+                "node": "entity",
+                "entity_type": "collection",
+                "name": "all_labeled_regions"
+              }
+            ],
+            "predicate": {
+              "node": "operation",
+              "operator": "equal",
+              "args": [
+                {
+                  "node": "call",
+                  "function": "measure",
+                  "args": [
+                    {
+                      "node": "variable",
+                      "name": "region"
+                    }
+                  ],
+                  "kwargs": {
+                    "what": {
+                      "node": "literal",
+                      "value": "edge_count"
+                    }
+                  }
+                },
+                {
+                  "node": "literal",
+                  "value": 4
+                }
+              ]
+            }
+          },
+          "tool_call_site_count": 1,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
       }
     },
     {
-      "pair_id": "pair_015",
-      "region_count": 10,
-      "diagram_complexity": "hard",
-      "seed": 413187270,
-      "image_path": "images_color/pair_015_regions_10_seed_413187270_color.png",
+      "item_id": "item_018",
+      "generator_mode": "high_internal_test",
+      "seed": 956225394,
+      "image_path": "images_color/item_018_regions_8_seed_956225394_color.png",
+      "structure_metrics": {
+        "region_count": 8,
+        "total_vertex_count": 24,
+        "interior_vertex_count": 15,
+        "frame_vertex_count": 9,
+        "undirected_edge_count": 31,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          4,
+          12,
+          4,
+          9,
+          6,
+          4,
+          7,
+          15
+        ],
+        "mean_vertices_per_region": 7.625,
+        "max_vertices_in_region": 15
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 7,
+        "successful_path_split_count": 6,
+        "successful_linear_split_count": 1,
+        "successful_path_split_ratio": 0.8571428571428571,
+        "successful_path_bend_count": 12,
+        "successful_split_trace": [
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 3,
+        "minimum_successful_path_bends": 6
+      },
       "question": {
-        "question_id": 1,
-        "question_text": "Which regions share an edge with region B?\n\nA region that touches region B only at a vertex does not count.\nEnter \"None\" if there are none.\n",
-        "answer": "{E, G, H}",
-        "answer_type": "fill_in_the_blank"
+        "question_id": 10,
+        "question_text": "Let v₁ be the rightmost vertex of D. Let v₂ be the vertex at the bottom right of the overall diagram. Let v₃ be the topmost vertex of A. Let v₄ be the vertex at the top right of the overall diagram. \nOrder v₂, v₃, and v₄ from closest to farthest from v₁.",
+        "answer": "[v₄, v₂, v₃]",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 10,
+          "bindings": [
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "D"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "rightmost"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₂",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "frame",
+                    "name": "frame"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "bottom_right"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₃",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "A"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "topmost"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₄",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "frame",
+                    "name": "frame"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "top_right"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "sort",
+            "args": [
+              [
+                {
+                  "node": "variable",
+                  "name": "v₂"
+                },
+                {
+                  "node": "variable",
+                  "name": "v₃"
+                },
+                {
+                  "node": "variable",
+                  "name": "v₄"
+                }
+              ]
+            ],
+            "kwargs": {
+              "by": {
+                "node": "literal",
+                "value": "distance"
+              },
+              "reference": {
+                "node": "variable",
+                "name": "v₁"
+              }
+            }
+          },
+          "tool_call_site_count": 5,
+          "description_resolution_count": 0
+        },
+        "distance_ratio_band": "moderate_1.3_to_1.6",
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_019",
+      "generator_mode": "high_internal_test",
+      "seed": 959255998,
+      "image_path": "images_color/item_019_regions_8_seed_959255998_color.png",
+      "structure_metrics": {
+        "region_count": 8,
+        "total_vertex_count": 21,
+        "interior_vertex_count": 11,
+        "frame_vertex_count": 10,
+        "undirected_edge_count": 28,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          4,
+          8,
+          8,
+          4,
+          9,
+          9,
+          4,
+          8
+        ],
+        "mean_vertices_per_region": 6.75,
+        "max_vertices_in_region": 9
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 7,
+        "successful_path_split_count": 5,
+        "successful_linear_split_count": 2,
+        "successful_path_split_ratio": 0.7142857142857143,
+        "successful_path_bend_count": 7,
+        "successful_split_trace": [
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 3,
+        "minimum_successful_path_bends": 6
+      },
+      "question": {
+        "question_id": 31,
+        "question_text": "Let e₁ be the edge of H that meets region G. Extend e₁ in both directions to form straight line L1. Among the regions whose interiors L1 passes through, which region has the greatest number of edges?\n\nDo not include a region if the line only coincides with its boundary without entering its interior.\n",
+        "answer": "D",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 31,
+          "bindings": [
+            {
+              "name": "e₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "H"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "G"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "edge"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "operation",
+            "operator": "argmax",
+            "args": [
+              {
+                "node": "call",
+                "function": "intersect",
+                "args": [
+                  {
+                    "node": "call",
+                    "function": "draw",
+                    "args": [
+                      {
+                        "node": "variable",
+                        "name": "e₁"
+                      }
+                    ],
+                    "kwargs": {
+                      "kind": {
+                        "node": "literal",
+                        "value": "full"
+                      }
+                    }
+                  },
+                  {
+                    "node": "literal",
+                    "value": "faces"
+                  }
+                ]
+              }
+            ],
+            "key": {
+              "node": "call",
+              "function": "measure",
+              "args": [
+                {
+                  "node": "variable",
+                  "name": "candidate"
+                }
+              ],
+              "kwargs": {
+                "what": {
+                  "node": "literal",
+                  "value": "edge_count"
+                }
+              }
+            }
+          },
+          "tool_call_site_count": 4,
+          "description_resolution_count": 0
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_020",
+      "generator_mode": "high_internal_test",
+      "seed": 756384538,
+      "image_path": "images_color/item_020_regions_12_seed_756384538_color.png",
+      "structure_metrics": {
+        "region_count": 12,
+        "total_vertex_count": 26,
+        "interior_vertex_count": 14,
+        "frame_vertex_count": 12,
+        "undirected_edge_count": 37,
+        "nonconvex_region_count": 5,
+        "face_vertex_counts": [
+          5,
+          4,
+          6,
+          6,
+          8,
+          12,
+          8,
+          4,
+          4,
+          4,
+          9,
+          4
+        ],
+        "mean_vertices_per_region": 6.166666666666667,
+        "max_vertices_in_region": 12
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 11,
+        "successful_path_split_count": 6,
+        "successful_linear_split_count": 5,
+        "successful_path_split_ratio": 0.5454545454545454,
+        "successful_path_bend_count": 10,
+        "successful_split_trace": [
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 5,
+        "minimum_successful_path_bends": 10
+      },
+      "question": {
+        "question_id": 19,
+        "question_text": "Let v₁ be the rightmost vertex of B. Starting at v₁, travel vertically upward until you reach the top edge of the frame. List the regions whose interiors you pass through, in the order encountered.\n\nDo not include a region if the line only coincides with its boundary without entering its interior.\nIf the line enters and exits a region more than once, list it multiple times.\n",
+        "answer": "[K, J, F, A]",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 19,
+          "bindings": [
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "B"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "rightmost"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "intersect",
+            "args": [
+              {
+                "node": "call",
+                "function": "draw",
+                "args": [
+                  {
+                    "node": "variable",
+                    "name": "v₁"
+                  },
+                  {
+                    "node": "literal",
+                    "value": "up"
+                  }
+                ]
+              },
+              {
+                "node": "literal",
+                "value": "faces"
+              }
+            ]
+          },
+          "tool_call_site_count": 3,
+          "description_resolution_count": 0
+        },
+        "path_length_band": "long_4_plus",
+        "answer_distinct_region_count": 4,
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_021",
+      "generator_mode": "high_internal_test",
+      "seed": 198496336,
+      "image_path": "images_color/item_021_regions_7_seed_198496336_color.png",
+      "structure_metrics": {
+        "region_count": 7,
+        "total_vertex_count": 19,
+        "interior_vertex_count": 11,
+        "frame_vertex_count": 8,
+        "undirected_edge_count": 25,
+        "nonconvex_region_count": 3,
+        "face_vertex_counts": [
+          4,
+          10,
+          4,
+          13,
+          4,
+          4,
+          10
+        ],
+        "mean_vertices_per_region": 7.0,
+        "max_vertices_in_region": 13
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 6,
+        "successful_path_split_count": 5,
+        "successful_linear_split_count": 1,
+        "successful_path_split_ratio": 0.8333333333333334,
+        "successful_path_bend_count": 7,
+        "successful_split_trace": [
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VV",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 3,
+        "minimum_successful_path_bends": 6
+      },
+      "question": {
+        "question_id": 18,
+        "question_text": "Let v₁ be the rightmost vertex of D. Let v₂ be the vertex of F with the widest angle. Consider the straight line segment from v₁ to v₂. List, in order, the regions whose interiors the segment passes through.\n\nIf the segment only touches or runs along a region’s boundary without entering its interior, do not include that region. If it enters the same region more than once, list that region each time.\n",
+        "answer": "[B, E, C, F]",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 18,
+          "bindings": [
+            {
+              "name": "v₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "D"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "rightmost"
+                  }
+                }
+              }
+            },
+            {
+              "name": "v₂",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "widest"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "intersect",
+            "args": [
+              {
+                "node": "call",
+                "function": "draw",
+                "args": [
+                  {
+                    "node": "variable",
+                    "name": "v₁"
+                  },
+                  {
+                    "node": "variable",
+                    "name": "v₂"
+                  }
+                ]
+              },
+              {
+                "node": "literal",
+                "value": "faces"
+              }
+            ]
+          },
+          "tool_call_site_count": 4,
+          "description_resolution_count": 0
+        },
+        "path_length_band": "long_4_plus",
+        "answer_distinct_region_count": 4,
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_022",
+      "generator_mode": "high_internal_test",
+      "seed": 736523247,
+      "image_path": "images_color/item_022_regions_6_seed_736523247_color.png",
+      "structure_metrics": {
+        "region_count": 6,
+        "total_vertex_count": 13,
+        "interior_vertex_count": 5,
+        "frame_vertex_count": 8,
+        "undirected_edge_count": 18,
+        "nonconvex_region_count": 2,
+        "face_vertex_counts": [
+          4,
+          4,
+          6,
+          4,
+          7,
+          9
+        ],
+        "mean_vertices_per_region": 5.666666666666667,
+        "max_vertices_in_region": 9
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 5,
+        "successful_path_split_count": 2,
+        "successful_linear_split_count": 3,
+        "successful_path_split_ratio": 0.4,
+        "successful_path_bend_count": 4,
+        "successful_split_trace": [
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "VV",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VV",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 2,
+        "minimum_successful_path_bends": 4
+      },
+      "question": {
+        "question_id": 11,
+        "question_text": "Region F has 4 interior angles, labeled as follows: (1) a₁ is the angle at the vertex at the bottom right of the overall diagram; (2) a₂ is the angle at the vertex on the right edge of the frame where regions F and B meet; (3) a₃ is the angle at the topmost vertex of F; and (4) a₄ is the angle at the leftmost vertex of F. Order angles a₁, a₂, a₃, and a₄ from smallest to largest.",
+        "answer": "[a₁, a₃, a₄, a₂]",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 11,
+          "bindings": [
+            {
+              "name": "a₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "frame",
+                    "name": "frame"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "bottom_right"
+                  }
+                }
+              }
+            },
+            {
+              "name": "a₂",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "B"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "on_frame": {
+                    "node": "literal",
+                    "value": true
+                  }
+                }
+              }
+            },
+            {
+              "name": "a₃",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "topmost"
+                  }
+                }
+              }
+            },
+            {
+              "name": "a₄",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "vertex"
+                  },
+                  "which": {
+                    "node": "literal",
+                    "value": "leftmost"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "operation",
+            "operator": "return_labels_for_ordered_objects",
+            "args": [
+              {
+                "node": "call",
+                "function": "sort",
+                "args": [
+                  [
+                    {
+                      "node": "variable",
+                      "name": "a₁"
+                    },
+                    {
+                      "node": "variable",
+                      "name": "a₂"
+                    },
+                    {
+                      "node": "variable",
+                      "name": "a₃"
+                    },
+                    {
+                      "node": "variable",
+                      "name": "a₄"
+                    }
+                  ]
+                ],
+                "kwargs": {
+                  "by": {
+                    "node": "literal",
+                    "value": "angle"
+                  },
+                  "reference": {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  }
+                }
+              }
+            ],
+            "labels": [
+              "a₁",
+              "a₂",
+              "a₃",
+              "a₄"
+            ]
+          },
+          "tool_call_site_count": 5,
+          "description_resolution_count": 0
+        },
+        "angle_sort_count": 4,
+        "angle_gap_policy_degrees": {
+          "minimum_adjacent_sorted_gap": 12,
+          "maximum_adjacent_sorted_gap": 60
+        },
+        "targeting_policy": "complex_local_targets"
+      }
+    },
+    {
+      "item_id": "item_023",
+      "generator_mode": "high_internal_test",
+      "seed": 629934789,
+      "image_path": "images_color/item_023_regions_7_seed_629934789_color.png",
+      "structure_metrics": {
+        "region_count": 7,
+        "total_vertex_count": 19,
+        "interior_vertex_count": 11,
+        "frame_vertex_count": 8,
+        "undirected_edge_count": 25,
+        "nonconvex_region_count": 6,
+        "face_vertex_counts": [
+          9,
+          4,
+          10,
+          7,
+          7,
+          6,
+          6
+        ],
+        "mean_vertices_per_region": 7.0,
+        "max_vertices_in_region": 10
+      },
+      "successful_split_metrics": {
+        "successful_split_count": 6,
+        "successful_path_split_count": 5,
+        "successful_linear_split_count": 1,
+        "successful_path_split_ratio": 0.8333333333333334,
+        "successful_path_bend_count": 8,
+        "successful_split_trace": [
+          {
+            "split_type": "EEPath",
+            "is_path_split": true,
+            "internal_bend_count": 3
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "SameEdgePath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          },
+          {
+            "split_type": "EE",
+            "is_path_split": false,
+            "internal_bend_count": 0
+          },
+          {
+            "split_type": "VEPath",
+            "is_path_split": true,
+            "internal_bend_count": 2
+          },
+          {
+            "split_type": "VVPath",
+            "is_path_split": true,
+            "internal_bend_count": 1
+          }
+        ]
+      },
+      "complexity_acceptance_quota": {
+        "minimum_successful_path_splits": 3,
+        "minimum_successful_path_bends": 6
+      },
+      "question": {
+        "question_id": 12,
+        "question_text": "Let e₁ be the edge of F that meets region E. Extend e₁ in both directions to form straight line L1. Which distinct regions’ interiors does L1 pass through?\n\nDo not include a region if the line only coincides with its boundary without entering its interior.\nEnter \"None\" if there are none.\n",
+        "answer": "{A, C, F, G}",
+        "answer_type": "fill_in_the_blank",
+        "reference_program": {
+          "schema_version": "geo_reference_program_v1",
+          "level": "instance",
+          "question_id": 12,
+          "bindings": [
+            {
+              "name": "e₁",
+              "expression": {
+                "node": "call",
+                "function": "find",
+                "args": [
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "F"
+                  },
+                  {
+                    "node": "entity",
+                    "entity_type": "region",
+                    "name": "E"
+                  }
+                ],
+                "kwargs": {
+                  "object": {
+                    "node": "literal",
+                    "value": "edge"
+                  }
+                }
+              }
+            }
+          ],
+          "return": {
+            "node": "call",
+            "function": "intersect",
+            "args": [
+              {
+                "node": "call",
+                "function": "draw",
+                "args": [
+                  {
+                    "node": "variable",
+                    "name": "e₁"
+                  }
+                ],
+                "kwargs": {
+                  "kind": {
+                    "node": "literal",
+                    "value": "full"
+                  }
+                }
+              },
+              {
+                "node": "literal",
+                "value": "faces"
+              }
+            ]
+          },
+          "tool_call_site_count": 3,
+          "description_resolution_count": 0
+        },
+        "path_length_band": "long_4_plus",
+        "answer_distinct_region_count": 4,
+        "targeting_policy": "complex_local_targets"
       }
     }
   ]

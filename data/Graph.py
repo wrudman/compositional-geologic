@@ -231,6 +231,7 @@ def LetterPointFace(face):
     minX, maxX, minY, maxY = BoundingBox(face)
     count = 0
     maxD = 0
+    bestP = MeanOfVertices(face.vertices[1:])
     while count < 40:
         p = randomPointInsideBox(minX, maxX, minY, maxY,True)       
         if pointInsideFace(p,face):
@@ -494,4 +495,3 @@ def ShowMap(vertices,edges,faces):
     for e in edges:
          ShowEdge(e)
          print("")
-

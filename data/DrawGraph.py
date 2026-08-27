@@ -18,7 +18,7 @@ def InitColors(alpha=153):
         with_alpha((0, 255, 0)),     # Green
         with_alpha((255, 255, 0)),   # Yellow
         with_alpha((210, 105, 30)),  # Chocolate/Brown
-        with_alpha((180, 180, 180))  # Light Gray
+        with_alpha((255, 182, 193))  # Light Pink
     ]
 
 def GetSystemFont(size):
