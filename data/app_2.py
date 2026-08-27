@@ -180,7 +180,7 @@ DISPLAY_SIDE = 400
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v19_12_question_forms"
-RESPONSE_SCHEMA_VERSION = "3.8"
+RESPONSE_SCHEMA_VERSION = "3.9"
 SURVEY_CONDITION = "annotation"
 CODE_VERSION = (
     os.environ.get("RENDER_GIT_COMMIT")
@@ -729,7 +729,8 @@ def _answer_tokens(value):
 def _normalized_region_pairs(value):
     """Canonicalize unordered region pairs while preserving pair membership."""
     text = _normalize_answer_notation(value).strip()
-    if text.lower() == "none":
+    none_candidate = text.rstrip(".,;:!?").strip()
+    if none_candidate.lower() == "none":
         return [("none",)]
 
     pair_contents = re.findall(r"\(([^()]*)\)", text)
@@ -911,6 +912,9 @@ QUESTION_BANK, DATASET_PATH, DATASET_METADATA = load_question_bank(
 )
 QUESTION_BANK = add_attention_check(QUESTION_BANK)
 PERSIST_FILE = f"/tmp/geo_session_{SURVEY_CONDITION}_{SURVEY_INSTANCE_ID}.pkl"
+SESSION_STATE_DATA_KEY = (
+    f"_geo_session_data_{SURVEY_CONDITION}_{SURVEY_INSTANCE_ID}"
+)
 if not st.query_params.get("survey_instance"):
     next_params = {"survey_instance": SURVEY_INSTANCE_ID}
     if st.query_params.get("participant_id") or st.query_params.get("pid"):
@@ -1976,10 +1980,17 @@ def compositional_tool_call_from_action(entry: dict, order: int) -> dict | None:
         "output_text": "" if output_text is None else str(output_text),
         "display_text": display_text or ("" if output_text is None else str(output_text)),
         "timestamp": entry.get("server_timestamp"),
+        "server_timestamp": entry.get("server_timestamp"),
         "survey_elapsed_seconds": entry.get("survey_elapsed_seconds"),
         "tutorial_step": entry.get("tutorial_step"),
         "tutorial_phase": entry.get("tutorial_phase"),
     }
+    if entry.get("client_timestamp"):
+        call["client_timestamp"] = entry.get("client_timestamp")
+    if entry.get("client_elapsed_ms") is not None:
+        call["client_elapsed_ms"] = entry.get("client_elapsed_ms")
+    if entry.get("click_coordinates"):
+        call["click_coordinates"] = entry.get("click_coordinates")
     return call
 
 
@@ -2061,8 +2072,13 @@ def compositional_selection_events(actions: list[dict]) -> list[dict]:
             "order": len(events) + 1,
             "action": action,
             "timestamp": entry.get("server_timestamp"),
+            "server_timestamp": entry.get("server_timestamp"),
             "survey_elapsed_seconds": entry.get("survey_elapsed_seconds"),
         }
+        if entry.get("client_timestamp"):
+            event["client_timestamp"] = entry.get("client_timestamp")
+        if entry.get("client_elapsed_ms") is not None:
+            event["client_elapsed_ms"] = entry.get("client_elapsed_ms")
         if entry.get("click_coordinates"):
             event["click_coordinates"] = entry.get("click_coordinates")
         # Tutorial actions are tagged at collection time by log_action().
@@ -2285,13 +2301,43 @@ def annotation_dataset_metadata(data: dict) -> dict:
     }
 
 
+def compact_response_record(question_id: str, response: dict) -> dict:
+    """Normalize an annotation trial to the shared response schema."""
+    if not isinstance(response, dict):
+        return {}
+    question = response.get("question", {})
+    is_attention_check = response.get("is_attention_check")
+    if is_attention_check is None and isinstance(question, dict):
+        is_attention_check = bool(question.get("is_attention_check"))
+    return {
+        "question_id": str(response.get("question_id") or question_id),
+        "question_index": response.get(
+            "question_index", response.get("trial_index")
+        ),
+        "is_attention_check": bool(is_attention_check),
+        "answer": response.get("answer", ""),
+        "scratch_pad": response.get("scratch_pad", response.get("notes", "")),
+        "is_correct": response.get("is_correct"),
+        "question_started_at": response.get(
+            "question_started_at", response.get("trial_start_time")
+        ),
+        "survey_elapsed_seconds": response.get("survey_elapsed_seconds"),
+        "response_time_seconds": response.get("response_time_seconds"),
+        "submitted_at": response.get(
+            "submitted_at", response.get("trial_end_time")
+        ),
+        "tool_calls": list(response.get("tool_calls", [])),
+        "selection_events": list(response.get("selection_events", [])),
+    }
+
+
 def build_result_payload(data: dict) -> dict:
     responses = {}
     for trial in data.get("trials", []):
         question = trial.get("question", {})
         question_index = trial.get("question_index", trial.get("trial_index", 0))
         question_id = str(question.get("question_id", f"q_{question_index:03d}"))
-        responses[question_id] = trial
+        responses[question_id] = compact_response_record(question_id, trial)
     demo_actions = [
         entry for entry in data.get("action_log", [])
         if entry.get("question_id") == DEMO_QUESTION["question_id"]
@@ -2420,6 +2466,7 @@ def build_result_payload(data: dict) -> dict:
         "responses": responses,
         "score_summary": score_summary,
         "tool_usage_summary": tool_summary,
+        "participant_background": data.get("participant_background", {}),
         "post_survey_responses": post_survey_responses,
         "tutorial_summary": tutorial_summary,
     }
@@ -2693,6 +2740,19 @@ def save_session_postgres(data: dict) -> bool:
 
 
 def load_or_create_session():
+    # Keep in-progress tutorial and early-survey state across Streamlit reruns
+    # without treating it as a durable study record.  In particular, buttons
+    # such as Start Tutorial call st.rerun(); without this in-memory copy the
+    # five-minute persistence gate below would recreate the landing page on
+    # every rerun.
+    in_memory = st.session_state.get(SESSION_STATE_DATA_KEY)
+    if isinstance(in_memory, dict):
+        in_memory["participant_id"] = PARTICIPANT_ID
+        in_memory["survey_instance"] = SURVEY_INSTANCE_ID
+        in_memory["condition"] = SURVEY_CONDITION
+        if in_memory.get("survey_version") == SURVEY_VERSION:
+            return in_memory
+
     # Prefer the local snapshot while this Render instance is alive. It may be
     # newer than Postgres if the most recent database write briefly failed.
     if os.path.exists(PERSIST_FILE):
@@ -2719,9 +2779,14 @@ def load_or_create_session():
         except Exception as exc:
             print(f"Postgres session load failed; starting a new session: {exc!r}")
 
-    return create_new_data()
+    data = create_new_data()
+    st.session_state[SESSION_STATE_DATA_KEY] = data
+    return data
 
 def save_session(data):
+    # Session state is transient and is required for normal Streamlit reruns.
+    # The five-minute rule applies only to durable disk/Postgres persistence.
+    st.session_state[SESSION_STATE_DATA_KEY] = data
     if not formal_survey_is_recordable(data):
         return
     data["participant_id"] = PARTICIPANT_ID
@@ -3600,6 +3665,7 @@ data.setdefault("answer_feedback", None)
 data.setdefault("completed", False)
 data.setdefault("post_survey_completed", False)
 data.setdefault("post_survey_responses", {})
+data.setdefault("participant_background", {})
 data.setdefault("post_survey_missing_required", [])
 data.setdefault("ended_by", "")
 data.setdefault("survey_end_time", "")
@@ -3751,7 +3817,13 @@ if data.get("completed") and not data.get("post_survey_completed"):
                 unsafe_allow_html=True,
             )
 
-    def post_five_point_scale(prompt, key):
+    def post_five_point_scale(
+        prompt,
+        key,
+        left_label="Strongly disagree",
+        middle_label="Neutral",
+        right_label="Strongly agree",
+    ):
         st.markdown(f"**{prompt}**")
         value = st.radio(
             prompt, [1, 2, 3, 4, 5], index=None, horizontal=True,
@@ -3760,8 +3832,8 @@ if data.get("completed") and not data.get("post_survey_completed"):
         st.markdown(
             "<div style='width:min(100%,380px);display:grid;grid-template-columns:1fr 1fr 1fr;"
             "color:#6b7280;font-size:0.875rem;margin-top:-0.4rem;margin-bottom:1rem'>"
-            "<div>Strongly disagree</div><div style='text-align:center'>Neutral</div>"
-            "<div style='text-align:right'>Strongly agree</div></div>",
+            f"<div>{left_label}</div><div style='text-align:center'>{middle_label}</div>"
+            f"<div style='text-align:right'>{right_label}</div></div>",
             unsafe_allow_html=True,
         )
         show_post_required_message(key)
@@ -3799,8 +3871,8 @@ if data.get("completed") and not data.get("post_survey_completed"):
         if missing_post_fields:
             st.error("Please answer the highlighted questions before continuing.")
         st.caption(
-            "Required: For each statement, select 1 (Strongly disagree) "
-            "to 5 (Strongly agree)."
+            "Required questions use a 1–5 scale; the scale labels are shown "
+            "below the response options."
         )
         post_five_point_scale(
             "The tutorial was easy to understand.", "annotation_post_tutorial_clarity"
@@ -3905,16 +3977,45 @@ if not data.get("landing_choice_made"):
             "Please complete the survey in one sitting using a laptop or desktop computer.\n\n"
             "Click **Start Tutorial** when you are ready."
         )
-        if st.button("Start Tutorial", type="primary"):
-            start_demo(data)
-            data["demo_step"] = 2
-            data["tool_mode"] = DEMO_STEPS[2]["tool_mode"]
-            data["landing_choice_made"] = True
-            data["entry_route"] = "tutorial"
-            start_tutorial_step(data, "selection")
-            log_action(data, "begin_demo")
-            save_session(data)
-            st.rerun()
+        saved_background = data.get("participant_background", {})
+        if "annotation_pre_math_use_frequency" not in st.session_state and "math_use_frequency" in saved_background:
+            st.session_state.annotation_pre_math_use_frequency = saved_background["math_use_frequency"]
+        if "annotation_pre_stem_background" not in st.session_state and "stem_background" in saved_background:
+            st.session_state.annotation_pre_stem_background = saved_background["stem_background"]
+        with st.form("annotation_pre_survey_background_form"):
+            st.markdown("### A little about you")
+            st.caption("Please answer these two brief background questions before beginning the tutorial.")
+            math_use_frequency = st.radio(
+                "How often do you use mathematics in your studies or work? *",
+                [1, 2, 3, 4, 5], index=None, horizontal=True,
+                key="annotation_pre_math_use_frequency",
+            )
+            st.caption("1 = Never · 3 = Sometimes · 5 = Very often")
+            stem_background = st.radio(
+                "Are you currently studying, or have you previously studied, a STEM-related subject? *",
+                ["Yes, currently", "Yes, previously", "No", "Prefer not to say"],
+                index=None, horizontal=True, key="annotation_pre_stem_background",
+            )
+            start_tutorial = st.form_submit_button("Start Tutorial", type="primary")
+        if start_tutorial:
+            if math_use_frequency is None or stem_background is None:
+                st.error("Please answer both background questions before continuing.")
+            else:
+                data["participant_background"] = {
+                    "math_use_frequency": math_use_frequency,
+                    "stem_background": stem_background,
+                    "placement": "pre_tutorial",
+                    "submitted_at": _ts(),
+                }
+                start_demo(data)
+                data["demo_step"] = 2
+                data["tool_mode"] = DEMO_STEPS[2]["tool_mode"]
+                data["landing_choice_made"] = True
+                data["entry_route"] = "tutorial"
+                start_tutorial_step(data, "selection")
+                log_action(data, "begin_demo")
+                save_session(data)
+                st.rerun()
     st.stop()
 
 bridge_action_key = ""
