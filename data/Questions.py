@@ -7,10 +7,11 @@ import random
 import matplotlib.pyplot as plt
 
 
-global epsilon, angleeps,smallDist, smallAng, failureOutput
+global epsilon, angleeps,smallDist, extremeVertexGap, smallAng, failureOutput
 epsilon = 0.0001
 angleeps = 0.00001
 smallDist = 0.07
+extremeVertexGap = 0.05
 smallAng=0.15
 failureOutput = ("", "", False, 0)
 
@@ -46,6 +47,14 @@ none_answer_def = (
 )
 
 
+def BuildReferenceProgram(question_id, *generation_inputs):
+    """Build the instance reference before rendering question text."""
+    from reference_programs import build_reference_program_from_inputs
+    return build_reference_program_from_inputs(
+        question_id, *generation_inputs
+    )
+
+
 
 class PseudoFace:
     def __init__(self,vertices,edges):
@@ -60,6 +69,57 @@ class PseudoFace:
 
 
 #                          QUESTION 1 
+
+def FaceLocalComplexity(face):
+    """Raw local structure score used to target complex, still-valid regions."""
+    if not getattr(face, "bounded", False):
+        return float("-inf")
+    neighbors = {
+        edge.reverse.leftFace
+        for edge in face.edges
+        if edge.reverse.leftFace and edge.reverse.leftFace.bounded
+    }
+    true_vertex_count = max(0, len(getattr(face, "trueVertices", [])) - 1)
+    nonconvex_bonus = 2 if not getattr(face, "convex", True) else 0
+    interior_bonus = 1 if all(
+        edge.reverse.leftFace and edge.reverse.leftFace.bounded
+        for edge in face.edges
+    ) else 0
+    return true_vertex_count + len(neighbors) + nonconvex_bonus + interior_bonus
+
+
+def VertexLocalComplexity(vertex):
+    """Score a vertex by junction degree and surrounding region complexity."""
+    bounded_faces = {
+        face for face in getattr(vertex, "faces", [])
+        if face and face.bounded
+    }
+    incident_complexity = sum(
+        max(0, len(getattr(face, "trueVertices", [])) - 1)
+        for face in bounded_faces
+    )
+    frame_bonus = 0 if any(not face.bounded for face in getattr(vertex, "faces", [])) else 2
+    return (3 * len(bounded_faces)) + (0.25 * incident_complexity) + frame_bonus
+
+
+def AdjacentPairLocalComplexity(fa, fb):
+    """Score an adjacent region pair by union boundary and external neighbors."""
+    if fa == fb or not fa.bounded or not fb.bounded:
+        return float("-inf")
+    shared = any(edge.reverse.leftFace == fb for edge in fa.edges)
+    if not shared:
+        return float("-inf")
+    external_neighbors = set()
+    for face, other in ((fa, fb), (fb, fa)):
+        for edge in face.edges:
+            neighbor = edge.reverse.leftFace
+            if neighbor and neighbor.bounded and neighbor != other:
+                external_neighbors.add(neighbor)
+    return (
+        FaceLocalComplexity(fa)
+        + FaceLocalComplexity(fb)
+        + len(external_neighbors)
+    )
 
 def DisplayQAs(qaList):
     for qa in qaList:
@@ -240,6 +300,10 @@ def Question4(face,v,cyclicDirection,vIdentCode):
     questionText += cyclicPhrase(cyclicDirection) + " until you return to v₁. "
     questionText += "List, in order, the regions on the other side of " + face.letter + "’s boundary.\n\n"
     questionText += outside_def
+    questionText += (
+        "If you leave a region and encounter it again later, list it again.\n"
+    )
+    questionText += "Contact at a single vertex does not count.\n"
     answerList = Question4Compute(face,v,cyclicDirection)
     if (answerList == []):
         return failureOutput
@@ -273,6 +337,10 @@ def Question4Compute(face,v,CyclicDirection):
                 break
     if not CyclicDirection:  
         faceList.reverse()
+    # The traversal starts at a vertex, so one continuous neighboring region
+    # can otherwise appear at both the beginning and end of the cyclic list.
+    if len(faceList) > 1 and faceList[0] == faceList[-1]:
+        faceList.pop()
     return faceList
     
         
@@ -291,7 +359,8 @@ def oppSidePhrase(direction):
 #                          QUESTION 5
 
 def Question5(map):
-    question = "Which pairs of regions share a vertex but do not share an edge?\n\n"
+    question = "Which pairs of regions share at least one vertex but do not share an edge?\n\n"
+    question += ("List a pair only once, even if the two regions share more than one vertex.\n\n")
     question += none_answer_def
     answerSet = set()
     for v in map.vertices:  
@@ -401,7 +470,7 @@ def Question10Quality(dists):
         return 0
     r1 = dists[1] / dists[0]
     r2 = dists[2] / dists[1]
-    if r1 < 1.5 or r2 <  1.5:
+    if r1 < 1.3 or r2 < 1.3:
         return 0
     else:
         return r1 + r2 
@@ -514,7 +583,11 @@ def Question12(va, vb, code, map):
     true_path = TraceSegment(pa_ext, pb_ext, map, min_dist=EPSILON_THRESHOLD)
     
     # 5. Get the "Visually Robust" path (what is clearly seen)
-    robust_path = TraceSegment(pa_ext, pb_ext, map, min_dist=VISUAL_THRESHOLD)
+    robust_path = TraceSegment(
+        pa_ext, pb_ext, map, min_dist=VISUAL_THRESHOLD,
+        offset_dist=0.012 * np.hypot(*map.bounds),
+        sample_fractions=(0.25, 0.5, 0.75),
+    )
 
     # 6. REJECTION LOGIC (Hard Rejection)
     true_letters = [f.letter for f in true_path]
@@ -655,6 +728,11 @@ def Question15(fa,fb,map):
 #                          QUESTION 16
 
 def Question16(faces,map):
+    # With exactly three bounded regions, comparing the union of two against
+    # the third is almost a complement-of-the-frame observation rather than a
+    # meaningful area-composition task.
+    if len([face for face in map.faces if face.bounded]) == 3:
+        return failureOutput
     # This question uses one union only, so the union can be named
     # consistently with every other union question.
     if sum(type(f) is list for f in faces) != 1:
@@ -684,7 +762,7 @@ def Question16(faces,map):
         areas += [f.area]
     areas, newFaces = parallelSort(areas,newFaces)
     for i in range(len(areas)-1):
-        if areas[i+1] < areas[i]*1.5:
+        if areas[i+1] < areas[i]*1.3:
             return failureOutput 
     return question, Faces2Text(newFaces), newFaces, len(newFaces)
 
@@ -742,7 +820,11 @@ def Question18(va, vb, codeA, codeB, map):
     VISUAL_THRESHOLD = 0.06    
 
     true_path = TraceSegment(va.p, vb.p, map, min_dist=EPSILON_THRESHOLD)
-    robust_path = TraceSegment(va.p, vb.p, map, min_dist=VISUAL_THRESHOLD)
+    robust_path = TraceSegment(
+        va.p, vb.p, map, min_dist=VISUAL_THRESHOLD,
+        offset_dist=0.012 * np.hypot(*map.bounds),
+        sample_fractions=(0.25, 0.5, 0.75),
+    )
 
     # 4. REJECTION LOGIC
     true_letters = [f.letter for f in true_path]
@@ -791,7 +873,11 @@ def Question19(va, direction, code, map):
     VISUAL_THRESHOLD = 0.06    
 
     true_path = TraceSegment(pa, pb, map, min_dist=EPSILON_THRESHOLD)
-    robust_path = TraceSegment(pa, pb, map, min_dist=VISUAL_THRESHOLD)
+    robust_path = TraceSegment(
+        pa, pb, map, min_dist=VISUAL_THRESHOLD,
+        offset_dist=0.012 * np.hypot(*map.bounds),
+        sample_fractions=(0.25, 0.5, 0.75),
+    )
 
     # 4. REJECTION LOGIC
     true_letters = [f.letter for f in true_path]
@@ -983,22 +1069,17 @@ def Q23Compute(map,dir):
     return facePairs
 
 def ExtremeVerticesOfFace(face,dir):
-    """Return mathematically unique min/max vertices, or None for a tie.
-
-    A phrase such as "the leftmost vertex" is valid whenever exactly one
-    vertex has the minimum coordinate. Only coordinates equal within the
-    numerical geometry tolerance are treated as a non-unique extreme.
-    """
+    """Return visually distinct min/max vertices, or None when too close."""
     vertices = face.vertices[:-1]  # omit the repeated closing vertex
     if len(vertices) < 2:
         return None, None
     coordinate = (lambda v: v.p.x) if dir == 0 else (lambda v: v.p.y)
     ordered = sorted(vertices, key=coordinate)
     min_vertex = (ordered[0]
-                  if coordinate(ordered[1]) - coordinate(ordered[0]) > epsilon
+                  if coordinate(ordered[1]) - coordinate(ordered[0]) >= extremeVertexGap
                   else None)
     max_vertex = (ordered[-1]
-                  if coordinate(ordered[-1]) - coordinate(ordered[-2]) > epsilon
+                  if coordinate(ordered[-1]) - coordinate(ordered[-2]) >= extremeVertexGap
                   else None)
     return min_vertex, max_vertex
 
@@ -1093,7 +1174,7 @@ def Question27(res_map):
     # Sort regions by area in descending order
     sorted_regions = sorted(regions, key=lambda f: f.area, reverse=True)
     
-    if len(sorted_regions) > 1 and sorted_regions[0].area < sorted_regions[1].area * 1.5:
+    if len(sorted_regions) > 1 and sorted_regions[0].area < sorted_regions[1].area * 1.3:
         return None, None, None, 0.0
 
     max_face = sorted_regions[0]
@@ -1182,9 +1263,177 @@ def Question29(fe, fb, map, samples=400):
     return question, str(max_robust_count), max_robust_count, 1.0 + (max_robust_count * 0.5)
 
 
+#                          COMPOSITIONAL QUESTIONS 30-34
+
+def Question30(fa, fb, clockwise=True):
+    """Trace the outside boundary of the union of two adjacent regions."""
+    fu = FaceUnion(fa, fb)
+    if fu is False:
+        return failureOutput
+    vertices = list(fu.trueVertices[1:])
+    if not vertices:
+        return failureOutput
+    min_y = min(vertex.p.y for vertex in vertices)
+    starts = [vertex for vertex in vertices if abs(vertex.p.y - min_y) < epsilon]
+    if len(starts) != 1:
+        return failureOutput
+    start = starts[0]
+    # Exact uniqueness is not enough for a human-facing diagram: reject an
+    # almost-tied second-lowest corner and tiny/notch-like starting geometry.
+    second_y = sorted(vertex.p.y for vertex in vertices)[1]
+    if second_y - min_y < extremeVertexGap:
+        return failureOutput
+    incoming = next((edge for edge in fu.edges if edge.head == start), None)
+    outgoing = next((edge for edge in fu.edges if edge.tail == start), None)
+    if incoming is None or outgoing is None:
+        return failureOutput
+    minimum_incident_length = 0.08 * np.sqrt(2.0)
+    if min(
+        Graph.pointDist(incoming.tail.p, start.p),
+        Graph.pointDist(start.p, outgoing.head.p),
+    ) < minimum_incident_length:
+        return failureOutput
+    start_angle = Graph.angleAtFace(start, fu)
+    if abs(start_angle - np.pi) < np.deg2rad(20):
+        return failureOutput
+    answer = Question30Compute(fu, start, not clockwise)
+    if not answer:
+        return failureOutput
+    question = UnionText(fa, fb, "U")
+    question += "Let v₁ be the bottommost vertex of U. "
+    question += "Starting at v₁, trace the boundary of U clockwise until you return to v₁. "
+    question += "List, in order, the regions on the other side of U’s boundary.\n\n"
+    question += outside_def
+    question += "If you leave a region and encounter it again later, list it again.\n"
+    question += "Contact at a single vertex does not count.\n"
+    return question, Faces2Text(answer), answer, len(answer)
+
+
+def Question30Compute(face, start, counterclockwise):
+    """Boundary-neighbor sequence for a pseudo-face union."""
+    start_index = next(
+        (index for index, edge in enumerate(face.edges) if edge.tail == start),
+        None,
+    )
+    if start_index is None:
+        return []
+    ordered_edges = face.edges[start_index:] + face.edges[:start_index]
+    answer = []
+    for edge in ordered_edges:
+        neighbor = edge.reverse.leftFace
+        if not answer or answer[-1] != neighbor:
+            answer.append(neighbor)
+    if not counterclockwise:
+        answer.reverse()
+    if len(answer) > 1 and answer[0] == answer[-1]:
+        answer.pop()
+    return answer
+
+
+def Question31(va, vb, code, map):
+    """Extend a described edge, then maximize edge count over crossed regions."""
+    if BoundaryEdge(va.p, vb.p, map.bounds):
+        return failureOutput
+    descriptions = identifyEdgeTexts(va, vb)
+    if not descriptions:
+        return failureOutput
+    pa, pb = GetFrameIntersections(va.p, vb.p, map.bounds)
+    true_path = TraceSegment(pa, pb, map, min_dist=0.0005)
+    robust_path = TraceSegment(
+        pa, pb, map, min_dist=0.06,
+        offset_dist=0.012 * np.hypot(*map.bounds),
+        sample_fractions=(0.25, 0.5, 0.75),
+    )
+    true_faces = set(true_path)
+    if not true_faces or true_faces != set(robust_path):
+        return failureOutput
+    if len(true_faces) < 3:
+        return failureOutput
+    max_sides = max(face.numSides for face in true_faces)
+    winners = [face for face in true_faces if face.numSides == max_sides]
+    if len(winners) != 1:
+        return failureOutput
+    second_sides = sorted((face.numSides for face in true_faces), reverse=True)[1]
+    if max_sides - second_sides not in (1, 2):
+        return failureOutput
+    question = f"Let e₁ be {decode(descriptions, code)}. "
+    question += "Extend e₁ in both directions to form straight line L1. "
+    question += ("Among the regions whose interiors L1 passes through, which region "
+                 "has the greatest number of edges?\n\n")
+    question += pass_interior_def
+    return question, winners[0].letter, winners[0], 1.0 + len(true_faces)
+
+
+def Question32(face):
+    """Find the largest-area edge neighbor of a region."""
+    neighbors = {
+        edge.reverse.leftFace for edge in face.edges
+        if edge.reverse.leftFace and edge.reverse.leftFace.bounded
+    }
+    if len(neighbors) < 2:
+        return failureOutput
+    ordered = sorted(neighbors, key=lambda item: item.area, reverse=True)
+    ratio = ordered[0].area / ordered[1].area
+    if not 1.15 <= ratio <= 1.6:
+        return failureOutput
+    question = (f"Consider all regions that share an edge with region {face.letter}. "
+                "Among those regions, which has the largest area?")
+    return question, ordered[0].letter, ordered[0], 1.0 + len(neighbors)
+
+
+def Question33(fa, fb, fc):
+    """Compare the edge count of a union with another region."""
+    if fc in (fa, fb):
+        return failureOutput
+    fu = FaceUnion(fa, fb)
+    if fu is False:
+        return failureOutput
+    same = fu.numSides == fc.numSides
+    question = UnionText(fa, fb, "U")
+    question += f"Do U and region {fc.letter} have the same number of edges?"
+    return question, "Yes" if same else "No", same, fu.numSides + fc.numSides
+
+
+def Question34(fc, fd, vc, vd, map):
+    """Intersect the sets of regions crossed by two cardinal rays."""
+    leftmost = [v for v in fc.trueVertices[1:] if abs(v.p.x - vc.p.x) < epsilon]
+    topmost = [v for v in fd.trueVertices[1:] if abs(v.p.y - vd.p.y) < epsilon]
+    if len(leftmost) != 1 or len(topmost) != 1:
+        return failureOutput
+    right_end = Q19OtherEnd(vc.p, 0, map.bounds)
+    down_end = Q19OtherEnd(vd.p, 3, map.bounds)
+    true_right = TraceSegment(vc.p, right_end, map, min_dist=0.0005)
+    true_down = TraceSegment(vd.p, down_end, map, min_dist=0.0005)
+    robust_right = TraceSegment(
+        vc.p, right_end, map, min_dist=0.06,
+        offset_dist=0.012 * np.hypot(*map.bounds), sample_fractions=(0.25, 0.5, 0.75),
+    )
+    robust_down = TraceSegment(
+        vd.p, down_end, map, min_dist=0.06,
+        offset_dist=0.012 * np.hypot(*map.bounds), sample_fractions=(0.25, 0.5, 0.75),
+    )
+    if [f.letter for f in true_right] != [f.letter for f in robust_right]:
+        return failureOutput
+    if [f.letter for f in true_down] != [f.letter for f in robust_down]:
+        return failureOutput
+    answer = set(true_right) & set(true_down)
+    if not answer:
+        return failureOutput
+    if len(set(true_right)) < 3 or len(set(true_down)) < 3:
+        return failureOutput
+    question = f"Let v₁ be the leftmost vertex of {fc.letter}. From v₁, extend a horizontal ray to the right. "
+    question += f"Let v₂ be the topmost vertex of {fd.letter}. From v₂, extend a vertical ray downward. "
+    question += "Which regions’ interiors are crossed by both rays?\n\n"
+    question += pass_interior_def + none_answer_def
+    return question, Faces2Text(answer), answer, 1.0 + len(set(true_right) | set(true_down))
+
+
 import numpy as np
 
-def TraceSegment(pa, pb, map, min_dist=0.05):
+def TraceSegment(
+    pa, pb, map, min_dist=0.05, offset_dist=0.002,
+    sample_fractions=(0.5,),
+):
     """
     Traces the sequence of regions from pa to pb.
     Filters out regions if the segment only lies on the boundary.
@@ -1227,7 +1476,6 @@ def TraceSegment(pa, pb, map, min_dist=0.05):
     dy = pb.y - pa.y
     length = np.sqrt(dx**2 + dy**2)
     
-    offset_dist = 0.002 
     if length > 1e-7:
         perp_x = (-dy / length) * offset_dist
         perp_y = (dx / length) * offset_dist
@@ -1241,16 +1489,24 @@ def TraceSegment(pa, pb, map, min_dist=0.05):
         if Graph.pointDist(p1, p2) < min_dist:
             continue
             
-        mid = Graph.midpoint(p1, p2)
-        
-        p_left = Graph.Vector(mid.x + perp_x, mid.y + perp_y)
-        p_right = Graph.Vector(mid.x - perp_x, mid.y - perp_y)
-
         for face in map.faces:
             if not face.bounded:
                 continue
-            
-            if Graph.pointInsideFace(p_left, face) and Graph.pointInsideFace(p_right, face):
+            visibly_inside = True
+            for fraction in sample_fractions:
+                sample = Graph.Vector(
+                    p1.x + fraction * (p2.x - p1.x),
+                    p1.y + fraction * (p2.y - p1.y),
+                )
+                p_left = Graph.Vector(sample.x + perp_x, sample.y + perp_y)
+                p_right = Graph.Vector(sample.x - perp_x, sample.y - perp_y)
+                if not (
+                    Graph.pointInsideFace(p_left, face)
+                    and Graph.pointInsideFace(p_right, face)
+                ):
+                    visibly_inside = False
+                    break
+            if visibly_inside:
                 path_sequence.append(face)
                 break 
                 
@@ -1413,13 +1669,13 @@ def faceExtremeVertexID(v, face, angleOption):
     return texts
 
 def horizontallyDistinct(v,alternatives):
-    global smallDist
+    global extremeVertexGap
     left = True
     right = True
     for a in alternatives:
-        if a.p.x < v.p.x + smallDist:
+        if a.p.x < v.p.x + extremeVertexGap:
             left = False        
-        if a.p.x > v.p.x - smallDist:
+        if a.p.x > v.p.x - extremeVertexGap:
             right = False    
     return left,right
 
@@ -1427,9 +1683,9 @@ def verticallyDistinct(v,alternatives):
     bottom = True
     top = True
     for a in alternatives:
-        if a.p.y < v.p.y + smallDist:
+        if a.p.y < v.p.y + extremeVertexGap:
             bottom = False        
-        if a.p.y > v.p.y - smallDist:
+        if a.p.y > v.p.y - extremeVertexGap:
             top = False
     return bottom,top
 

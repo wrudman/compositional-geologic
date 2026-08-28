@@ -1115,7 +1115,7 @@
       },
       "question": {
         "question_id": 30,
-        "question_text": "Let U be the union of regions F and D. Let v₁ be the bottommost vertex of U. Starting at v₁, trace the boundary of U clockwise until you return to v₁. List, in order, the regions on the other side of U’s boundary.\n\nTreat the area outside the frame as a region labeled “Outside”.\nIf you leave a region and encounter it again later, list it again.\n",
+        "question_text": "Let U be the union of regions F and D. Let v₁ be the bottommost vertex of U. Starting at v₁, trace the boundary of U clockwise until you return to v₁. List, in order, the regions on the other side of U’s boundary.\n\nTreat the area outside the frame as a region labeled “Outside”.\nIf you leave a region and encounter it again later, list it again.\nContact at a single vertex does not count.\n",
         "answer": "[E, A, B, A, I, J]",
         "answer_type": "fill_in_the_blank",
         "reference_program": {
@@ -2181,7 +2181,7 @@
       },
       "question": {
         "question_id": 5,
-        "question_text": "Which pairs of regions share a vertex but do not share an edge?\n\nEnter \"None\" if there are none.\n",
+        "question_text": "Which pairs of regions share at least one vertex but do not share an edge?\n\nList a pair only once, even if the two regions share more than one vertex.\n\nEnter \"None\" if there are none.\n",
         "answer": "{(A, E), (E, H), (G, J), (H, J)}",
         "answer_type": "fill_in_the_blank",
         "reference_program": {
@@ -2443,7 +2443,7 @@
       },
       "question": {
         "question_id": 4,
-        "question_text": "Let v₁ be the vertex on the left edge of the frame where regions B and F meet. Starting at v₁, trace the boundary of region B counterclockwise until you return to v₁. List, in order, the regions on the other side of B’s boundary.\n\nTreat the area outside the frame as a region labeled “Outside”.\nIf you leave a region and encounter it again later, list it again.\n",
+        "question_text": "Let v₁ be the vertex on the left edge of the frame where regions B and F meet. Starting at v₁, trace the boundary of region B counterclockwise until you return to v₁. List, in order, the regions on the other side of B’s boundary.\n\nTreat the area outside the frame as a region labeled “Outside”.\nIf you leave a region and encounter it again later, list it again.\nContact at a single vertex does not count.\n",
         "answer": "[Outside, A, Outside, C, D, F]",
         "answer_type": "fill_in_the_blank",
         "reference_program": {
