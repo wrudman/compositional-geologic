@@ -179,7 +179,7 @@ def tool_draw_label_edge_list_extension(
 DISPLAY_SIDE = 400
 MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
-SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v21_round3_hard_full24"
+SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v22_round3_hard_ab12"
 RESPONSE_SCHEMA_VERSION = "3.9"
 SURVEY_CONDITION = "annotation"
 CODE_VERSION = (
@@ -188,21 +188,19 @@ CODE_VERSION = (
     or "local"
 )
 TIME_LIMIT_SECONDS = None
-SURVEY_QUESTION_COUNT = 24
+SURVEY_QUESTION_COUNT = 12
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 MIN_FORMAL_SURVEY_RECORDING_SECONDS = int(
     os.environ.get("MIN_FORMAL_SURVEY_RECORDING_SECONDS", "300")
 )
-QUESTION_FORM_ASSIGNMENT_VERSION = "compositional_questions_v4_round3_hard_full24"
+QUESTION_FORM_ASSIGNMENT_VERSION = "compositional_questions_v5_round3_hard_ab12"
 SURVEY_FORM_QUESTION_IDS = {
     "A": {
-        "1", "2", "4", "5", "8", "9", "10", "11", "12", "13", "14", "15",
-        "16", "18", "19", "20", "21", "22", "23", "26", "30", "31", "32", "33",
+        "15", "23", "30", "12", "21", "11", "4", "31", "13", "9", "18", "26",
     },
     "B": {
-        "1", "2", "4", "5", "8", "9", "10", "11", "12", "13", "14", "15",
-        "16", "18", "19", "20", "21", "22", "23", "26", "30", "31", "32", "33",
+        "19", "2", "1", "5", "16", "32", "20", "33", "14", "8", "10", "22",
     },
 }
 ANSWER_HINTS_HUMAN = {
