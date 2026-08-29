@@ -932,6 +932,10 @@ def _answer_hint_type(question):
 
 
 
+def _canonicalize_outside_display(value):
+    return re.sub(r"\boutside\b", "Outside", str(value), flags=re.IGNORECASE)
+
+
 def format_answer_for_feedback(question):
     answer = str(question.get("answer", "")).strip()
     if not answer:
@@ -947,15 +951,27 @@ def format_answer_for_feedback(question):
     if answer.lower() == "none":
         return "None"
     if hint_type == "region_pairs":
-        return answer.strip("{}[] ")
+        return _canonicalize_outside_display(answer.strip("{}[] "))
     if hint_type in {"region_set", "region_sequence", "ordered_items", "number_sequence"}:
         tokens = _answer_tokens(answer)
         if not tokens:
-            return answer.strip("{}[] ")
+            return _canonicalize_outside_display(answer.strip("{}[] "))
         if hint_type in {"region_set", "region_sequence"}:
-            tokens = [token.upper() if len(token) == 1 and token.isalpha() else token for token in tokens]
-        return ", ".join(tokens)
-    return answer
+            tokens = [
+                "Outside"
+                if token.lower() == "outside"
+                else token.upper()
+                if len(token) == 1 and token.isalpha()
+                else token
+                for token in tokens
+            ]
+        return _canonicalize_outside_display(", ".join(tokens))
+    return _canonicalize_outside_display(answer)
+
+
+def format_response_for_feedback(answer):
+    """Use canonical entity capitalization without changing the saved answer."""
+    return _canonicalize_outside_display(answer)
 
 def answer_is_correct(question, answer):
     correct = _normalize_answer_notation(question.get("answer", "")).strip()
@@ -5422,7 +5438,9 @@ with answer_panel.container(key="answer_panel_content"):
             feedback_for_current = feedback and feedback.get("question_index") == st.session_state.survey_question_index
             if feedback_for_current:
                 if feedback.get("is_correct") is False:
-                    original_response = feedback.get("answer", "")
+                    original_response = format_response_for_feedback(
+                        feedback.get("answer", "")
+                    )
                     correct_answer = feedback.get("correct_answer_display", feedback.get("correct_answer", ""))
                     st.error(
                         f"**Incorrect.**  \n"

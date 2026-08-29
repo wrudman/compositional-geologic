@@ -9,6 +9,7 @@ import Graph
 import BuildRandomMap 
 import DrawGraph 
 import Questions
+import map_helpers
 
 # Data structure for angles
 Angle = namedtuple('Angle', ['p', 'parent_face'])
@@ -1494,14 +1495,13 @@ def draw_union(draw, img, manager, res_map, fa, fb, label_cache, maxX, maxY, **k
         draw.line([p1, p2], fill=(255, 255, 255, 255), width=8) # White outline for contrast
         draw.line([p1, p2], fill=(0, 0, 0, 255), width=6)       # Main black line
 
-    # --- STEP 3: Draw Special Label 'U' for the merged region ---
-    # We only need to draw the 'U' at the position of the first face (fa)
-    if hasattr(fa, '_cache_idx') and fa._cache_idx in label_cache:
-        lp, d = label_cache[fa._cache_idx]
-        coords = DrawGraph.V2P(lp)
-        draw.text(coords, "U", fill=(0, 0, 0, 255), font=font_bold, 
-                  anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
-        manager.reserve(coords[0], coords[1], 40, 40)
+    # --- STEP 3: Draw Special Label 'U' inside the complete merged polygon ---
+    lp, d = _union_label_lp_d(fa, fb, label_cache)
+    coords = DrawGraph.V2P(lp)
+    union_font = font_bold if d > 0.06 else font_small
+    draw.text(coords, "U", fill=(0, 0, 0, 255), font=union_font,
+              anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
+    manager.reserve(coords[0], coords[1], 40, 40)
     
     # No return statement needed, as modifications are made directly to the passed 'draw' object
 
@@ -1524,14 +1524,32 @@ def run_highlight_union_fill(draw, img, manager, res_map, fa, fb, label_cache, m
         draw.line([p1, p2], fill=(255, 255, 255, 255), width=8)
         draw.line([p1, p2], fill=(0, 0, 0, 255), width=6)
 
-    if hasattr(fa, '_cache_idx') and fa._cache_idx in label_cache:
-        lp, d = label_cache[fa._cache_idx]
-        coords = DrawGraph.V2P(lp)
-        mask_r = 45 if d > 0.06 else 25
-        draw.ellipse([coords[0]-mask_r, coords[1]-mask_r, coords[0]+mask_r, coords[1]+mask_r], fill=color)
-        draw.text(coords, "U", fill=(0, 0, 0, 255), font=font_bold,
-                  anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
-        manager.reserve(coords[0], coords[1], 40, 40)
+    lp, d = _union_label_lp_d(fa, fb, label_cache)
+    coords = DrawGraph.V2P(lp)
+    mask_r = 45 if d > 0.06 else 25
+    draw.ellipse([coords[0]-mask_r, coords[1]-mask_r, coords[0]+mask_r, coords[1]+mask_r], fill=color)
+    union_font = font_bold if d > 0.06 else DrawGraph.GetSystemFont(45)
+    draw.text(coords, "U", fill=(0, 0, 0, 255), font=union_font,
+              anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
+    manager.reserve(coords[0], coords[1], 40, 40)
+
+
+def _union_label_lp_d(fa, fb, label_cache):
+    """Return a spacious point inside the actual union, with a safe fallback."""
+    try:
+        union_face = map_helpers._face_union(fa, fb)
+        if union_face is False:
+            raise ValueError("regions do not form a connected union")
+        return Graph.LetterPointFace(union_face)
+    except Exception:
+        candidates = []
+        for face in (fa, fb):
+            idx = getattr(face, '_cache_idx', None)
+            if idx is not None and idx in label_cache:
+                candidates.append(label_cache[idx])
+            else:
+                candidates.append(Graph.LetterPointFace(face))
+        return max(candidates, key=lambda item: item[1])
 
 
 
