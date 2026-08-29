@@ -3,7 +3,7 @@ services:
     name: geo-tools
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run data/app.py --server.port $PORT --server.address 0.0.0.0
+    startCommand: streamlit run data/randomized_survey.py --server.port $PORT --server.address 0.0.0.0
     envVars:
       - key: PORT
         value: 10000
