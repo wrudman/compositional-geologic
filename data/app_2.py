@@ -19,6 +19,7 @@ except ImportError:
 import Graph
 import BuildRandomMap
 import DrawGraph
+from streamlit_component_helpers import declare_component
 from visual_tools_annotation import (
     AnnotationSession,
     tool_draw_points_line,
@@ -992,7 +993,7 @@ def drawing_pad_component(html_code: str):
     index_path = os.path.join(comp_dir, "index.html")
     with open(index_path, "w", encoding="utf-8") as f:
         f.write(html_code)
-    return components.declare_component("drawing_pad_bridge", path=comp_dir)
+    return declare_component("drawing_pad_bridge", path=comp_dir)
 
 
 def get_client_action_meta() -> dict:

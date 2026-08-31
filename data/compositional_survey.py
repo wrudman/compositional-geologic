@@ -22,6 +22,7 @@ import BuildRandomMap
 import DrawGraph
 import map_helpers
 import tools_human as T
+from streamlit_component_helpers import declare_component
 from sel_types import AngleSel, EdgeSel
 
 try:
@@ -1262,7 +1263,7 @@ def _geo_canvas_component():
         os.makedirs(comp_dir, exist_ok=True)
         with open(os.path.join(comp_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(_GEO_CANVAS_HTML)
-    return components.declare_component("geo_canvas", path=comp_dir)
+    return declare_component("geo_canvas", path=comp_dir)
 
 _GEO_CANVAS = _geo_canvas_component()
 
