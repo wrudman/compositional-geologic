@@ -183,6 +183,9 @@ DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v22_round3_hard_ab12"
 RESPONSE_SCHEMA_VERSION = "3.9"
 SURVEY_CONDITION = "annotation"
+# Temporary study configuration: keep union implementation and saved-session
+# compatibility, but do not expose or accept the merge tool.
+UNION_TOOL_ENABLED = False
 CODE_VERSION = (
     os.environ.get("RENDER_GIT_COMMIT")
     or os.environ.get("GIT_COMMIT")
@@ -347,6 +350,8 @@ DEMO_STEPS = {
         "tool_mode": "Region",
     },
 }
+if not UNION_TOOL_ENABLED:
+    DEMO_STEPS.pop(8, None)
 DEMO_CLOCKWISE_STEP = 2.1
 DEMO_FRAME_STEP = 2.2
 DEMO_TOTAL_STEPS = max(DEMO_STEPS)
@@ -381,7 +386,7 @@ DEFINITIONS_TEXT = (
     PRACTICE_DIRECTION_DEFINITIONS
     + PRACTICE_FRAME_DEFINITIONS
     + PRACTICE_ENTITY_DEFINITIONS
-    + PRACTICE_UNION_DEFINITION
+    + (PRACTICE_UNION_DEFINITION if UNION_TOOL_ENABLED else "")
 )
 
 TOOL_GUIDE_TEXT = """
@@ -402,13 +407,15 @@ TOOL_GUIDE_TEXT = """
 - Select one vertex and a direction to draw a ray.
 - Select one edge to extend it in both directions as a straight line.
 
+""" + ("""
 **Merge**
 
 - Select two neighboring regions that share an edge, then click **RUN** to create Region U.
+""" if UNION_TOOL_ENABLED else "") + """
 """
 
 TOOLS_GUIDE_TEXT = """
-First choose an object type under Selection and select objects from the diagram. Then choose Highlight, Measure, Draw Line, or Merge under Tool.
+First choose an object type under Selection and select objects from the diagram. Then choose Highlight, Measure, or Draw Line under Tool.
 
 Highlight marks the selected vertex, angle, edge, or region.
 
@@ -416,7 +423,9 @@ Measure can return distance, angle, or area, depending on the selection.
 
 Draw Line can create a segment, a cardinal ray, or extend a selected edge.
 
+""" + ("""
 Merge combines two selected neighboring regions.
+""" if UNION_TOOL_ENABLED else "") + """
 
 Use Undo if you want to remove your most recent annotation.
 
@@ -4047,6 +4056,13 @@ if (
     # RUN action again (and draw an apparently random old edge).
     st.session_state["_last_routed_bridge_action"] = bridge_action_key
     act = query_params["bridge_act"]
+    if not UNION_TOOL_ENABLED and act in {
+        "add_to_buffer", "remove_from_buffer", "clear_buffer",
+        "clear_union", "execute_union", "commit_union_highlight",
+    }:
+        data["union_buffer"] = []
+        act = "union_tool_disabled"
+        save_session(data)
     tgt_id = query_params.get("bridge_tgt", "none")
     if act in {
         "set_tool_mode", "set_measure_kind",
@@ -6035,7 +6051,7 @@ html_code = f"""
             <button class="tool-choice" data-category="highlight">Highlight</button>
             <button class="tool-choice" data-category="measure">Measure</button>
             <button class="tool-choice" data-category="draw">Draw Line</button>
-            <button class="tool-choice" data-category="merge">Merge</button>
+            <button class="tool-choice {'hidden' if not UNION_TOOL_ENABLED else ''}" data-category="merge" {'disabled' if not UNION_TOOL_ENABLED else ''}>Merge</button>
         </div>
         <div id="drawToolSettings" class="category-section" data-category="draw">
             <div class="setting-label">Draw Line</div>
@@ -6144,14 +6160,14 @@ html_code = f"""
             </div>
             <button class="sec-btn hidden" id="clearUnionBtn" style="margin-top: 8px; background: #F5F5F5; color: #333; border-color: #BBB;">Clear Region U</button>
 
-            <div id="unionConstructionSection" style="display:none; margin-top:20px; border-top:1px dashed #DDD; padding-top:15px;">
+            <div id="unionConstructionSection" class="{'hidden' if not UNION_TOOL_ENABLED else ''}" style="display:none; margin-top:20px; border-top:1px dashed #DDD; padding-top:15px;">
                 <span style="font-size:12px; font-weight:bold; color:#777;">Union Construction:</span>
                 <button class="sec-btn" id="addToBufferBtn" style="margin-top: 8px;">➕ Add to Union Buffer</button>
                 <button class="sec-btn cancel-btn" id="removeFromBufferBtn" style="margin-top: 8px; display:none;">Remove from Buffer</button>
                 <div id="bufferWarning" style="color: #D32F2F; font-size: 11px; margin-top: 5px; font-weight: 500;" class="hidden"></div>
             </div>
 
-            <div id="globalBufferBox" data-category="merge" style="margin-top:15px;" class="category-section">
+            <div id="globalBufferBox" data-category="merge" style="margin-top:15px;" class="category-section {'hidden' if not UNION_TOOL_ENABLED else ''}">
                 <p class="selection-echo">Selected regions: <b id="staged_letters_span">-</b></p>
                 <div style="display: flex; gap: 8px;">
                     <button class="action-btn run-btn" id="execUnionBtn" style="flex:1; margin-top:0;">▶ RUN</button>
