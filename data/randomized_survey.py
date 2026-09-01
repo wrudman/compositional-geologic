@@ -201,23 +201,11 @@ def assign_with_sqlite(participant_id):
         return condition
 
 
+# Temporary annotation-only deployment. Keep the balanced assignment helpers
+# above intact so randomized condition assignment can be restored later.
 participant_id = get_or_create_participant_id()
-
-if ASSIGNMENT_KEY not in st.session_state:
-    try:
-        st.session_state[ASSIGNMENT_KEY] = (
-            assign_with_postgres(participant_id)
-            if DATABASE_URL
-            else assign_with_sqlite(participant_id)
-        )
-    except Exception as exc:
-        st.error(
-            "The survey could not assign a condition. Please refresh in a moment."
-        )
-        print(f"Survey condition assignment failed: {exc!r}")
-        st.stop()
-
-condition = st.session_state[ASSIGNMENT_KEY]
+condition = "annotation"
+st.session_state[ASSIGNMENT_KEY] = condition
 survey_path = Path(__file__).resolve().with_name(SURVEY_FILES[condition])
 
 # Execute the selected survey inside this registered Streamlit module so custom
