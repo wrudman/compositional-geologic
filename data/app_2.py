@@ -350,11 +350,12 @@ DEMO_STEPS = {
         "tool_mode": "Region",
     },
 }
-if not UNION_TOOL_ENABLED:
-    DEMO_STEPS.pop(8, None)
 DEMO_CLOCKWISE_STEP = 2.1
 DEMO_FRAME_STEP = 2.2
-DEMO_TOTAL_STEPS = max(DEMO_STEPS)
+DEMO_TOTAL_STEPS = max(
+    step for step in DEMO_STEPS
+    if UNION_TOOL_ENABLED or step != 8
+)
 DEMO_REVIEW_STEP = DEMO_TOTAL_STEPS + 1
 PRACTICE_DIRECTION_DEFINITIONS = """
 **Clockwise:** movement around a circle in the top, right, bottom, left direction.
@@ -1074,7 +1075,7 @@ TUTORIAL_GUIDED_STAGES = (
     "ray",
     "extend_edge",
     "measure_distance",
-    "merge",
+    *(("merge",) if UNION_TOOL_ENABLED else ()),
 )
 
 
