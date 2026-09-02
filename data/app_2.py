@@ -356,7 +356,10 @@ DEMO_TOTAL_STEPS = max(
     step for step in DEMO_STEPS
     if UNION_TOOL_ENABLED or step != 8
 )
-DEMO_REVIEW_STEP = DEMO_TOTAL_STEPS + 1
+# Keep the review sentinel outside every defined tutorial step.  Step 8's
+# metadata remains available for result-schema compatibility even while the
+# union tool is disabled, so DEMO_TOTAL_STEPS + 1 would collide with it.
+DEMO_REVIEW_STEP = max(DEMO_STEPS) + 1
 PRACTICE_DIRECTION_DEFINITIONS = """
 **Clockwise:** movement around a circle in the top, right, bottom, left direction.
 
@@ -3674,6 +3677,20 @@ data.setdefault("landing_choice_made", False)
 data.setdefault("entry_route", "tutorial")
 data.setdefault("demo_step", 0)
 data.setdefault("demo_pending_completion", None)
+# Sessions saved by the earlier annotation-only deployment may already point
+# at the former union step.  Move them directly to review before rendering.
+if (
+    not UNION_TOOL_ENABLED
+    and data.get("phase") == "demo"
+    and data.get("demo_step") == 8
+):
+    data["demo_step"] = DEMO_REVIEW_STEP
+    data["demo_pending_completion"] = None
+    completed_at = _ts()
+    tutorial_summary = data.setdefault("tutorial_summary", {})
+    tutorial_summary.setdefault("guided_completed_at", completed_at)
+    tutorial_summary.setdefault("free_exploration_started_at", completed_at)
+    save_session(data)
 data.setdefault("demo_direction_answered", False)
 data.setdefault("demo_direction_correct", None)
 data.setdefault("demo_incorrect_target_message", "")
@@ -5588,7 +5605,7 @@ with main_info_col:
                     visible_definitions += PRACTICE_DIRECTION_DEFINITIONS
                 elif data.get("demo_step") == DEMO_FRAME_STEP:
                     visible_definitions += PRACTICE_FRAME_DEFINITIONS
-                elif data.get("demo_step", 0) >= 8:
+                elif UNION_TOOL_ENABLED and data.get("demo_step") == 8:
                     visible_definitions += PRACTICE_UNION_DEFINITION
             st.markdown(visible_definitions)
 
