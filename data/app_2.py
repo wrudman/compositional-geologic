@@ -3084,6 +3084,15 @@ def connected_edge_component(segments, selected_edge):
     return component
 
 
+def edge_incident_face_key(edge):
+    """Return the unordered pair of faces incident to an undirected edge."""
+    reverse = getattr(edge, "reverse", None)
+    return frozenset((
+        id(getattr(edge, "leftFace", None)),
+        id(getattr(reverse, "leftFace", None)),
+    ))
+
+
 def grouped_visual_edge_endpoints(session, selected_edge):
     """Return endpoints across the connected live segments of a visual edge."""
     if selected_edge is None:
@@ -3095,6 +3104,7 @@ def grouped_visual_edge_endpoints(session, selected_edge):
         if selected_reverse is not None
         else None
     )
+    target_face_key = edge_incident_face_key(selected_edge)
     hidden_ids = session.get_active_hidden_edges()
     segments = []
     seen_pairs = set()
@@ -3120,6 +3130,11 @@ def grouped_visual_edge_endpoints(session, selected_edge):
             edge_root not in {target_root, target_reverse_root}
             and reverse_root not in {target_root, target_reverse_root}
         ):
+            continue
+        # A collinear frame line can be split among several regions.  Crossing
+        # from (D, Outside) to (C, Outside), for example, starts a distinct
+        # region edge even when the two segments meet at one vertex.
+        if edge_incident_face_key(edge) != target_face_key:
             continue
         seen_pairs.add(pair)
         segments.append(edge)
@@ -3345,37 +3360,7 @@ def measure_region(sess, face):
 def edge_measure_segments(sess, edge):
     if edge is None:
         return []
-    target_root = getattr(edge, "trueEdge", edge)
-    target_rev_root = getattr(edge.reverse, "trueEdge", edge.reverse) if hasattr(edge, "reverse") else None
-    hover_faces = []
-    for face in [edge.leftFace, edge.reverse.leftFace if hasattr(edge, "reverse") else None]:
-        if not face or not face.bounded:
-            continue
-        if face not in hover_faces:
-            hover_faces.append(face)
-        for action_func, action_args, action_kwargs in sess.actions:
-            if "draw_union" in action_func.__name__.lower() and len(action_args) >= 3:
-                fa, fb = action_args[1], action_args[2]
-                if face == fa and fb not in hover_faces:
-                    hover_faces.append(fb)
-                elif face == fb and fa not in hover_faces:
-                    hover_faces.append(fa)
-
-    segments = []
-    seen = set()
-    for face in hover_faces:
-        for e in face.edges:
-            s_id = id(e)
-            s_rev_id = id(e.reverse) if hasattr(e, "reverse") else None
-            seg_pair = tuple(sorted([s_id, s_rev_id or s_id]))
-            if seg_pair in seen:
-                continue
-            if getattr(e, "trueEdge", e) == target_root or (
-                target_rev_root and getattr(e, "trueEdge", e) == target_rev_root
-            ):
-                seen.add(seg_pair)
-                segments.append(e)
-    return segments or [edge]
+    return grouped_visual_edge_endpoints(sess, edge)[2]
 
 
 def measure_edge(sess, edge):
@@ -4516,39 +4501,12 @@ if (
                 chosen_face = f_oppo if (f_oppo and f_oppo.bounded) else f_main
 
             if chosen_face and chosen_face.bounded:
-                target_root = getattr(target_e, "trueEdge", target_e)
-                target_rev_root = getattr(target_e.reverse, "trueEdge", target_e.reverse) if hasattr(target_e, 'reverse') else None
-
-                # Add union partner if chosen_face is part of a union
-                faces_to_search = [chosen_face]
-                for action_func, action_args, action_kwargs in sess.actions:
-                    if "draw_union" in action_func.__name__.lower() and len(action_args) >= 3:
-                        fa, fb = action_args[1], action_args[2]
-                        if chosen_face == fa:
-                            faces_to_search.append(fb)
-                            break
-                        elif chosen_face == fb:
-                            faces_to_search.append(fa)
-                            break
-
-                face_segments = [
-                    e for face in faces_to_search
-                    for e in face.edges
-                    if getattr(e, "trueEdge", e) == target_root or
-                    (target_rev_root and getattr(e, "trueEdge", e) == target_rev_root)
-                ]
-                # A trueEdge may span both the visible boundary of U and an
-                # old constituent seam hidden by the merge.  Highlight only
-                # the segments that still exist in the displayed topology.
-                active_hidden_edges = sess.get_active_hidden_edges()
-                face_segments = [
-                    e for e in face_segments
-                    if id(e) not in active_hidden_edges
-                    and (not hasattr(e, "reverse") or id(e.reverse) not in active_hidden_edges)
-                ]
+                _source_a, _source_b, face_segments = grouped_visual_edge_endpoints(
+                    sess,
+                    target_e,
+                )
 
                 if face_segments:
-                    # print(f"face_side={face_side}, chosen_face={chosen_face.letter}, faces_to_search={[f.letter for f in faces_to_search]}, segments={len(face_segments)}")  # COMMENTED OUT
                     sess.add_edge_action(face_segments, label=None, auto_enumerate=True)
                     adjacent_regions = sorted({
                         getattr(face, "letter", "?")
