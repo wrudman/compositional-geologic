@@ -3035,8 +3035,57 @@ def find_edge_by_vertex_ids(res_map, tail_id, head_id):
     return None
 
 
+def connected_edge_component(segments, selected_edge):
+    """Return only the endpoint-connected component containing selected_edge.
+
+    ``trueEdge`` identifies the original supporting edge, but later topology
+    edits can split that edge into disconnected pieces (for example when a
+    region interrupts a frame boundary).  Those pieces are distinct visual
+    edges and must not share one annotation label or hover highlight.
+    """
+    if selected_edge is None:
+        return []
+
+    def segment_key(edge):
+        return frozenset((id(edge), id(getattr(edge, "reverse", edge))))
+
+    unique_segments = []
+    seen = set()
+    for edge in segments:
+        key = segment_key(edge)
+        if key not in seen:
+            seen.add(key)
+            unique_segments.append(edge)
+
+    selected_key = segment_key(selected_edge)
+    seed = next(
+        (edge for edge in unique_segments if segment_key(edge) == selected_key),
+        selected_edge,
+    )
+    component = [seed]
+    connected_vertices = {id(seed.tail), id(seed.head)}
+    remaining = [
+        edge for edge in unique_segments
+        if segment_key(edge) != segment_key(seed)
+    ]
+    changed = True
+    while changed:
+        changed = False
+        still_remaining = []
+        for edge in remaining:
+            edge_vertices = {id(edge.tail), id(edge.head)}
+            if connected_vertices.intersection(edge_vertices):
+                component.append(edge)
+                connected_vertices.update(edge_vertices)
+                changed = True
+            else:
+                still_remaining.append(edge)
+        remaining = still_remaining
+    return component
+
+
 def grouped_visual_edge_endpoints(session, selected_edge):
-    """Return the farthest endpoints across all live segments of a visual edge."""
+    """Return endpoints across the connected live segments of a visual edge."""
     if selected_edge is None:
         return None, None, []
     target_root = getattr(selected_edge, "trueEdge", selected_edge)
@@ -3077,6 +3126,7 @@ def grouped_visual_edge_endpoints(session, selected_edge):
 
     if not segments:
         segments = [selected_edge]
+    segments = connected_edge_component(segments, selected_edge)
     vertices = []
     seen_vertices = set()
     for edge in segments:
@@ -4934,42 +4984,17 @@ for edge_idx, edge in enumerate(sess.res_map.edges):
 
     edge_is_obsolete = bool(is_hidden)
 
-    # Build full segment list for hover highlight (same logic as commit_edge)
-    target_root = getattr(edge, "trueEdge", edge)
-    target_rev_root = getattr(edge.reverse, "trueEdge", edge.reverse) if hasattr(edge, 'reverse') else None
-
-    # Find which faces to search (main + union partner if any)
-    hover_faces = []
-    for face in [f_main, f_oppo]:
-        if not face or not face.bounded:
-            continue
-        if face not in hover_faces:
-            hover_faces.append(face)
-        for action_func, action_args, action_kwargs in sess.actions:
-            if "draw_union" in action_func.__name__.lower() and len(action_args) >= 3:
-                fa, fb = action_args[1], action_args[2]
-                if face == fa and fb not in hover_faces:
-                    hover_faces.append(fb)
-                elif face == fb and fa not in hover_faces:
-                    hover_faces.append(fa)
-
+    # Use exactly the same connected component as committed edge annotations.
+    # Sharing a trueEdge root alone is insufficient because a later region can
+    # interrupt that root and leave multiple discrete visible edges.
+    _source_a, _source_b, hover_segments = grouped_visual_edge_endpoints(sess, edge)
     all_segments = []
-    seen_seg_pairs = set()
-    for face in hover_faces:
-        for e in face.edges:
-            s_id = id(e)
-            s_rev_id = id(e.reverse) if hasattr(e, 'reverse') else None
-            seg_pair = tuple(sorted([s_id, s_rev_id or s_id]))
-            if seg_pair in seen_seg_pairs:
-                continue
-            if getattr(e, "trueEdge", e) == target_root or \
-               (target_rev_root and getattr(e, "trueEdge", e) == target_rev_root):
-                seen_seg_pairs.add(seg_pair)
-                sx1 = (e.tail.p.x * MATH_SCALE + 100) / (sess.img_size[0] / DISPLAY_SIDE)
-                sy1 = (900.0 - e.tail.p.y * MATH_SCALE) / (sess.img_size[1] / DISPLAY_SIDE)
-                sx2 = (e.head.p.x * MATH_SCALE + 100) / (sess.img_size[0] / DISPLAY_SIDE)
-                sy2 = (900.0 - e.head.p.y * MATH_SCALE) / (sess.img_size[1] / DISPLAY_SIDE)
-                all_segments.append({"x1": sx1, "y1": sy1, "x2": sx2, "y2": sy2})
+    for hover_edge in hover_segments:
+        sx1 = (hover_edge.tail.p.x * MATH_SCALE + 100) / (sess.img_size[0] / DISPLAY_SIDE)
+        sy1 = (900.0 - hover_edge.tail.p.y * MATH_SCALE) / (sess.img_size[1] / DISPLAY_SIDE)
+        sx2 = (hover_edge.head.p.x * MATH_SCALE + 100) / (sess.img_size[0] / DISPLAY_SIDE)
+        sy2 = (900.0 - hover_edge.head.p.y * MATH_SCALE) / (sess.img_size[1] / DISPLAY_SIDE)
+        all_segments.append({"x1": sx1, "y1": sy1, "x2": sx2, "y2": sy2})
 
     edges_data.append({
         "edge_idx": edge_idx,
