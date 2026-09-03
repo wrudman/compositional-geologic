@@ -834,6 +834,16 @@ def _answer_hint_type(question):
 
 
 def format_answer_for_feedback(question):
+    def display_token(token):
+        if token.lower() == "outside":
+            return "Outside"
+        if len(token) == 1 and token.isalpha():
+            return token.upper()
+        return token
+
+    def display_outside(text):
+        return re.sub(r"\boutside\b", "Outside", text, flags=re.IGNORECASE)
+
     answer = str(question.get("answer", "")).strip()
     if not answer:
         return ""
@@ -847,15 +857,15 @@ def format_answer_for_feedback(question):
     if answer.lower() == "none":
         return "None"
     if hint_type == "region_pairs":
-        return answer.strip("{}[] ")
+        return display_outside(answer.strip("{}[] "))
     if hint_type in {"region_set", "region_sequence", "ordered_items", "number_sequence"}:
         tokens = _answer_tokens(answer)
         if not tokens:
-            return answer.strip("{}[] ")
+            return display_outside(answer.strip("{}[] "))
         if hint_type in {"region_set", "region_sequence"}:
-            tokens = [token.upper() if len(token) == 1 and token.isalpha() else token for token in tokens]
+            tokens = [display_token(token) for token in tokens]
         return ", ".join(tokens)
-    return answer
+    return display_outside(answer)
 
 
 def answer_is_correct(question, answer):
