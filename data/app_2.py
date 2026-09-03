@@ -183,6 +183,7 @@ DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v22_round3_hard_ab12"
 RESPONSE_SCHEMA_VERSION = "3.9"
 SURVEY_CONDITION = "annotation"
+HIGHLIGHT_TOOL_ENABLED = False
 # Temporary study configuration: keep union implementation and saved-session
 # compatibility, but do not expose or accept the merge tool.
 UNION_TOOL_ENABLED = False
@@ -354,7 +355,8 @@ DEMO_CLOCKWISE_STEP = 2.1
 DEMO_FRAME_STEP = 2.2
 DEMO_TOTAL_STEPS = max(
     step for step in DEMO_STEPS
-    if UNION_TOOL_ENABLED or step != 8
+    if (HIGHLIGHT_TOOL_ENABLED or step != 3)
+    and (UNION_TOOL_ENABLED or step != 8)
 )
 # Keep the review sentinel outside every defined tutorial step.  Step 8's
 # metadata remains available for result-schema compatibility even while the
@@ -394,11 +396,6 @@ DEFINITIONS_TEXT = (
 )
 
 TOOL_GUIDE_TEXT = """
-**Highlight**
-
-- Select one vertex, angle, edge, or region, then click **RUN** to leave a persistent annotation.
-- For a shared edge, choose which adjacent region's boundary you mean.
-
 **Measure**
 
 - Select two vertices to measure their distance.
@@ -419,9 +416,7 @@ TOOL_GUIDE_TEXT = """
 """
 
 TOOLS_GUIDE_TEXT = """
-First choose an object type under Selection and select objects from the diagram. Then choose Highlight, Measure, or Draw Line under Tool.
-
-Highlight marks the selected vertex, angle, edge, or region.
+Hover over an object to preview it, or choose an object type under Selection and click an object to select it. Then choose Measure or Draw Line under Tool.
 
 Measure can return distance, angle, or area, depending on the selection.
 
@@ -1073,7 +1068,7 @@ TUTORIAL_GUIDED_STAGES = (
     "selection",
     "clockwise",
     "frame",
-    "highlight",
+    *(("highlight",) if HIGHLIGHT_TOOL_ENABLED else ()),
     "segment",
     "ray",
     "extend_edge",
@@ -3712,6 +3707,18 @@ data.setdefault("landing_choice_made", False)
 data.setdefault("entry_route", "tutorial")
 data.setdefault("demo_step", 0)
 data.setdefault("demo_pending_completion", None)
+# Retire the former persistent-highlight practice step for existing sessions.
+if (
+    not HIGHLIGHT_TOOL_ENABLED
+    and data.get("phase") == "demo"
+    and data.get("demo_step") == 3
+):
+    data["demo_step"] = 4
+    data["demo_pending_completion"] = None
+    data["tool_mode"] = DEMO_STEPS[4]["tool_mode"]
+    prefill_demo_vertex_inputs(data, 4)
+    start_tutorial_step(data, "segment")
+    save_session(data)
 # Sessions saved by the earlier annotation-only deployment may already point
 # at the former union step.  Move them directly to review before rendering.
 if (
@@ -4109,6 +4116,12 @@ if (
     # RUN action again (and draw an apparently random old edge).
     st.session_state["_last_routed_bridge_action"] = bridge_action_key
     act = query_params["bridge_act"]
+    if not HIGHLIGHT_TOOL_ENABLED and act in {
+        "commit_vertex", "commit_angle", "commit_edge", "commit_region",
+        "commit_union_highlight",
+    }:
+        act = "highlight_tool_disabled"
+        save_session(data)
     if not UNION_TOOL_ENABLED and act in {
         "add_to_buffer", "remove_from_buffer", "clear_buffer",
         "clear_union", "execute_union", "commit_union_highlight",
@@ -5286,9 +5299,10 @@ if data.get("phase") == "demo":
                 key="continue_frame_demo",
             ):
                 mark_tutorial_step_completed(data, "frame")
-                first_tool_step = 3
+                first_tool_step = 3 if HIGHLIGHT_TOOL_ENABLED else 4
                 data["demo_step"] = first_tool_step
                 data["tool_mode"] = DEMO_STEPS[first_tool_step]["tool_mode"]
+                prefill_demo_vertex_inputs(data, first_tool_step)
                 start_tutorial_step(data)
                 save_session(data)
                 st.rerun()
@@ -5370,7 +5384,7 @@ if data.get("phase") == "demo":
 
 This survey is **not a test of your ability to operate the tools**. You can answer the questions without them, but the tools can make many questions **substantially easier**, so we recommend becoming comfortable with them.
 
-Feel free to explore other tools before starting the survey. **Useful examples** include highlighting an object, drawing a ray, extending an edge, measuring a distance, angle, or area, or merging neighboring regions.
+Feel free to explore other tools before starting the survey. **Useful examples** include drawing a ray, extending an edge, or measuring a distance, angle, or area.
 
 Read the **instructions under the diagram** to see what else each tool can do.
 """
@@ -5948,7 +5962,6 @@ review_ui_reset_token = (
 )
 if data.get("phase") == "demo":
     demo_active_category = {
-        3: "highlight",
         4: "draw",
         5: "draw",
         6: "draw",
@@ -6049,7 +6062,6 @@ html_code = f"""
         {selection_review_panel}
         <div id="actionsHeading" class="tool-heading {'hidden' if selection_only_demo else ''}">Tools</div>
         <div id="toolGrid" class="tool-grid {'hidden' if selection_only_demo else ''}">
-            <button class="tool-choice" data-category="highlight">Highlight</button>
             <button class="tool-choice" data-category="measure">Measure</button>
             <button class="tool-choice" data-category="draw">Draw Line</button>
             <button class="tool-choice {'hidden' if not UNION_TOOL_ENABLED else ''}" data-category="merge" {'disabled' if not UNION_TOOL_ENABLED else ''}>Merge</button>
@@ -6252,7 +6264,14 @@ html_code = f"""
             sessionStorage.removeItem('annotationDrawKind');
             sessionStorage.setItem('annotationSurveyResetToken', surveyUiResetToken);
         }}
+        const allowedToolCategories = new Set([
+            'measure', 'draw'{", 'merge'" if UNION_TOOL_ENABLED else ""}
+        ]);
         let activeCategory = tutorialActiveCategory || sessionStorage.getItem('annotationActiveTool') || null;
+        if (!allowedToolCategories.has(activeCategory)) {{
+            activeCategory = null;
+            sessionStorage.removeItem('annotationActiveTool');
+        }}
         if (tutorialActiveCategory) sessionStorage.setItem('annotationActiveTool', tutorialActiveCategory);
         const savedLineStyle = tutorialLineStyle || sessionStorage.getItem('annotationLineStyle') || 'segment';
         const savedDrawKind = tutorialLineStyle
