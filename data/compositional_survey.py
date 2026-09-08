@@ -4973,7 +4973,15 @@ if not st.session_state.landing_choice_made:
             ["Yes, currently", "Yes, previously", "No", "Prefer not to say"],
             index=None, horizontal=True, key="pre_stem_background",
         )
-        start_tutorial = st.form_submit_button("Start Tutorial", type="primary")
+        if IS_INTERNAL_PREVIEW:
+            tutorial_column, preview_column = st.columns(2)
+            with tutorial_column:
+                start_tutorial = st.form_submit_button("Start Tutorial", type="primary")
+            with preview_column:
+                skip_tutorial = st.form_submit_button("Skip tutorial and preview survey", type="primary")
+        else:
+            start_tutorial = st.form_submit_button("Start Tutorial", type="primary")
+            skip_tutorial = False
     if start_tutorial:
         if math_use_frequency is None or stem_background is None:
             st.error("Please answer both background questions before continuing.")
@@ -4993,10 +5001,8 @@ if not st.session_state.landing_choice_made:
             start_tutorial_step("selection_practice")
             save_survey_results()
             st.rerun()
-    if IS_INTERNAL_PREVIEW:
-        st.caption("Internal preview runs are labelled separately and excluded from participant analysis.")
-        if st.button("Skip tutorial and preview survey"):
-            skip_tutorial_for_internal_preview()
+    if skip_tutorial:
+        skip_tutorial_for_internal_preview()
     st.stop()
 
 if st.session_state.survey_completed and st.session_state.post_survey_completed:
