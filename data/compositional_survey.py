@@ -4974,11 +4974,11 @@ if not st.session_state.landing_choice_made:
             index=None, horizontal=True, key="pre_stem_background",
         )
         if IS_INTERNAL_PREVIEW:
-            tutorial_column, preview_column = st.columns(2)
+            tutorial_column, preview_column, _ = st.columns(3)
             with tutorial_column:
                 start_tutorial = st.form_submit_button("Start Tutorial", type="primary")
             with preview_column:
-                skip_tutorial = st.form_submit_button("Skip tutorial and preview survey", type="primary")
+                skip_tutorial = st.form_submit_button("Skip tutorial", type="primary")
         else:
             start_tutorial = st.form_submit_button("Start Tutorial", type="primary")
             skip_tutorial = False
