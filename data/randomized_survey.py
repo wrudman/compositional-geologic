@@ -230,7 +230,6 @@ elif not has_identity:
     st.caption("Choose the route that matches your purpose.")
     route = st.radio("How are you accessing this survey?", ("I’m a participant", "Internal preview / testing"))
     if route == "I’m a participant":
-        st.write("You will enter the current annotation survey and complete its tutorial first.")
         if st.button("Continue as participant", type="primary"):
             get_or_create_participant_id()
     else:
