@@ -227,16 +227,25 @@ if preview_mode and preview_condition in SURVEY_FILES:
     condition = preview_condition
 elif not has_identity:
     st.title("Geometry Reasoning Survey")
-    st.caption("Choose the route that matches your purpose.")
-    route = st.radio("How are you accessing this survey?", ("I’m a participant", "Internal preview / testing"))
-    if route == "I’m a participant":
-        if st.button("Continue as participant", type="primary"):
-            get_or_create_participant_id()
-    else:
-        st.write("Preview runs are labelled as internal and may skip the tutorial.")
-        selected_preview_condition = st.radio("Survey to preview", ("annotation", "compositional"), format_func=str.title)
+    if st.session_state.get("show_internal_preview_selector"):
+        st.subheader("Survey to preview")
+        selected_preview_condition = st.radio(
+            "Survey to preview",
+            ("annotation", "compositional"),
+            format_func=str.title,
+            label_visibility="collapsed",
+        )
         if st.button("Open internal preview", type="primary"):
             start_internal_preview(selected_preview_condition)
+        if st.button("Back"):
+            st.session_state.pop("show_internal_preview_selector", None)
+            st.rerun()
+    else:
+        if st.button("I’m a participant", type="primary"):
+            get_or_create_participant_id()
+        if st.button("For internal testing purposes only"):
+            st.session_state["show_internal_preview_selector"] = True
+            st.rerun()
     st.stop()
 else:
     participant_id = get_or_create_participant_id()
