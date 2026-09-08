@@ -1,5 +1,6 @@
 import streamlit as st
 st.set_page_config(layout="wide", page_title="Geometry Reasoning Survey")
+IS_INTERNAL_PREVIEW = str(st.query_params.get("preview", "")).lower() in {"1", "true", "yes"}
 
 import streamlit.components.v1 as components
 import json, pickle, os, random, re, math, html, hashlib
@@ -1215,11 +1216,11 @@ def refresh_annotation_tutorial_summary(data: dict) -> dict:
     return summary
 
 
-def mark_annotation_tutorial_completed(data: dict) -> None:
+def mark_annotation_tutorial_completed(data: dict, completion_method: str = "guided_tutorial") -> None:
     summary = data.setdefault("tutorial_summary", {})
     completed_at = _ts()
     summary["completion_status"] = "completed"
-    summary["completion_method"] = "guided_tutorial"
+    summary["completion_method"] = completion_method
     summary["completed_at"] = completed_at
     summary.setdefault("started_at", data.get("demo_start_time") or completed_at)
     guided_completed_at = summary.get("guided_completed_at")
@@ -1745,8 +1746,8 @@ def prefill_demo_vertex_inputs(data: dict, demo_step: int) -> None:
     sync_vertex_selection_labels(data)
 
 
-def begin_survey(data: dict) -> None:
-    mark_annotation_tutorial_completed(data)
+def begin_survey(data: dict, tutorial_completion_method: str = "guided_tutorial") -> None:
+    mark_annotation_tutorial_completed(data, tutorial_completion_method)
     data["phase"] = "survey"
     data["demo_end_time"] = _ts()
     data["survey_start_time"] = _ts()
@@ -1755,6 +1756,16 @@ def begin_survey(data: dict) -> None:
     st.session_state["definitions_open"] = False
     st.session_state["tools_guide_open"] = False
     start_trial(data, 0)
+
+
+def begin_internal_preview_survey(data: dict) -> None:
+    """Bypass tutorial steps only for runs launched from the preview route."""
+    data["landing_choice_made"] = True
+    data["entry_route"] = "internal_preview_skip_tutorial"
+    begin_survey(data, "internal_preview_skip_tutorial")
+    log_action(data, "internal_preview_skip_tutorial")
+    save_session(data)
+    st.rerun()
 
 
 def skip_practice_to_review(data: dict) -> None:
@@ -2468,6 +2479,7 @@ def build_result_payload(data: dict) -> dict:
         "response_schema_version": RESPONSE_SCHEMA_VERSION,
         "code_version": CODE_VERSION,
         "condition": SURVEY_CONDITION,
+        "is_internal_preview": IS_INTERNAL_PREVIEW,
         "participant_id": data.get("participant_id", PARTICIPANT_ID),
         "survey_instance": data.get("survey_instance", SURVEY_INSTANCE_ID),
         "survey_version": SURVEY_VERSION,
@@ -4110,6 +4122,10 @@ if not data.get("landing_choice_made"):
                 log_action(data, "begin_demo")
                 save_session(data)
                 st.rerun()
+        if IS_INTERNAL_PREVIEW:
+            st.caption("Internal preview runs are labelled separately and excluded from participant analysis.")
+            if st.button("Skip tutorial and preview survey"):
+                begin_internal_preview_survey(data)
     st.stop()
 
 bridge_action_key = ""

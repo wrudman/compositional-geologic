@@ -56,6 +56,20 @@ def get_or_create_participant_id():
     st.rerun()
 
 
+def start_internal_preview(condition):
+    """Launch an explicitly marked, non-study preview run."""
+    preview_id = safe_participant_id(
+        f"internal_preview_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    )
+    st.query_params.from_dict({
+        "pid": preview_id,
+        "survey_instance": preview_id,
+        "preview": "1",
+        "preview_condition": condition,
+    })
+    st.rerun()
+
+
 def condition_for_number(assignment_number):
     return "compositional" if assignment_number % 2 == 1 else "annotation"
 
@@ -201,10 +215,34 @@ def assign_with_sqlite(participant_id):
         return condition
 
 
-# Temporary annotation-only deployment. Keep the balanced assignment helpers
-# above intact so randomized condition assignment can be restored later.
-participant_id = get_or_create_participant_id()
-condition = "annotation"
+# Production participants remain on the annotation-only flow. The internal
+# route can preview either interface without using participant identifiers.
+query_params = st.query_params
+preview_mode = str(query_params.get("preview", "")).lower() in {"1", "true", "yes"}
+preview_condition = str(query_params.get("preview_condition", "")).lower()
+has_identity = any(query_params.get(key) for key in ("participant_id", "pid", "survey_instance"))
+
+if preview_mode and preview_condition in SURVEY_FILES:
+    participant_id = get_or_create_participant_id()
+    condition = preview_condition
+elif not has_identity:
+    st.title("Geometry Reasoning Survey")
+    st.caption("Choose the route that matches your purpose.")
+    route = st.radio("How are you accessing this survey?", ("I’m a participant", "Internal preview / testing"))
+    if route == "I’m a participant":
+        st.write("You will enter the current annotation survey and complete its tutorial first.")
+        if st.button("Continue as participant", type="primary"):
+            get_or_create_participant_id()
+    else:
+        st.write("Preview runs are labelled as internal and may skip the tutorial.")
+        selected_preview_condition = st.radio("Survey to preview", ("annotation", "compositional"), format_func=str.title)
+        if st.button("Open internal preview", type="primary"):
+            start_internal_preview(selected_preview_condition)
+    st.stop()
+else:
+    participant_id = get_or_create_participant_id()
+    condition = "annotation"
+
 st.session_state[ASSIGNMENT_KEY] = condition
 survey_path = Path(__file__).resolve().with_name(SURVEY_FILES[condition])
 

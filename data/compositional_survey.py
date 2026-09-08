@@ -89,6 +89,7 @@ CODE_VERSION = (
 SURVEY_QUESTION_COUNT = 12
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL")
+IS_INTERNAL_PREVIEW = str(st.query_params.get("preview", "")).lower() in {"1", "true", "yes"}
 MIN_FORMAL_SURVEY_RECORDING_SECONDS = int(
     os.environ.get("MIN_FORMAL_SURVEY_RECORDING_SECONDS", "300")
 )
@@ -4870,6 +4871,7 @@ def save_survey_results():
         "response_schema_version": RESPONSE_SCHEMA_VERSION,
         "code_version": CODE_VERSION,
         "condition": "compositional",
+        "is_internal_preview": IS_INTERNAL_PREVIEW,
         "participant_id": PARTICIPANT_ID,
         "survey_instance": PARTICIPANT_ID,
         "survey_version": SURVEY_VERSION,
@@ -4917,6 +4919,26 @@ def save_survey_results():
             json.dump(payload, f, indent=2, ensure_ascii=False, default=str)
     st.session_state.last_result_path = destination
     return destination
+
+
+def skip_tutorial_for_internal_preview():
+    """Start the formal survey without tutorial steps for a marked preview run."""
+    started_at = _ts()
+    summary = st.session_state.setdefault("tutorial_summary", {})
+    summary.update({
+        "started_at": started_at,
+        "completed_at": started_at,
+        "completion_status": "completed",
+        "completion_method": "internal_preview_skip_tutorial",
+        "steps": {},
+    })
+    st.session_state.tutorial_completed = True
+    st.session_state.landing_choice_made = True
+    st.session_state.entry_route = "internal_preview_skip_tutorial"
+    st.session_state.study_started_timestamp = started_at
+    st.session_state.survey_started_timestamp = started_at
+    refresh_tutorial_summary_metrics()
+    st.rerun()
 
 if not st.session_state.landing_choice_made:
     st.title("Survey Instructions")
@@ -4971,6 +4993,10 @@ if not st.session_state.landing_choice_made:
             start_tutorial_step("selection_practice")
             save_survey_results()
             st.rerun()
+    if IS_INTERNAL_PREVIEW:
+        st.caption("Internal preview runs are labelled separately and excluded from participant analysis.")
+        if st.button("Skip tutorial and preview survey"):
+            skip_tutorial_for_internal_preview()
     st.stop()
 
 if st.session_state.survey_completed and st.session_state.post_survey_completed:
