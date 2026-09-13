@@ -57,16 +57,22 @@ def get_or_create_participant_id():
 
 
 def start_internal_preview(condition):
-    """Launch an explicitly marked, non-study preview run."""
+    """Launch an explicitly marked, non-study preview run.
+
+    Preview IDs remain distinguishable in exported data, so exploratory runs
+    cannot be mistaken for participant responses during analysis.
+    """
     preview_id = safe_participant_id(
         f"internal_preview_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     )
-    st.query_params.from_dict({
-        "pid": preview_id,
-        "survey_instance": preview_id,
-        "preview": "1",
-        "preview_condition": condition,
-    })
+    st.query_params.from_dict(
+        {
+            "pid": preview_id,
+            "survey_instance": preview_id,
+            "preview": "1",
+            "preview_condition": condition,
+        }
+    )
     st.rerun()
 
 
@@ -215,12 +221,16 @@ def assign_with_sqlite(participant_id):
         return condition
 
 
-# Production participants remain on the annotation-only flow. The internal
-# route can preview either interface without using participant identifiers.
+# The production flow remains annotation-only for now.  A clearly labelled
+# internal-preview route is available for comparing either interface without
+# contaminating the participant flow or its identifiers.
 query_params = st.query_params
 preview_mode = str(query_params.get("preview", "")).lower() in {"1", "true", "yes"}
 preview_condition = str(query_params.get("preview_condition", "")).lower()
-has_identity = any(query_params.get(key) for key in ("participant_id", "pid", "survey_instance"))
+has_identity = any(
+    query_params.get(key)
+    for key in ("participant_id", "pid", "survey_instance")
+)
 
 if preview_mode and preview_condition in SURVEY_FILES:
     participant_id = get_or_create_participant_id()
@@ -252,7 +262,16 @@ else:
     condition = "annotation"
 
 st.session_state[ASSIGNMENT_KEY] = condition
-survey_path = Path(__file__).resolve().with_name(SURVEY_FILES[condition])
+survey_filename = SURVEY_FILES[condition]
+if (
+    condition == "compositional"
+    and st.session_state.get("_compositional_intro_finished") != participant_id
+    and not st.session_state.get("tutorial_completed", False)
+    and st.session_state.get("practice_step", "select") != "tools"
+    and not st.session_state.get("survey_completed", False)
+):
+    survey_filename = "compositional_intro.py"
+survey_path = Path(__file__).resolve().with_name(survey_filename)
 
 # Execute the selected survey inside this registered Streamlit module so custom
 # components can resolve their caller correctly.

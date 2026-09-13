@@ -1,4 +1,7 @@
 from tutorial_content import TUTORIAL_BLUE_BOX_GUIDE
+# Copied from app_2.py for the existing Selection / Frame / Directions tutorial.
+# Only condition identity, preview routing, and the completion handoff differ.
+# Keep common tutorial UI identical to app_2.py; do not redesign it here.
 from tutorial_content import TUTORIAL_SELECTION_TITLE, TUTORIAL_FRAME_TEXT, TUTORIAL_DIRECTION_TEXT, TUTORIAL_DIRECTION_QUESTION, render_tutorial_progress
 import streamlit as st
 from survey_panel_styles import SIDE_PANEL_CSS, render_survey_header
@@ -191,7 +194,7 @@ MATH_SCALE = 800.0
 DEFAULT_PARTICIPANT_ID = "local_demo"
 SURVEY_VERSION = "multi_page_with_incremental_tool_tutorial_v22_round3_hard_ab12"
 RESPONSE_SCHEMA_VERSION = "3.9"
-SURVEY_CONDITION = "annotation"
+SURVEY_CONDITION = "compositional_intro"
 HIGHLIGHT_TOOL_ENABLED = False
 # Temporary study configuration: keep union implementation and saved-session
 # compatibility, but do not expose or accept the merge tool.
@@ -963,7 +966,7 @@ def session_query_params():
         "survey_instance": SURVEY_INSTANCE_ID,
     }
     if IS_INTERNAL_PREVIEW:
-        params.update(preview="1", preview_condition="annotation")
+        params.update(preview="1", preview_condition="compositional")
     return params
 
 
@@ -1759,14 +1762,24 @@ def begin_survey(
     start_trial(data, 0)
 
 
+def finish_compositional_intro(data, skip=False):
+    """Return to the original Compositional survey after this copied intro."""
+    from copy import deepcopy
+    st.session_state.participant_background = deepcopy(data.get("participant_background", {}))
+    st.session_state.tutorial_summary = deepcopy(data.get("tutorial_summary", {}))
+    st.session_state.landing_choice_made = True
+    st.session_state.entry_route = "internal_preview_skip_tutorial" if skip else "tutorial"
+    st.session_state.tutorial_completed = skip
+    st.session_state.practice_step = "tools"
+    st.session_state.active_tool = "measure"
+    st.session_state.selection_filter = "Region"
+    st.session_state["_compositional_intro_finished"] = PARTICIPANT_ID
+    st.rerun()
+
+
 def begin_internal_preview_survey(data: dict) -> None:
     """Bypass tutorial steps only for runs launched from the preview route."""
-    data["landing_choice_made"] = True
-    data["entry_route"] = "internal_preview_skip_tutorial"
-    begin_survey(data, "internal_preview_skip_tutorial")
-    log_action(data, "internal_preview_skip_tutorial")
-    save_session(data)
-    st.rerun()
+    finish_compositional_intro(data, skip=True)
 
 
 def skip_practice_to_review(data: dict) -> None:
@@ -5094,18 +5107,18 @@ if data.get("phase") == "demo":
                   and (HIGHLIGHT_TOOL_ENABLED or step != 3)
                   and (UNION_TOOL_ENABLED or step != 8)]
     if tutorial_step <= 2:
-        render_tutorial_progress(0, tool_count=len(tool_steps))
+        render_tutorial_progress(0, tool_count=10)
     elif tutorial_step == DEMO_FRAME_STEP:
-        render_tutorial_progress(1, tool_count=len(tool_steps))
+        render_tutorial_progress(1, tool_count=10)
     elif tutorial_step == DEMO_CLOCKWISE_STEP:
-        render_tutorial_progress(2, tool_count=len(tool_steps))
+        render_tutorial_progress(2, tool_count=10)
     elif tutorial_step == DEMO_REVIEW_STEP:
-        render_tutorial_progress(4, tool_count=len(tool_steps), answer_complete=data.get("answer_format_practice", {}).get("passed", False))
+        render_tutorial_progress(4, tool_count=10, answer_complete=data.get("answer_format_practice", {}).get("passed", False))
     else:
         tool_steps = [step for step in sorted(DEMO_STEPS) if step > 2
                       and (HIGHLIGHT_TOOL_ENABLED or step != 3)
                       and (UNION_TOOL_ENABLED or step != 8)]
-        render_tutorial_progress(3, tool_steps.index(tutorial_step) / len(tool_steps), tool_count=len(tool_steps))
+        render_tutorial_progress(3, tool_steps.index(tutorial_step) / len(tool_steps), tool_count=10)
 
 # --- DEMO OR SURVEY QUESTION ---
 current_question = data.get("current_question", get_current_question(data))
@@ -5143,13 +5156,7 @@ if show_drawing_pad:
         heading = DEMO_STEPS.get(data.get("demo_step"), {}).get("title", "Review Before the Survey")
         if selection_intro and set(sync_demo_selected_types(data)) == set(PRACTICE_REQUIRED_SELECTIONS):
             heading = "Review the four kinds of objects you selected."
-        if data.get("demo_step") == DEMO_REVIEW_STEP:
-            if data.get("answer_format_practice", {}).get("free_practice"):
-                render_survey_header("Practice", "Review Before the Survey", practice=True)
-            else:
-                render_survey_header("Tutorial · Answer practice", "What is the letter of the blue region near the top?")
-        else:
-            render_survey_header("Practice", heading, practice=True)
+        render_survey_header("Practice", heading, practice=True)
     else:
         render_survey_header(
             f"Question {current_trial_index + 1} of {len(QUESTION_BANK)}",
@@ -5282,6 +5289,7 @@ with main_work_col if show_drawing_pad else nullcontext():
                             key="continue_clockwise_demo",
                         ):
                             mark_tutorial_step_completed(data, "clockwise")
+                            finish_compositional_intro(data)
                             first_tool_step = 3 if HIGHLIGHT_TOOL_ENABLED else 4
                             data["demo_step"] = first_tool_step
                             data["tool_mode"] = DEMO_STEPS[first_tool_step]["tool_mode"]
@@ -5447,9 +5455,20 @@ with main_work_col if show_drawing_pad else nullcontext():
                 )
                 st.caption("(results will appear here)")
         else:
-            from answer_format_practice import render_answer_practice
-            practice_state = data.setdefault("answer_format_practice", {})
-            if render_answer_practice(practice_state, lambda: save_session(data), '\n    **Definitions** and **Tool Guide** are available on the right and will remain available throughout the survey. Refer to them whenever you need help with a diagram object or tool.\n\n    This survey is **not a test of your ability to operate the tools**. You can answer the questions without them, but the tools can make many questions **substantially easier**, so we recommend becoming comfortable with them.\n\n    Feel free to explore other tools before starting the survey. **Useful examples** include drawing a ray, extending an edge, or measuring a distance, angle, or area.\n\n    Read the **instructions under the diagram** to see what else each tool can do.\n    '):
+            review_notice_col = st.container()
+            with review_notice_col:
+                st.markdown(
+                    """
+    **Definitions** and **Tool Guide** are available on the right and will remain available throughout the survey. Refer to them whenever you need help with a diagram object or tool.
+
+    This survey is **not a test of your ability to operate the tools**. You can answer the questions without them, but the tools can make many questions **substantially easier**, so we recommend becoming comfortable with them.
+
+    Feel free to explore other tools before starting the survey. **Useful examples** include drawing a ray, extending an edge, or measuring a distance, angle, or area.
+
+    Read the **instructions under the diagram** to see what else each tool can do.
+    """
+                )
+            if st.button("Start Survey", type="primary"):
                 data["demo_feedback_message"] = ""
                 begin_survey(data)
                 save_session(data)
@@ -5580,9 +5599,6 @@ with main_info_col:
             'font-size:1.25rem; font-weight:600; line-height:1.2; margin:0 0 0.25rem 0;">Help</div>',
             unsafe_allow_html=True,
         )
-        if data.get("phase") == "demo" and data.get("demo_step") == DEMO_REVIEW_STEP:
-            from answer_format_practice import render_answer_practice_help
-            render_answer_practice_help(data.setdefault("answer_format_practice", {}), lambda: save_session(data))
         incomplete_guided_step = (
             data.get("phase") == "demo"
             and data.get("demo_step") in DEMO_STEPS

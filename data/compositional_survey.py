@@ -1,3 +1,5 @@
+from tutorial_content import TUTORIAL_BLUE_BOX_GUIDE
+from tutorial_content import TUTORIAL_SELECTION_TITLE, TUTORIAL_FRAME_TEXT, TUTORIAL_DIRECTION_TEXT, TUTORIAL_DIRECTION_QUESTION, render_tutorial_progress
 import os
 import html
 import hashlib
@@ -14,12 +16,14 @@ from io import BytesIO
 from datetime import datetime
 
 import streamlit as st
+from survey_panel_styles import SIDE_PANEL_CSS, render_survey_header
 import streamlit.components.v1 as components
 from PIL import Image, ImageDraw
 
 import Graph
 import BuildRandomMap
 import DrawGraph
+from tutorial_label_positions import apply_tutorial_label_positions, draw_tutorial_faces
 import map_helpers
 import tools_human as T
 from streamlit_component_helpers import declare_component
@@ -33,6 +37,7 @@ except ImportError:
     Jsonb = None
 
 st.set_page_config(layout="wide")
+st.markdown(SIDE_PANEL_CSS, unsafe_allow_html=True)
 st.markdown(
     """
     <style>
@@ -46,9 +51,12 @@ st.markdown(
     div[data-testid="stForm"] {
         padding: 0.65rem 0.85rem 0.5rem;
     }
-    .st-key-diagram_panel {
-        transform: translateY(-7px);
+    div[data-testid="stForm"]:has(#survey-answer-style-anchor) textarea {
+        min-height:60px !important; height:60px !important;
+        padding:0.45rem 0.75rem !important;
     }
+    div[data-testid="stForm"]:has(#survey-answer-style-anchor) { padding:0.65rem 0.85rem 0.5rem !important; }
+    div[data-testid="stForm"]:has(#survey-answer-style-anchor) button { min-height:2.5rem; padding:0.4rem 0.75rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -89,7 +97,9 @@ CODE_VERSION = (
 SURVEY_QUESTION_COUNT = 12
 RESULTS_DIR = os.path.join(os.getcwd(), "survey_results")
 DATABASE_URL = os.environ.get("DATABASE_URL")
-IS_INTERNAL_PREVIEW = str(st.query_params.get("preview", "")).lower() in {"1", "true", "yes"}
+IS_INTERNAL_PREVIEW = str(st.query_params.get("preview", "")).lower() in {
+    "1", "true", "yes"
+}
 MIN_FORMAL_SURVEY_RECORDING_SECONDS = int(
     os.environ.get("MIN_FORMAL_SURVEY_RECORDING_SECONDS", "300")
 )
@@ -261,6 +271,15 @@ Choose **Angle** under Selection and select these three interior angles:
 
 Choose **By angle size**, then click **RUN**. The output lists them from smallest to largest.
 """
+
+def render_practice_tool_instructions(text, instruction_start):
+    """Keep the explanation plain and highlight only the action instructions."""
+    explanation, separator, instruction = text.partition(instruction_start)
+    if explanation.strip():
+        st.markdown(explanation.strip())
+    if separator:
+        st.info((separator + instruction).strip())
+
 
 PRACTICE_TOOL_FINAL_TEXT = """
 **Definitions** and **Tool Guide** are available on the right and will remain available throughout the survey. Refer to them whenever you need help with a diagram object or tool.
@@ -1077,9 +1096,13 @@ div[class*="st-key-sel_row_"]{
     display:grid;
     grid-template-columns:minmax(0, 1fr) auto;
     align-items:center;
-    gap:6px;
+    gap:8px;
     border-radius:6px;
-    padding:1px 4px;
+    padding:5px 7px;
+    margin-top:4px;
+    color:#374151;
+    font-size:14px;
+    line-height:1.4;
     transition:background-color .15s ease;
 }
 div[class*="st-key-sel_row_"] > div[data-testid="stElementContainer"]:has([data-testid="stMarkdownContainer"]){
@@ -1100,7 +1123,11 @@ div[class*="st-key-sel_row_"] [data-testid="stButton"]{
 }
 div[class*="st-key-sel_row_"] [data-testid="stMarkdownContainer"] p{
     margin:0;
+    font-size:14px;
+    line-height:1.4;
 }
+div[class*="st-key-sel_row_"] ul { margin:0; padding-left:20px; }
+div[class*="st-key-sel_row_"] button p { font-size:18px; font-weight:700; line-height:1; }
 div[class*="st-key-sel_row_"]:hover{
     background-color:rgba(150,150,150,0.15);
 }
@@ -1116,7 +1143,7 @@ div[class*="st-key-sel_row_"] button{
     padding:0.1rem 0.4rem;
     transition:background-color .15s ease,border-color .15s ease;
 }
-div[class*="st-key-sel_row_"]:hover button{
+div[class*="st-key-sel_row_"] button:hover{
     color:#8f1d14;
     background-color:#fee4e2;
     border-color:#d92d20;
@@ -1215,16 +1242,22 @@ function paint(hit){
     for(var i=1;i<p.length;i++)ovx.lineTo(p[i][0],p[i][1]); ovx.closePath();
     ovx.fillStyle=GRAY+'0.45)'; ovx.fill();}
   else if(hit.t==='edge'){var segs=hit.d.segs||[hit.d];
-    ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=12; ovx.lineCap='round';
+    ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=6; ovx.lineCap='round';
     ovx.beginPath();
     for(var i=0;i<segs.length;i++){ovx.moveTo(segs[i].a[0],segs[i].a[1]);
       ovx.lineTo(segs[i].b[0],segs[i].b[1]);}
     ovx.stroke();}
-  else if(hit.t==='vertex'){ovx.beginPath(); ovx.arc(hit.d[0],hit.d[1],10,0,2*Math.PI);
-    ovx.fillStyle=GRAY+'0.7)'; ovx.fill();}
-  else if(hit.t==='angle'){var a=hit.d; ovx.beginPath();
+  else if(hit.t==='vertex'){ovx.beginPath(); ovx.arc(hit.d[0],hit.d[1],15,0,2*Math.PI);
+    ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=4; ovx.stroke();}
+  else if(hit.t==='angle'){var a=hit.d;
+    // Preview both bounding edges, as in the Annotation interface.
+    ovx.strokeStyle=GRAY+'0.7)'; ovx.lineWidth=4;
+    ovx.beginPath();
+    for(var i=0;i<(a.arms||[]).length;i++){
+      ovx.moveTo(a.cx,a.cy); ovx.lineTo(a.arms[i][0],a.arms[i][1]);}
+    ovx.stroke(); ovx.beginPath();
     ovx.arc(a.cx,a.cy,a.r,a.start*Math.PI/180,a.end*Math.PI/180,false);
-    ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=6; ovx.stroke();}
+    ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=3; ovx.stroke();}
   else if(hit.t==='frame'){var fr=hit.d; ovx.strokeStyle=GRAY+'0.85)'; ovx.lineWidth=8;
     ovx.strokeRect(fr.x0,fr.y0,fr.x1-fr.x0,fr.y1-fr.y0);}
 }
@@ -1687,6 +1720,8 @@ if (
 ):
     reset_tool_state_for_question(QUESTION)
 bind_current_map_helpers()
+if IS_PRACTICE:
+    apply_tutorial_label_positions(st.session_state.res_map, st.session_state.face_label_cache)
 if not IS_PRACTICE:
     init_survey_timer()
 if "tool_calls" not in st.session_state:
@@ -1998,27 +2033,14 @@ def continue_after_practice_feedback(stage):
         if mode_key:
             st.session_state[mode_key] = None
         if stage == "neighbors":
-            # Ordered Neighbors teaches the starting-point and direction
-            # concepts. Preselect its known inputs so the participant does not
-            # have to repeat the object-selection work from Practice 1.
-            faces = {
-                face.letter: face
-                for face in res_map.faces
-                if getattr(face, "bounded", False)
-            }
+            faces = {face.letter: face for face in res_map.faces if getattr(face, "bounded", False)}
             region_a = faces["A"]
             rightmost_a = max(region_a.vertices, key=lambda vertex: vertex.p.x)
             add_to_selection(region_a)
             _name, vertex_meta = point_name_with_meta(rightmost_a)
             add_to_selection(rightmost_a, vertex_meta)
         elif stage == "ordered_neighbors":
-            # Draw Line teaches how two endpoints define a segment. Supply the
-            # endpoints so the participant can focus on that new operation.
-            faces = {
-                face.letter: face
-                for face in res_map.faces
-                if getattr(face, "bounded", False)
-            }
+            faces = {face.letter: face for face in res_map.faces if getattr(face, "bounded", False)}
             endpoints = (
                 min(faces["B"].vertices, key=lambda vertex: vertex.p.x),
                 max(faces["D"].vertices, key=lambda vertex: vertex.p.x),
@@ -2027,18 +2049,9 @@ def continue_after_practice_feedback(stage):
                 _name, vertex_meta = point_name_with_meta(vertex)
                 add_to_selection(vertex, vertex_meta)
         elif stage == "intersect":
-            # Measure Area takes one region as input. Preselect it so this step
-            # focuses on choosing the property to measure.
-            region_b = next(
-                face
-                for face in res_map.faces
-                if getattr(face, "bounded", False) and face.letter == "B"
-            )
+            region_b = next(face for face in res_map.faces if getattr(face, "bounded", False) and face.letter == "B")
             add_to_selection(region_b)
         elif stage == "area":
-            # Cycle Orientation uses three ordered vertices. Supply them in the
-            # intended order so the participant can focus on interpreting the
-            # cycle rather than locating the points again.
             ring = list(res_map.vertices[:8])
             for vertex in (ring[3], ring[0], ring[5]):
                 _name, vertex_meta = point_name_with_meta(vertex)
@@ -2134,9 +2147,9 @@ def practice_question_text_for_step(step):
                 return "Review the frame and outside of the frame."
             return "Determine whether the arrows move clockwise or counterclockwise."
         return (
-            "Practice 1 of 2: Select one Region, one Angle, one Vertex, and one Edge."
+            TUTORIAL_SELECTION_TITLE
         )
-    return "Practice 2 of 2: practice using the tools."
+    return "Practice using the tools."
 
 def current_practice_tool_stage():
     """Return the guided tool step currently awaiting completion."""
@@ -2333,6 +2346,22 @@ def add_to_selection(obj, meta=None):
     st.session_state.selection.append(obj)
     st.session_state.selection_meta.append(meta)
 
+def deselect_if_selected(obj, interaction_metadata=None):
+    """A repeated diagram click removes every live copy of this object."""
+    indices = [i for i, selected in enumerate(st.session_state.selection) if selected == obj]
+    if not indices:
+        return False
+    before = list(st.session_state.selection)
+    for i in reversed(indices):
+        st.session_state.selection.pop(i)
+        if i < len(st.session_state.selection_meta):
+            st.session_state.selection_meta.pop(i)
+    record_selection_event(
+        "deselect", obj, selection_before=before,
+        interaction_metadata=interaction_metadata,
+    )
+    return True
+
 def add_edge_to_selection(edge_obj):
     """Select a named edge once; repeated clicks keep its stable name."""
     if edge_obj in st.session_state.selection:
@@ -2522,20 +2551,48 @@ def edgesel_endpoints(es):
 # ============================================================
 # 4. XIAOHUI-STYLE DRAWING PRIMITIVES
 # ============================================================
+def display_pixels(value):
+    """Convert a screen measurement to the full-resolution drawing canvas."""
+    return max(1, round(value * img_size[0] / DISPLAY_SIDE))
+
+
+def angle_selection_slot(vertex, face):
+    """Offset multiple selected angles at one vertex, matching Annotation."""
+    slot = 0
+    for selected in st.session_state.selection:
+        if not is_angle(selected) or selected.vertex.p != vertex.p:
+            continue
+        if selected.face == face:
+            return slot
+        slot += 1
+    return slot
+
+
 def highlight_vertex_x(odraw, p, ring=False):
     px, py = DrawGraph.V2P(p)
     if ring:
-        odraw.ellipse([px-15, py-15, px+15, py+15], outline=TEAL, width=4)
+        r = display_pixels(10)
+        halo = display_pixels(1)
+        odraw.ellipse([px-r-halo, py-r-halo, px+r+halo, py+r+halo],
+                      outline="white", width=display_pixels(4))
+        odraw.ellipse([px-r, py-r, px+r, py+r], outline=TEAL, width=display_pixels(2))
     else:
+        r = 12 + display_pixels(2)
+        odraw.ellipse([px-r, py-r, px+r, py+r], fill="white")
         odraw.ellipse([px-12, py-12, px+12, py+12], fill=GOLD_FILL,
                       outline=GOLD_OUTLINE, width=4)
 
 def highlight_edge_x(odraw, e, label=None):
-    """Thick cyan marker stroke + endpoint caps; optional name label."""
+    """Slim cyan marker stroke + endpoint caps; optional name label."""
     p1, p2 = DrawGraph.V2P(e.tail.p), DrawGraph.V2P(e.head.p)
-    odraw.line([p1, p2], fill=CYAN_EDGE, width=14)
+    odraw.line([p1, p2], fill="white", width=display_pixels(8))
+    for px, py in (p1, p2):
+        r = display_pixels(4)
+        odraw.ellipse([px-r, py-r, px+r, py+r], fill="white")
+    odraw.line([p1, p2], fill=CYAN_EDGE, width=display_pixels(6))
     for (px, py) in (p1, p2):
-        odraw.ellipse([px-7, py-7, px+7, py+7], fill=CYAN_EDGE)
+        r = display_pixels(3)
+        odraw.ellipse([px-r, py-r, px+r, py+r], fill=CYAN_EDGE)
     if label:
         mx, my = (p1[0]+p2[0])//2, (p1[1]+p2[1])//2
         dx, dy = p2[0] - p1[0], p2[1] - p1[1]
@@ -2549,10 +2606,24 @@ def highlight_edge_x(odraw, e, label=None):
                 nx, ny = -nx, -ny
         elif ny > 0:
             nx, ny = -nx, -ny
-        label_xy = (round(mx + 30 * nx), round(my + 30 * ny))
-        font = DrawGraph.GetSystemFont(32)
-        odraw.text(label_xy, label, fill=(0, 100, 130, 255), font=font,
-                   anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
+        label_xy = (round(mx + display_pixels(30) * nx), round(my + display_pixels(30) * ny))
+        candidates = []
+        centers = [DrawGraph.V2P(_face_label_lp_d(face)[0])
+                   for face in st.session_state.res_map.faces if face.bounded]
+        for side in (1, -1):
+            for t in (.5, .35, .65, .2, .8):
+                for offset in (30, 42, 54):
+                    x = p1[0] + t * dx + side * display_pixels(offset) * nx
+                    y = p1[1] + t * dy + side * display_pixels(offset) * ny
+                    hits = sum(abs(x-cx) < display_pixels(32) and abs(y-cy) < display_pixels(32)
+                               for cx, cy in centers)
+                    overflow = max(0, display_pixels(18)-x, x-img_size[0]+display_pixels(18)) + max(0, display_pixels(18)-y, y-img_size[1]+display_pixels(18))
+                    score = hits*10000 + overflow*1000 + (100 if side<0 else 0) + abs(t-.5)*100 + offset
+                    candidates.append((score, (x,y)))
+        label_xy = min(candidates, key=lambda item:item[0])[1]
+        font = DrawGraph.GetSystemFont(display_pixels(15))
+        odraw.text(label_xy, label, fill=(0, 65, 85, 255), font=font,
+                   anchor="mm", stroke_width=display_pixels(2), stroke_fill=(255, 255, 255, 255))
 
 def draw_interior_arc_x(odraw, vertex, face, label=None,
                         radius=45, color=GREEN_ANGLE, width=5):
@@ -2579,21 +2650,25 @@ def draw_interior_arc_x(odraw, vertex, face, label=None,
     sweep = end - start
     if abs(sweep - 180.0) < 0.1:
         return
+    radius = display_pixels(19 + 8 * angle_selection_slot(vertex, face))
+    width = display_pixels(3)
     bbox = [cx - radius, cy - radius, cx + radius, cy + radius]
+    halo = display_pixels(2)
+    halo_bbox = [bbox[0]-halo, bbox[1]-halo, bbox[2]+halo, bbox[3]+halo]
+    odraw.arc(halo_bbox, start=start, end=end, fill="white", width=width + 2*halo)
     odraw.arc(bbox, start=start, end=end, fill=color, width=width)
     if label:
         mid = math.radians(start + sweep / 2)
-        lx = cx + (radius + 24) * math.cos(mid)
-        ly = cy + (radius + 24) * math.sin(mid)
-        font = DrawGraph.GetSystemFont(35)
+        lx = cx + (radius + display_pixels(17)) * math.cos(mid)
+        ly = cy + (radius + display_pixels(17)) * math.sin(mid)
+        font = DrawGraph.GetSystemFont(display_pixels(15))
         odraw.text((lx, ly), label, fill=color, font=font, anchor="mm",
-                   stroke_width=2, stroke_fill=(255, 255, 255, 255))
+                   stroke_width=display_pixels(2), stroke_fill=(255, 255, 255, 255))
 
 
 def draw_union_label(draw, xy, name, font_big):
     lx, ly = xy
-    draw.text((lx, ly), name, fill=(0, 0, 0, 255), font=font_big,
-              anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
+    draw.text((lx, ly), name, fill=(0, 0, 0, 255), font=font_big, anchor="mm")
 
 def draw_union_solid(draw, union, font_big):
     # Paint the two source regions directly. This is more robust than relying
@@ -2654,43 +2729,13 @@ def highlight_region_solid(odraw, face, fill=GRAY_SOLID, draw_label=True):
         lp, d = _face_label_lp_d(face)
         coords = DrawGraph.V2P(lp)
         font = DrawGraph.GetSystemFont(80 if d > 0.06 else 45)
-        odraw.text(coords, face.letter, fill=(0, 0, 0, 255), font=font, anchor="mm",
-                   stroke_width=2, stroke_fill=(255, 255, 255, 255))
+        odraw.text(coords, face.letter, fill=(0, 0, 0, 255), font=font, anchor="mm")
 
 # ============================================================
 # 5. RENDERING
 # ============================================================
 def draw_circular_practice_faces(draw):
-    DrawGraph.InitColors(alpha=153)
-    black = (0, 0, 0, 255)
-    font_bold = DrawGraph.GetSystemFont(80)
-    font_small = DrawGraph.GetSystemFont(45)
-
-    for face in res_map.faces:
-        if not face.bounded:
-            continue
-        pts = [DrawGraph.V2P(v.p) for v in face.vertices]
-        fill_color = DrawGraph.colors[getattr(face, "color", 0)]
-        draw.polygon(pts, fill=fill_color, outline=black, width=4)
-
-        if hasattr(face, "_cache_idx") and face._cache_idx in st.session_state.face_label_cache:
-            lp, d = st.session_state.face_label_cache[face._cache_idx]
-        else:
-            lp, d = Graph.LetterPointFace(face)
-        coords = DrawGraph.V2P(lp)
-        font = font_bold if d > 0.06 else font_small
-        draw.text(coords, face.letter, fill=black, font=font, anchor="mm")
-
-    for edge in res_map.edges:
-        if (
-            getattr(getattr(edge, "leftFace", None), "bounded", False)
-            and not getattr(getattr(edge.reverse, "leftFace", None), "bounded", False)
-        ):
-            draw.line(
-                [DrawGraph.V2P(edge.tail.p), DrawGraph.V2P(edge.head.p)],
-                fill=black,
-                width=8,
-            )
+    draw_tutorial_faces(draw, res_map, st.session_state.face_label_cache)
 
 def render():
     frame_review = (
@@ -2708,7 +2753,7 @@ def render():
         DrawGraph.DrawAllFaces(res_map, draw, None,
                                label_cache=st.session_state.face_label_cache)
 
-    font = DrawGraph.GetSystemFont(35)
+    font = DrawGraph.GetSystemFont(display_pixels(15))
     font_big = DrawGraph.GetSystemFont(80)
 
     for union in st.session_state.unions:
@@ -2757,8 +2802,8 @@ def render():
             highlight_vertex_x(odraw, ann["p"])
             if ann.get("label"):
                 px, py = DrawGraph.V2P(ann["p"])
-                odraw.text((px + 16, py - 32), ann["label"], fill=BLUE, font=font,
-                           stroke_width=2, stroke_fill=(255, 255, 255, 255))
+                odraw.text((px + display_pixels(11), py - display_pixels(18)), ann["label"], fill=BLUE, font=font,
+                           stroke_width=display_pixels(2), stroke_fill=(255, 255, 255, 255))
         elif kind == "line":
             a, b = line_endpoints_math(ann["line"])
             pa, pb = DrawGraph.V2P(a), DrawGraph.V2P(b)
@@ -2797,8 +2842,13 @@ def render():
                 else:
                     mx = (pa[0] + pb[0]) // 2
                     my = (pa[1] + pb[1]) // 2
+                from line_label_layout import line_label_position
+                mx, my = line_label_position(
+                    odraw, pa, pb, ann["label"], font,
+                    stroke_width=display_pixels(2), preferred=(mx, my),
+                )
                 odraw.text((mx, my), ann["label"], fill=BLUE, font=font,
-                           anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255, 255))
+                           anchor="mm", stroke_width=display_pixels(2), stroke_fill=(255, 255, 255, 255))
         elif kind == "angle":
             draw_interior_arc_x(odraw, ann["vertex"], ann["face"],
                                 label=ann.get("label"))
@@ -3042,7 +3092,8 @@ def build_hover_shapes():
             end += 360
         if abs((end - start) - 180.0) < 0.1:
             continue
-        angles.append({"cx": cx, "cy": cy, "r": 20.0, "start": start, "end": end})
+        angles.append({"cx": cx, "cy": cy, "r": 22.0 + 8 * angle_selection_slot(vertex, face), "start": start, "end": end,
+                       "arms": [[pxp, pyp], [pxn, pyn]]})
 
     return {"regions": regions, "edges": edges, "vertices": vertices,
             "frame": frame, "angles": angles}
@@ -3133,7 +3184,7 @@ def _display_angle_shape(vertex, face):
         end += 360
     if abs((end - start) - 180.0) < 0.1:
         return None
-    return {"cx": cx, "cy": cy, "r": 20.0, "start": start, "end": end}
+    return {"cx": cx, "cy": cy, "r": 22.0 + 8 * angle_selection_slot(vertex, face), "start": start, "end": end}
 
 def _angle_shape_contains(shape, px, py):
     dist = math.hypot(px - shape["cx"], py - shape["cy"])
@@ -4925,13 +4976,15 @@ def skip_tutorial_for_internal_preview():
     """Start the formal survey without tutorial steps for a marked preview run."""
     started_at = _ts()
     summary = st.session_state.setdefault("tutorial_summary", {})
-    summary.update({
-        "started_at": started_at,
-        "completed_at": started_at,
-        "completion_status": "completed",
-        "completion_method": "internal_preview_skip_tutorial",
-        "steps": {},
-    })
+    summary.update(
+        {
+            "started_at": started_at,
+            "completed_at": started_at,
+            "completion_status": "completed",
+            "completion_method": "internal_preview_skip_tutorial",
+            "steps": {},
+        }
+    )
     st.session_state.tutorial_completed = True
     st.session_state.landing_choice_made = True
     st.session_state.entry_route = "internal_preview_skip_tutorial"
@@ -5254,6 +5307,34 @@ if st.session_state.survey_completed and not st.session_state.post_survey_comple
 # 9. LAYOUT  (LEFT: tools/selection/run | MIDDLE: diagram+selection+saved |
 #             RIGHT: quick actions + scratch pad + output)
 # ============================================================
+# Set tool options once on entry; leave all existing object selections intact.
+if IS_PRACTICE and PRACTICE_STEP == "tools" and not st.session_state.get("practice_guided_complete", False):
+    settings_stage = current_practice_tool_stage()
+    if st.session_state.get("_practice_option_defaults_stage") != (settings_stage, 2):
+        option_defaults = {
+            "frame_count": {"rad_measure": "regions"},
+            "rightmost": {"rad_find_object": "vertex", "rad_vtx_corner": "rightmost"},
+            "neighbors": {"rad_nbr_kind": "edge"},
+            "ordered_neighbors": {"rad_nbr_ccw": False},
+            "draw": {"rad_style": "segment"},
+            "intersect": {"rad_intersect": "Which regions does it pass through?"},
+            "area": {"rad_measure": "area"},
+            "orientation": {"rad_measure": "orientation"},
+            "sort": {"rad_sort": "By angle size"},
+            "merge": {},
+        }
+        tool_defaults = {
+            "frame_count": "measure", "rightmost": "find",
+            "neighbors": "neighbors", "ordered_neighbors": "neighbors",
+            "draw": "draw line", "intersect": "intersect",
+            "area": "measure", "orientation": "measure",
+            "sort": "sort", "merge": "merge",
+        }
+        st.session_state.active_tool = tool_defaults[settings_stage]
+        for option, value in option_defaults[settings_stage].items():
+            st.session_state[option] = value
+        st.session_state._practice_option_defaults_stage = (settings_stage, 2)
+
 question_number = st.session_state.survey_question_index + 1
 if (
     not IS_PRACTICE
@@ -5274,38 +5355,29 @@ if (
     st.session_state.last_question_scroll_index = (
         st.session_state.survey_question_index
     )
-top_left, top_right = st.columns([3, 1], gap="small")
-with top_left:
-    if IS_PRACTICE:
-        st.caption("Practice")
+if IS_PRACTICE:
+    if PRACTICE_STEP == "select":
+        stage = (2 if st.session_state.get("practice_frame_review_done", False) else
+                 1 if st.session_state.get("practice_entities_feedback_acknowledged", False) else 0)
+        render_tutorial_progress(stage, tool_count=len(TUTORIAL_GUIDED_STAGES) - 1)
+    elif st.session_state.get("practice_guided_complete", False):
+        render_tutorial_progress(4, tool_count=len(TUTORIAL_GUIDED_STAGES) - 1, answer_complete=st.session_state.tutorial_summary.get("answer_format_practice", {}).get("passed", False))
     else:
-        # Match the annotation survey: progress is its own line immediately
-        # above the question prompt.
-        st.caption(f"Question {question_number} of {len(QUESTION_BANK)}")
-    raw_question_text = (
-        practice_question_text_for_step(PRACTICE_STEP)
-        if IS_PRACTICE
-        else str(QUESTION.get("question_text", ""))
-    )
-    question_paragraphs = [
-        paragraph.replace("\n", " ").strip()
-        for paragraph in re.split(r"\n\s*\n", html.escape(raw_question_text))
-        if paragraph.strip()
-    ]
-    question_text = "".join(
-        f'<div style="margin:{"0" if index == 0 else "0.45rem"} 0 0 0;">'
-        f'{paragraph}</div>'
-        for index, paragraph in enumerate(question_paragraphs)
-    )
-    tutorial_title_height = "2.7em" if IS_PRACTICE else "auto"
-    st.markdown(
-        f'<div style="font-size:18px; font-weight:600; line-height:1.35; '
-        f'min-height:{tutorial_title_height}; margin:0.1rem 0 0.9rem 0;">'
-        f'{question_text}</div>',
-        unsafe_allow_html=True,
+        stages = list(TUTORIAL_GUIDED_STAGES[1:])
+        render_tutorial_progress(3, stages.index(current_practice_tool_stage()) / len(stages), tool_count=len(stages))
+answer_practice_step = IS_PRACTICE and st.session_state.get("practice_guided_complete", False)
+free_tool_practice = answer_practice_step and st.session_state.tutorial_summary.get("answer_format_practice", {}).get("free_practice", False)
+if free_tool_practice:
+    render_survey_header("Practice", practice_question_text_for_step(PRACTICE_STEP), practice=True)
+else:
+    render_survey_header(
+        "Tutorial · Answer practice" if answer_practice_step else ("Practice" if IS_PRACTICE else f"Question {question_number} of {len(QUESTION_BANK)}"),
+        "What is the letter of the blue region near the top?" if answer_practice_step else (practice_question_text_for_step(PRACTICE_STEP) if IS_PRACTICE else str(QUESTION.get("question_text", ""))),
+        practice=IS_PRACTICE and not answer_practice_step,
     )
 
-answer_panel, action_panel = st.columns([8, 3], gap="small")
+
+answer_panel, action_panel = st.columns([8, 3], gap="small", vertical_alignment="top")
 
 if IS_PRACTICE and PRACTICE_STEP == "tools":
     st.markdown(
@@ -5378,8 +5450,9 @@ with answer_panel.container(key="answer_panel_content"):
         if IS_PRACTICE and PRACTICE_STEP == "tools":
             pending_feedback = st.session_state.get("practice_pending_feedback")
             if st.session_state.get("practice_guided_complete", False):
-                st.markdown(PRACTICE_TOOL_FINAL_TEXT)
-                if st.button("Start Survey", type="primary"):
+                from answer_format_practice import render_answer_practice
+                practice_state = st.session_state.tutorial_summary.setdefault("answer_format_practice", {})
+                if render_answer_practice(practice_state, save_survey_results, PRACTICE_TOOL_FINAL_TEXT):
                     st.session_state.tutorial_completed = True
                     st.session_state.answer_feedback = None
                     st.session_state.scratch_pad = ""
@@ -5445,25 +5518,25 @@ with answer_panel.container(key="answer_panel_content"):
                     continue_after_practice_feedback(pending_feedback)
             elif practice_ordered_neighbor_done:
                 if practice_angle_sort_done:
-                    st.markdown(PRACTICE_MERGE_GUIDE_TEXT)
+                    render_practice_tool_instructions(PRACTICE_MERGE_GUIDE_TEXT, 'Select **Region A**')
                 elif practice_orientation_done:
-                    st.markdown(PRACTICE_SORT_ANGLES_GUIDE_TEXT)
+                    render_practice_tool_instructions(PRACTICE_SORT_ANGLES_GUIDE_TEXT, 'Choose **Angle**')
                 elif practice_area_done:
-                    st.markdown(PRACTICE_MEASURE_ORIENTATION_GUIDE_TEXT)
+                    render_practice_tool_instructions(PRACTICE_MEASURE_ORIENTATION_GUIDE_TEXT, 'Choose **cycle orientation**')
                 elif practice_intersection_done:
-                    st.markdown(PRACTICE_MEASURE_AREA_GUIDE_TEXT)
+                    render_practice_tool_instructions(PRACTICE_MEASURE_AREA_GUIDE_TEXT, '**Region B** is already')
                 elif practice_draw_done:
-                    st.markdown(PRACTICE_INTERSECT_GUIDE_TEXT)
+                    render_practice_tool_instructions(PRACTICE_INTERSECT_GUIDE_TEXT, 'Choose **Intersect**')
                 else:
-                    st.markdown(PRACTICE_DRAW_LINE_GUIDE_TEXT)
+                    render_practice_tool_instructions(PRACTICE_DRAW_LINE_GUIDE_TEXT, 'Choose **segment**')
             elif practice_neighbor_done:
-                st.markdown(PRACTICE_ORDERED_NEIGHBORS_GUIDE_TEXT)
+                render_practice_tool_instructions(PRACTICE_ORDERED_NEIGHBORS_GUIDE_TEXT, 'The two inputs')
             elif practice_rightmost_done:
-                st.markdown(PRACTICE_NEIGHBORS_GUIDE_TEXT)
+                render_practice_tool_instructions(PRACTICE_NEIGHBORS_GUIDE_TEXT, 'Choose **Neighbors**')
             elif practice_frame_count_complete:
-                st.markdown(PRACTICE_TOOL_GUIDE_TEXT)
+                render_practice_tool_instructions(PRACTICE_TOOL_GUIDE_TEXT, '**Try this:**')
             else:
-                st.markdown(PRACTICE_FRAME_COUNT_GUIDE_TEXT)
+                render_practice_tool_instructions(PRACTICE_FRAME_COUNT_GUIDE_TEXT, 'Choose **Measure**')
         if IS_PRACTICE and PRACTICE_STEP == "tools":
             pass
         else:
@@ -5496,37 +5569,39 @@ with answer_panel.container(key="answer_panel_content"):
                     save_survey_results()
                     st.rerun()
             else:
-                with st.form("survey_answer_form", clear_on_submit=False):
+                with st.form("survey_answer_form", clear_on_submit=False, enter_to_submit=False):
+                    st.markdown('<span id="survey-answer-style-anchor"></span>', unsafe_allow_html=True)
                     key = survey_answer_key(QUESTION)
                     existing = st.session_state.survey_responses.get(QUESTION.get("question_id", ""), {}).get("answer", "")
-                    if normalized_answer_type(QUESTION) == "two_choice":
-                        options = get_two_choice_options(QUESTION)
-                        current_index = options.index(existing) if existing in options else None
-                        answer_value = st.radio("Answer:", options, index=current_index, horizontal=True, key=f"{key}_choice")
-                    else:
-                        answer_col, _ = st.columns([3, 2])
-                        with answer_col:
+                    answer_input_col, answer_submit_col = st.columns([3, 2], gap="small", vertical_alignment="bottom")
+                    with answer_input_col:
+                        if normalized_answer_type(QUESTION) == "two_choice":
+                            options = get_two_choice_options(QUESTION)
+                            current_index = options.index(existing) if existing in options else None
+                            answer_value = st.radio("Insert answer here", options, index=current_index, horizontal=True, key=f"{key}_choice")
+                        else:
                             answer_value = st.text_area(
-                                "Answer:",
+                                "Insert answer here",
                                 value=existing,
                                 height=68,
                                 placeholder=QUESTION.get("answer_placeholder", ""),
                                 key=f"{key}_area",
                             )
-                            answer_hint = answer_hint_for(QUESTION)
-                            if answer_hint:
-                                safe_answer_hint = html.escape(answer_hint)
-                                st.markdown(
-                                    '<div style="font-size:0.9rem; line-height:1.4; color:#4b5563; '
-                                    'background:#f3f4f6; border-left:3px solid #9ca3af; '
-                                    'padding:0.3rem 0.5rem; margin-top:-0.2rem; margin-bottom:0.5rem; '
-                                    'border-radius:0 0.3rem 0.3rem 0;">'
-                                    f'{safe_answer_hint}</div>',
-                                    unsafe_allow_html=True,
-                                )
                     is_last_question = st.session_state.survey_question_index >= len(QUESTION_BANK) - 1
                     button_label = "Start Survey" if IS_PRACTICE else "Confirm Answer"
-                    submitted = st.form_submit_button(button_label, type="primary")
+                    with answer_input_col:
+                        submitted = st.form_submit_button(button_label, type="primary")
+                    answer_hint = answer_hint_for(QUESTION)
+                    if answer_hint:
+                        safe_answer_hint = html.escape(answer_hint)
+                        st.markdown(
+                            '<div style="font-size:1rem; line-height:1.5; color:#374151; '
+                            'background:#f3f4f6; border-left:3px solid #9ca3af; '
+                            'padding:0.65rem 0.75rem; margin-top:0.25rem; margin-bottom:0.5rem; '
+                            'border-radius:0 0.3rem 0.3rem 0;">'
+                            f'<strong style="font-size:1rem; font-weight:700; white-space:nowrap;">Answer format:</strong> {safe_answer_hint}</div>',
+                            unsafe_allow_html=True,
+                        )
                     if submitted:
                         cleaned = (answer_value or "").strip()
                         if not cleaned:
@@ -5561,9 +5636,12 @@ with answer_panel.container(key="answer_panel_content"):
 
 with action_panel:
     st.markdown(
-        '<div style="font-size:1.25rem; font-weight:600; margin:0 0 0.25rem 0;">Help</div>',
+        '<div class="survey-side-heading" data-section="Help" style="font-size:1.25rem; font-weight:600; margin:0 0 0.25rem 0;">Help</div>',
         unsafe_allow_html=True,
     )
+    if answer_practice_step:
+        from answer_format_practice import render_answer_practice_help
+        render_answer_practice_help(st.session_state.tutorial_summary.setdefault("answer_format_practice", {}), save_survey_results)
     if (
         IS_PRACTICE
         and PRACTICE_STEP == "tools"
@@ -5618,7 +5696,7 @@ with action_panel:
             st.markdown(TOOL_GUIDE_TEXT)
 
     st.markdown(
-        '<div style="font-size:1.25rem; font-weight:600; margin:0.4rem 0 0.25rem 0;">Quick actions</div>',
+        '<div class="survey-side-heading" data-section="Quick actions" style="font-size:1.25rem; font-weight:600; margin:0.4rem 0 0.25rem 0;">Quick actions</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -5683,7 +5761,7 @@ with action_panel:
     right_workspace = st.container()
 
 with left_workspace:
-    col_ctrl, col_map = st.columns([3, 5], gap="small")
+    col_ctrl, col_map = st.columns([3, 5], gap="small", vertical_alignment="top")
 col_io = right_workspace
 
 # ----------------------------------------------------------------------------
@@ -5770,8 +5848,15 @@ with col_ctrl:
             .st-key-tool_button_grid {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 0.3rem 0.65rem;
+                gap: 6px 10px;
             }
+            .st-key-tool_button_grid button {
+                background:#fff; color:#374151; border:1px solid #cbd5e1;
+                padding:8px 7px; border-radius:5px; min-height:0;
+                justify-content:flex-start;
+            }
+            .st-key-tool_button_grid button p { font-size:15px; font-weight:400; line-height:1.4; }
+            .st-key-tool_button_grid button:hover { background:#f8fafc; border-color:#94a3b8; }
             .st-key-tool_button_grid > div[data-testid="stElementContainer"] {
                 margin: 0;
                 width: 100% !important;
@@ -5862,7 +5947,7 @@ with col_ctrl:
                 modes["on_frame"] = st.radio(
                     "Is the meeting vertex on the frame?", [False, True],
                     format_func=lambda b: "Yes" if b else "No",
-                    index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
+                    index=0,
                     horizontal=True, key="rad_vtx_onframe")
             else:
                 vertex_options = [
@@ -5904,7 +5989,7 @@ with col_ctrl:
                 modes["ccw"] = st.radio(
                     "Walk direction", [False, True],
                     format_func=lambda b: "Counterclockwise" if b else "Clockwise",
-                    index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
+                    index=0,
                     horizontal=True, key="rad_nbr_ccw")
                 st.caption("Region + corner → the regions passed, in walking order.")
             elif s["regions"]:
@@ -5912,7 +5997,7 @@ with col_ctrl:
                     "Neighbor type", ["edge", "vertex"],
                     format_func=lambda k: "Share an edge" if k == "edge"
                     else "Touch only at a corner",
-                    index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
+                    index=0,
                     horizontal=True, key="rad_nbr_kind")
 
         elif tool == "draw line":
@@ -6007,7 +6092,7 @@ with col_ctrl:
                 choice = st.radio(
                     "Order how?",
                     [o[0] for o in opts],
-                    index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
+                    index=0,
                     key="rad_sort",
                 )
                 modes["by"] = label2val.get(choice)
@@ -6057,8 +6142,7 @@ with col_ctrl:
     elif PRACTICE_FRAME_REVIEW:
         select_mode = "none"
         st.markdown(
-            "The **frame** is the diagram's outer boundary.  \n"
-            "The **outside of the frame** is the area beyond that boundary."
+            TUTORIAL_FRAME_TEXT
         )
         if st.button("Continue", type="primary", use_container_width=True,
                      key="continue_frame_review"):
@@ -6070,12 +6154,9 @@ with col_ctrl:
         st.session_state.setdefault("practice_direction_answered", False)
         st.session_state.setdefault("practice_direction_correct", None)
         st.markdown(
-            "**Clockwise** follows the direction of a clock's hands: "
-            "top → right → bottom → left.  \n"
-            "**Counterclockwise** goes in the opposite direction: "
-            "top → left → bottom → right."
+            TUTORIAL_DIRECTION_TEXT
         )
-        st.markdown("**Which direction do the numbered vertices and arrows show?**")
+        st.markdown(TUTORIAL_DIRECTION_QUESTION)
         direction_answer = st.radio(
             "Choose one:",
             ["Clockwise", "Counterclockwise"],
@@ -6202,6 +6283,11 @@ with col_ctrl:
 # ----------------------------------------------------------------------------
 # MIDDLE PANEL — DIAGRAM + direct object selection
 # ----------------------------------------------------------------------------
+if not IS_PRACTICE:
+    st.markdown(
+        "<style>.st-key-diagram_panel { position:relative; top:-4px; }</style>",
+        unsafe_allow_html=True,
+    )
 diagram_panel = col_map.container(key="diagram_panel")
 with diagram_panel:
     display_img = render().resize((DISPLAY_SIDE, DISPLAY_SIDE), Image.Resampling.LANCZOS)
@@ -6243,7 +6329,20 @@ with diagram_panel:
                 if "Find a frame vertex" not in line
                 and "Select the FRAME" not in line
             )
-        st.info(instruction_text)
+        st.markdown(
+            "<style>.st-key-diagram_tool_hint { margin-top:-36px; }</style>",
+            unsafe_allow_html=True,
+        )
+        with st.container(key="diagram_tool_hint"):
+            if IS_PRACTICE and PRACTICE_STEP == "tools" and current_practice_tool_stage() == "frame_count":
+                st.markdown(
+                    '<div style="background:#eff6ff; color:#1e3a8a; '
+                    'border:1px solid #bfdbfe; border-radius:0.5rem; '
+                    'padding:0.55rem 0.7rem; margin:0.75rem 0 24px; font-size:0.9rem;">'
+                    + html.escape(TUTORIAL_BLUE_BOX_GUIDE) + '</div>',
+                    unsafe_allow_html=True,
+                )
+            st.info(instruction_text)
 
     if (
         not PRACTICE_CONCEPT_REVIEW
@@ -6257,6 +6356,8 @@ with diagram_panel:
         kind, obj = hit_test_by_mode(coords["x"], coords["y"], select_mode)
         if obj is not None:
             push_undo()
+            if kind != "edge" and deselect_if_selected(obj, coords):
+                st.rerun()
             if kind == "vertex":
                 _name, meta = point_name_with_meta(obj)
                 add_to_selection(obj, meta)
@@ -6285,6 +6386,8 @@ with diagram_panel:
                 opts = edge_options(obj)
                 if len(opts) == 1:
                     edge_obj = opts[0]
+                    if deselect_if_selected(edge_obj, coords):
+                        st.rerun()
                     if edge_name(edge_obj) is None:
                         st.session_state.named_edges.append((next_name("e"), edge_obj))
                     if add_edge_to_selection(edge_obj):
@@ -6302,6 +6405,9 @@ with diagram_panel:
         for i, edge_obj in enumerate(pending_edges):
             if st.button(edge_obj.text, key=f"edge_side_{i}", use_container_width=True):
                 push_undo()
+                if deselect_if_selected(edge_obj):
+                    st.session_state.pending_edge_options = []
+                    st.rerun()
                 if edge_name(edge_obj) is None:
                     st.session_state.named_edges.append((next_name("e"), edge_obj))
                 if add_edge_to_selection(edge_obj):
@@ -6314,7 +6420,7 @@ with diagram_panel:
 # ----------------------------------------------------------------------------
 with col_io:
     st.markdown(
-        '<div style="font-size:1.25rem; font-weight:600; margin:0 0 0.35rem 0;">Sketch pad</div>',
+        '<div class="survey-side-heading" data-section="Sketch pad" style="font-size:1.25rem; font-weight:600; margin:0 0 0.35rem 0;">Sketch pad</div>',
         unsafe_allow_html=True,
     )
     st.text_area("scratch", key="scratch_pad", height=110,
@@ -6322,7 +6428,7 @@ with col_io:
                  placeholder="Use this space for notes or rough work. Your final answer must be entered in the answer box.")
 
     st.markdown(
-        '<div style="font-size:1.25rem; font-weight:600; margin:0.45rem 0 0.25rem 0;">Output</div>',
+        '<div class="survey-side-heading" data-section="Output" style="font-size:1.25rem; font-weight:600; margin:0.45rem 0 0.25rem 0;">Output</div>',
         unsafe_allow_html=True,
     )
     if show_practice_action_hint:

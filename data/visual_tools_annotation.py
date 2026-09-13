@@ -651,7 +651,7 @@ class AnnotationSession:
         else:
             print("No actions to undo.")
 
-    def render(self):
+    def render(self, base_renderer=None):
         img = Image.new("RGBA", self.img_size, (255, 255, 255, 255))
         draw = ImageDraw.Draw(img)
         manager = LabelManager()
@@ -661,7 +661,10 @@ class AnnotationSession:
 
         # FIXED PASS 1: Always draw the entire base map completely.
         # No more filtering out faces, which prevents random white holes on undo.
-        DrawGraph.DrawAllFaces(self.res_map, draw, manager, label_cache=self.face_label_cache)
+        if base_renderer is None:
+            DrawGraph.DrawAllFaces(self.res_map, draw, manager, label_cache=self.face_label_cache)
+        else:
+            base_renderer(draw, self.res_map, self.face_label_cache)
 
         # PASS 2: Structural Polygons & Color Highlights (Fills Only)
         # Gather faces that have active custom fills to skip duplicate default fills
@@ -686,8 +689,9 @@ class AnnotationSession:
                         
                 func(draw, img, manager, *args, **kwargs)
 
-        # PASS 3: Clean Geologic Boundary Lines (Base Grid)
-        for edge in self.res_map.edges:
+        # Only merged fills need boundary restoration; the unmodified base
+        # already has complete boundaries. Do not thicken them a second time.
+        for edge in self.res_map.edges if shared_edge_ids else []:
             if id(edge) in shared_edge_ids: 
                 continue
             p1 = DrawGraph.V2P(edge.tail.p)
@@ -823,14 +827,8 @@ def draw_line_label(draw, manager, start_pos, end_pos, label_text, color=(0, 0, 
     if not label_text:
         return
     font = DrawGraph.GetSystemFont(35)
-    mx = (start_pos[0] + end_pos[0]) / 2
-    my = (start_pos[1] + end_pos[1]) / 2
-    dx = end_pos[0] - start_pos[0]
-    dy = end_pos[1] - start_pos[1]
-    length = math.hypot(dx, dy) or 1.0
-    offset = 18
-    tx = mx - (dy / length) * offset
-    ty = my + (dx / length) * offset
+    from line_label_layout import line_label_position
+    tx, ty = line_label_position(draw, start_pos, end_pos, label_text, font, stroke_width=3)
     bbox = draw.textbbox((tx, ty), str(label_text), font=font, anchor="mm")
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
