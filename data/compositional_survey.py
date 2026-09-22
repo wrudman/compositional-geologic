@@ -1,3 +1,4 @@
+import survey_union_helpers as union_helpers
 from tutorial_content import TUTORIAL_BLUE_BOX_GUIDE
 from tutorial_content import TUTORIAL_SELECTION_TITLE, TUTORIAL_FRAME_TEXT, TUTORIAL_DIRECTION_TEXT, TUTORIAL_DIRECTION_QUESTION, render_tutorial_progress
 import os
@@ -165,7 +166,7 @@ DEFINITIONS_TEXT = """
 
 **Counterclockwise:** movement around a circle in the top, left, bottom, right direction.
 
-**Union:** a combination of two neighboring regions treated as one larger region.
+**Union:** a combination of two or more regions connected through shared edges, treated as one larger region.
 """
 
 PRACTICE_CORE_DEFINITIONS_TEXT = """
@@ -2671,7 +2672,7 @@ def draw_union_label(draw, xy, name, font_big):
     draw.text((lx, ly), name, fill=(0, 0, 0, 255), font=font_big, anchor="mm")
 
 def draw_union_solid(draw, union, font_big):
-    # Paint the two source regions directly. This is more robust than relying
+    # Paint all source regions directly. This is more robust than relying
     # on the helper's pseudo-face vertex walk, which can collapse to only one
     # side of a union when a practice-map boundary has split half-edges.
     pair = union.get("pair", ())
@@ -3303,7 +3304,8 @@ INSTRUCTIONS = {
         "- **Select TWO Lines** → return whether or not the two lines cross."
     ),
     "merge": (
-        "- **Select TWO Regions** → merge the two regions into a new region. The regions must share a border. \n"
+        "- **Select TWO OR MORE Regions** → merge them in one call. They must form one connected group through shared edges. \n"
+        "- To expand U, select U and the regions to add. Only one union is allowed per diagram.\n"
     ),
     "measure": (
         "- **Select TWO Vertices** → return the distance between the two vertices.\n"
@@ -3348,8 +3350,8 @@ TOOL_GUIDE_TEXT = """
 
 **Merge**
 
-- Combine exactly two neighboring regions into one larger union.
-- In this survey, a union cannot be merged with another region.
+- Combine two or more regions in one call. They must be connected through shared edges; touching only at a vertex does not count.
+- To expand the existing union, select it together with one or more additional regions. Only one union is allowed per diagram.
 
 **Measure**
 
@@ -3515,11 +3517,11 @@ def validate(tool, modes):
         return (True, "")
 
     if tool == "merge":
-        if s["n"] != 2 or nR != 2:
-            return (False, "Select exactly two regions.")
-        union_face_ids = {id(union["face"]) for union in st.session_state.unions}
-        if any(id(region) in union_face_ids for region in s["regions"]):
-            return (False, "Select two original regions. A union cannot be merged again.")
+        if nR < 2 or s["n"] != nR:
+            return (False, "Select two or more regions connected through shared edges.")
+        merge_error = union_helpers.merge_selection_error(s["regions"], st.session_state.unions)
+        if merge_error:
+            return (False, merge_error)
         if (
             IS_PRACTICE
             and PRACTICE_STEP == "tools"
@@ -4384,34 +4386,33 @@ def run_tool(tool, modes):
 
         # ---- MERGE ---------------------------------------------------------
         elif tool == "merge":
-            if len(s["regions"]) != 2 or s["n"] != 2:
-                st.error("Select exactly two regions.")
+            if len(s["regions"]) < 2 or s["n"] != len(s["regions"]):
+                st.error("Select two or more regions connected through shared edges.")
                 return
-            union_face_ids = {id(union["face"]) for union in st.session_state.unions}
-            if any(id(region) in union_face_ids for region in s["regions"]):
-                st.error("Select two original regions. A union cannot be merged again.")
-                return
-            fa, fb = s["regions"][0], s["regions"][1]
-            fu = T.merge(fa, fb)
-            uname = next_name("U")
+            selected_regions = tuple(s["regions"])
+            input_names = [face.letter for face in selected_regions]
+            merge_expression = f"merge({', '.join(input_names)})"
+            fu, sources, existing_union = union_helpers.prepare_merge(
+                selected_regions, st.session_state.unions)
+            source_names = [face.letter for face in sources]
+            uname = existing_union["name"] if existing_union else "U"
             fu.letter = uname
-            label_point, label_clearance = _union_label_lp_d(fu, (fa, fb))
-            st.session_state.unions.append(
-                {"name": uname, "face": fu, "pair": (fa, fb),
+            label_point, label_clearance = _union_label_lp_d(fu, sources)
+            union_helpers.replace_union(st.session_state,
+                {"name": uname, "face": fu, "pair": sources,
                  "label_xy": DrawGraph.V2P(label_point),
-                 "label_clearance": label_clearance})
-            st.session_state.union_consumed += [fa, fb]
-            add_program(f"{uname} = merge({fa.letter}, {fb.letter})")
-            add_log(f"Created merged Region **{uname}** from Regions {fa.letter} and {fb.letter}.")
+                 "label_clearance": label_clearance}, existing_union)
+            add_program(f"{uname} = {merge_expression}")
+            add_log(f"Created merged Region **{uname}** from Regions {', '.join(source_names)}.")
             record_tool_call(
                 tool,
                 "merge",
-                f"merge({fa.letter}, {fb.letter})",
+                merge_expression,
                 {
                     "type": "annotation",
                     "kind": "union",
                     "label": uname,
-                    "regions": [fa.letter, fb.letter],
+                    "regions": source_names,
                 },
                 uname,
                 "annotation",
@@ -4419,7 +4420,7 @@ def run_tool(tool, modes):
             if (
                 st.session_state.get("practice_step") == "tools"
                 and st.session_state.get("practice_sort_angles_done", False)
-                and {fa.letter, fb.letter} == {"A", "E"}
+                and set(source_names) == {"A", "E"}
             ):
                 st.session_state.practice_merge_done = True
                 st.session_state.practice_pending_feedback = "merge"
@@ -5511,7 +5512,9 @@ with answer_panel.container(key="answer_panel_content"):
                     output = practice_last_output("merge") or "U"
                     message = (
                         f"Very good — Merge created Region {output}, the union of Regions A and E. "
-                        "The two neighboring regions are now treated as one larger region."
+                        "The two regions are now treated as one larger region. "
+                        "You can also merge three or more regions in one call, as long as "
+                        "they are connected by shared edges."
                     )
                 st.success(message)
                 if st.button("Continue", type="primary"):

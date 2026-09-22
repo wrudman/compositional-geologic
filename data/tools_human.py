@@ -24,7 +24,7 @@ THE SEVEN VERBS
                   an edge               -> the regions on either side of it
     draw        make a line             (segment, full line, or ray)
     intersect   ask a line what it hits (which regions, or another line)
-    merge       join two bordering regions into one
+    merge       join two or more edge-connected regions in one call
     measure     inspect selected geometry (length, angle, area, edge count,
                 regions, or cycle orientation)
     sort        SEVERAL things -> them, ordered smallest -> largest
@@ -213,12 +213,13 @@ def intersect(line, target="faces"):
 # VERB 5 — MERGE     (join two bordering regions)
 # ==============================================================================
 
-def merge(region_a, region_b):
+def merge(*regions):
     """
-    Join two regions that share a border into one combined region. The result
-    behaves like any region: measure its area or sides, ask for its neighbors.
+    Join any number of edge-connected regions in one call: merge(A, B, C).
+    A list is also accepted: merge([A, B, C]). Vertex-only contact does not
+    connect regions. The result supports area, side count, and neighbors.
     """
-    return _engine.merge(region_a, region_b)
+    return _engine.merge(*regions)
 
 
 # ==============================================================================

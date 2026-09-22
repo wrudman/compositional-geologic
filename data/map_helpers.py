@@ -866,10 +866,11 @@ def vertex_only_neighbors(region):
         vertex_only_neighbors(A)
     """
     edge_nbrs = edge_neighbors(region)
+    source_faces = set(getattr(region, "source_faces", (region,)))
     result = set()
     for v in region.vertices[1:]:
         for f in v.faces:
-            if f.bounded and f != region and f not in edge_nbrs:
+            if f.bounded and f not in source_faces and f not in edge_nbrs:
                 result.add(f)
     return result
 
@@ -946,21 +947,56 @@ def regions_in_order(line):
 # REGION OPERATIONS
 # ==============================================================================
 
-def merge(region_a, region_b):
+def merge(*regions):
     """
-    Returns a new region formed by joining region_a and region_b. The two
-    regions must share at least one edge. The result has its own side_count,
-    area, and convexity.
-
-    Example:
-        side_count(merge(A, B))
-        is_convex(merge(A, B))
+    Merge two or more regions (or one list of regions) in a single call.
+    Their edge-adjacency graph must be connected; pairwise adjacency is not
+    required. Input order is irrelevant. As with the existing polygon tools,
+    the resulting boundary must be a simple cycle without holes or pinches.
     """
-    result = _face_union(region_a, region_b)
-    if result is False:
-        raise ValueError(
-            f"Regions {region_a.letter} and {region_b.letter} cannot be merged; "
-            "they must share a connected run of edges.")
+    if len(regions) == 1 and isinstance(regions[0], (list, tuple)):
+        regions = tuple(regions[0])
+    if len(regions) < 2:
+        raise ValueError("Select at least two regions to merge.")
+    if any(not getattr(r, "bounded", False) or not hasattr(r, "edges") for r in regions):
+        raise ValueError("Merge accepts bounded regions only.")
+    if len({id(r) for r in regions}) != len(regions):
+        raise ValueError("Select distinct regions to merge.")
+    # Flatten existing unions for the Python API, while the survey continues
+    # to select original regions. Do not modify the map's half-edge topology.
+    sources = []
+    for region in regions:
+        sources.extend(getattr(region, "source_faces", (region,)))
+    if len(set(sources)) != len(sources):
+        raise ValueError("The selected regions overlap.")
+    selected = set(sources)
+    visited, pending = set(), [sources[0]]
+    while pending:
+        face = pending.pop()
+        if face in visited:
+            continue
+        visited.add(face)
+        pending.extend(e.reverse.leftFace for e in face.edges
+                       if e.reverse.leftFace in selected and e.reverse.leftFace not in visited)
+    if visited != selected:
+        raise ValueError("Selected regions must form one connected group through shared edges; vertex-only contact does not count.")
+    boundary = [e for f in sources for e in f.edges if e.reverse.leftFace not in selected]
+    outgoing = {e.tail: e for e in boundary}
+    if not boundary or len(outgoing) != len(boundary):
+        raise ValueError("The union has a pinched boundary; select regions forming a simple boundary.")
+    ordered, seen = [], set()
+    edge = boundary[0]
+    while edge not in seen:
+        seen.add(edge)
+        ordered.append(edge)
+        edge = outgoing.get(edge.head)
+        if edge is None:
+            raise ValueError("The union boundary is not closed.")
+    if edge is not ordered[0] or len(ordered) != len(boundary):
+        raise ValueError("Unions with holes are not supported by the polygon tools.")
+    result = _PseudoFace([e.tail for e in ordered] + [ordered[0].tail], ordered)
+    result.area = sum(f.area for f in sources)
+    result.source_faces = tuple(sources)
     return result
 
 
