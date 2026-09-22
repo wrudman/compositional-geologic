@@ -4522,6 +4522,8 @@ def run_tool(tool, modes):
             f"❌ {tool_name} could not complete this operation. "
             "Check your selection and settings, then try again."
         )
+        if tool == "merge" and isinstance(ex, ValueError):
+            participant_message = f"❌ Merge: {ex}"
         add_log(participant_message)
         record_tool_call(
             tool,
@@ -4531,7 +4533,8 @@ def run_tool(tool, modes):
             participant_message,
             "error",
         )
-        clear_selection()
+        if tool != "merge":
+            clear_selection()
         st.rerun()
 
 def show_completed_practice_step():

@@ -43,6 +43,17 @@ def grid(width, height):
 
 
 class MergeTests(unittest.TestCase):
+    def test_merge_readiness_allows_bridge_selection_in_any_order(self):
+        a, b, c = grid(3, 1)
+        self.assertEqual(survey.merge_selection_error((a, c), []),
+                         'The selected regions are not connected by shared edges.')
+        self.assertEqual(survey.merge_selection_error((a, c, b), []), '')
+        a, b, c, d = grid(2, 2)
+        self.assertIn('not connected', survey.merge_selection_error((a, d), []))
+        faces = grid(3, 3)
+        self.assertIn('holes', survey.merge_selection_error(
+            [f for i, f in enumerate(faces) if i != 4], []))
+
     def test_survey_expands_one_union_and_preserves_undo(self):
         a, b, c, d = grid(4, 1)
         old = tools.merge(a, b)
