@@ -40,6 +40,8 @@ SETUP
 
 import map_helpers as _engine
 
+TOOL_VERSION = "2026-10-02-batch-measure"
+
 
 # ==============================================================================
 # SETUP
@@ -223,12 +225,21 @@ def merge(*regions):
 
 
 # ==============================================================================
-# VERB 6 — MEASURE     (ONE thing -> ONE number)
+# VERB 6 — MEASURE     (one object or a batch -> numeric values)
 # ==============================================================================
 
-def measure(*args, what):
+def measure(*args, what, reference=None):
     """
-    Measure a single thing and get back a single number.
+    Measure one object, or a list of objects in one call.
+
+    A list returns values in input order. For angles, pass saved angle objects
+    or (vertex, region) pairs. For distances, pass a list of targets plus an
+    explicit reference of the same type (vertices or regions). Scalar calls
+    retain their existing return type. Orientation still requires three points.
+
+        measure([A, B, C], what="area")
+        measure([a1, a2, a3], what="angle")
+        measure([p, q, r], what="distance", reference=origin)
 
     what:
         "distance" a drawn line -> its length
@@ -255,6 +266,40 @@ def measure(*args, what):
     """
     items = list(args)
 
+    if len(items) == 1 and isinstance(items[0], (list, tuple)):
+        batch = list(items[0])
+        if not batch:
+            raise ValueError("Select at least one object to measure.")
+        if what not in ("angle", "area", "edge_count", "sides",
+                        "frame_edge_count", "distance", "length"):
+            raise ValueError(f'Batch measurement is not supported for {what}.')
+        if what in ("distance", "length"):
+            if reference is None:
+                raise ValueError("Batch distance requires a reference vertex or region.")
+            same_type = (_is_point(reference) and all(_is_point(x) for x in batch)
+                         or _is_region(reference) and all(_is_region(x) for x in batch))
+            if not same_type:
+                raise ValueError("Reference and targets must all be vertices or all be regions.")
+            return [measure(reference, obj, what="distance") for obj in batch]
+        if reference is not None:
+            raise ValueError("reference is only used for batch distance measurements.")
+        if what == "angle":
+            values = []
+            for obj in batch:
+                if hasattr(obj, "vertex") and hasattr(obj, "face"):
+                    values.append(measure(obj.vertex, obj.face, what="angle"))
+                elif isinstance(obj, (list, tuple)) and len(obj) == 2:
+                    values.append(measure(*obj, what="angle"))
+                else:
+                    raise ValueError("Each angle needs a vertex and its region.")
+            return values
+        if not all(_is_region(obj) for obj in batch):
+            raise ValueError("Select regions for area or edge-count measurements.")
+        return [measure(obj, what=what) for obj in batch]
+
+    if reference is not None:
+        raise ValueError("Pass distance targets as a list when using reference.")
+
     if what in ("distance", "length"):
         if len(items) == 1 and isinstance(items[0], dict):   # a drawn line
             return _line_len(items[0])
@@ -266,7 +311,15 @@ def measure(*args, what):
 
     if what == "angle":
         import numpy as _np
+        if len(items) == 1 and hasattr(items[0], "vertex") and hasattr(items[0], "face"):
+            items = [items[0].vertex, items[0].face]
+        if len(items) != 2 or not _is_point(items[0]) or not _is_region(items[1]):
+            raise ValueError("Select one angle, or supply its vertex and region.")
         return _engine.angle_at(items[0], items[1]) * 180.0 / _np.pi
+
+    if what in ("area", "edge_count", "sides", "frame_edge_count"):
+        if len(items) != 1 or not _is_region(items[0]):
+            raise ValueError("Select one region, or pass a list of regions.")
 
     if what == "area":
         return _engine.area(items[0])
@@ -297,10 +350,14 @@ def measure(*args, what):
 # VERB 7 — SORT     (several things -> them, ordered smallest -> largest)
 # ==============================================================================
 
-def sort(items, by, reference=None):
+def sort(items, by, reference=None, *, grouped=False):
     """
     Put several objects in and get them back in order, smallest -> largest.
     Sort only ranks things that have a numeric size.
+    With grouped=True, return a list of tied groups instead of a flat list.
+    Ties use unrounded values with a numerical tolerance (absolute 1e-9,
+    relative 1e-12; angles are compared in radians). Each member is compared
+    to the first value of its group so approximate equality cannot chain.
 
     by:
         "angle"       saved angle objects by interior angle
@@ -331,7 +388,20 @@ def sort(items, by, reference=None):
         key = lambda v: _engine.dist(v, reference)
     else:
         raise ValueError('by must be one of: angle, area, left_right, bottom_top, distance.')
-    return sorted(items, key=key)
+    ordered = sorted(items, key=key)
+    if not grouped:
+        return ordered
+    import math
+    groups = []
+    anchor = None
+    for item in ordered:
+        value = key(item)
+        if not groups or not math.isclose(value, anchor, rel_tol=1e-12, abs_tol=1e-9):
+            groups.append([item])
+            anchor = value
+        else:
+            groups[-1].append(item)
+    return groups
 
 
 # ==============================================================================

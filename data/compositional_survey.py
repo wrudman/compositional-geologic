@@ -3275,15 +3275,15 @@ TOOL_LABELS = {
 
 INSTRUCTIONS = {
     "find": (
-        "- **Find a vertex:** select ONE Region, then choose leftmost / rightmost / topmost / bottommost / sharpest / widest.\n"
-        "- **Find a meeting vertex:** select TWO OR MORE Regions, then specify whether the vertex is on the frame.\n"
-        "- **Find a frame vertex:** select the FRAME, then choose one corner or all corners.\n"
-        "- **Find an edge:** choose Find Edge, then select TWO OR MORE Regions that uniquely identify the edge."
+        "- **Select ONE Region** → find all its vertices or choose leftmost / rightmost / topmost / bottommost / sharpest / widest.\n"
+        "- **Select TWO OR MORE Regions** → find their meeting vertex or vertices. Choose Find Vertex and specify whether the vertex is on the frame.\n"
+        "- **Select the FRAME** → find one corner or all corners.\n"
+        "- **Select TWO OR MORE Regions** → find the unique edge they identify. Choose Find Edge."
     ),
     "vertex": (
-        "- **Select ONE Region** → select all vertices or pick a vertex with a given property: leftmost / rightmost, topmost / bottommost, vertex with the smallest / largest angle.\n"
+        "- **Select ONE Region** → find all its vertices or choose leftmost / rightmost / topmost / bottommost / sharpest / widest.\n"
         "- **Select TWO OR MORE Regions** → find their meeting vertex or vertices.\n"
-        "- **Select the FRAME** (the diagram's outer boundary) → label one or all of its vertices."
+        "- **Select the FRAME** → find one corner or all corners."
     ),
     "edge": (
         "- **Select TWO OR MORE Regions** → find the unique edge identified by those Regions."
@@ -3291,42 +3291,42 @@ INSTRUCTIONS = {
     "neighbors": (
         "- **Select ONE Vertex** → find all regions that meet at that vertex.\n"
         "- **Select ONE Edge** → find the diagram regions bordering that edge. \n"
-        "- **Select ONE Region** → find all neighboring regions that share an edge. \n"
-        "- **Select ONE Region + ONE Vertex** → draw a cycle starting at that vertex (clockwise / counter-clockwise) and return a sequence of neighbors in order."
+        "- **Select ONE Region** → find regions that share an edge or touch only at a vertex.\n"
+        "- **Select ONE Region + ONE of its Vertices** → list neighboring regions in boundary order, starting at that vertex and going clockwise or counterclockwise."
     ),
     "draw line": (
         "- **Select TWO Vertices** → draw a line segment between them. \n"
-        "- **Select ONE Vertex** → draw a ray starting at that vertex that extends up / down / left /right.\n"
+        "- **Select ONE Vertex** → draw a ray starting at that vertex that extends up / down / left / right.\n"
         "- **Select ONE Edge** → extend the edge in both directions as a straight line.\n"
     ),
     "intersect": (
-        "- **Select ONE Line** → return all regions this line crosses.\n"
-        "- **Select TWO Lines** → return whether or not the two lines cross."
+        "- **Select ONE drawn Line in settings** → find the regions whose interiors it passes through.\n"
+        "- **Select TWO drawn Lines in settings** → check whether they cross."
     ),
     "merge": (
         "- **Select TWO OR MORE Regions** → merge them in one call. They must form one connected group through shared edges. \n"
-        "- To expand U, select U and the regions to add. Only one union is allowed per diagram.\n"
+        "- **Select U and the Regions to add** → expand U. Only one union is allowed per diagram.\n"
     ),
     "measure": (
-        "- **Select TWO Vertices** → return the distance between the two vertices.\n"
-        "- **Select TWO Regions** → return the distance between their closest points.\n"
-        "- **Select ONE Angle** → return the value of the selected angle.\n"
-        "- **Select ONE Region** → return the area or edge count of the selected region.\n"
-        "- **Select FRAME** → return the region count for the diagram.\n"
-        "- **Select THREE Vertices** → return the orientation of the cycle in selection order.\n"
+        "- **Select TWO OR MORE Vertices or TWO OR MORE Regions** → measure the distance from the first-selected object to each other object. For regions, use their closest points.\n"
+        "- **Select ONE OR MORE Angles** → measure each angle in degrees.\n"
+        "- **Select ONE OR MORE Regions** → measure each region's area or edge count.\n"
+        "- **Select the FRAME** → count the regions in the diagram.\n"
+        "- **Select exactly THREE Vertices** → determine whether the cycle is clockwise or counterclockwise in selection order.\n"
     ),
     "sort": (
-        "**All Objects are Sorted smallest → largest **"
-        "- **Select TWO OR MORE Angles** → order the selected angles by size.\n"
-        "- **Select TWO OR MORE Regions** → order the regions by area.\n"
-        "- **Select TWO OR MORE Vertices** → order by left→right, bottom→top, or distance from the vertex that was selected first.\n"
+        "- **Select TWO OR MORE Angles** → order from smallest to largest.\n"
+        "- **Select TWO OR MORE Regions** → order from smallest to largest by area.\n"
+        "- **Select TWO OR MORE Vertices** → order from left to right or bottom to top.\n"
+        "- **Select THREE OR MORE Vertices** → order the other vertices from nearest to farthest from the first-selected vertex.\n"
+        "\nEqual values are shown with “=”.\n"
     ),
 }
 
 TOOL_GUIDE_TEXT = """
 **Find**
 
-- **Vertex—position:** select one region to find its leftmost, rightmost, topmost, or bottommost vertex.
+- **Vertex—position:** select one region to find all its vertices or its leftmost, rightmost, topmost, or bottommost vertex.
 - **Vertex—angle:** select one region to find its sharpest or widest vertex.
 - **Vertex—meeting point:** select two or more regions to find where they meet.
 - **Vertex—frame:** select the frame to find one or all frame corners.
@@ -3334,7 +3334,8 @@ TOOL_GUIDE_TEXT = """
 
 **Neighbors**
 
-- Find the regions next to a selected region, edge, or vertex.
+- Select one vertex or edge to find the regions meeting there.
+- Select one region to find regions sharing an edge or touching only at a vertex.
 - Starting from a selected vertex of a region, list the neighboring regions in clockwise or counterclockwise order.
 
 **Draw Line**
@@ -3345,28 +3346,31 @@ TOOL_GUIDE_TEXT = """
 
 **Intersect**
 
-- Find which regions a drawn line passes through.
-- Check whether two drawn lines cross.
+- Choose one drawn line in settings to find which regions' interiors it passes through.
+- Choose two drawn lines in settings to check whether they cross.
 
 **Merge**
 
 - Combine two or more regions in one call. They must be connected through shared edges; touching only at a vertex does not count.
-- To expand the existing union, select it together with one or more additional regions. Only one union is allowed per diagram.
+- **To expand U:** select U and the regions to add. Only one union is allowed per diagram.
 
 **Measure**
 
-- **Distance:** measure the distance between two vertices or two regions.
-- **Angle:** measure a selected angle in degrees.
-- **Area:** measure the area of one region.
-- **Edge count:** count how many edges form the boundary of one region.
+- **Distance:** select a reference first, then one or more targets (all vertices or all regions).
+- **Angle:** measure one or more selected angles in degrees in one call.
+- **Area:** measure the area of each selected region in one call.
+- **Edge count:** count boundary edges for each selected region in one call.
 - **Region count:** count how many regions are in the entire diagram.
 - **Cycle orientation:** determine whether three selected vertices go clockwise or counterclockwise in the order clicked.
 
 **Sort**
 
-- Order selected angles by size.
-- Order selected regions by area.
-- Order selected vertices by position or distance.
+- **Select TWO OR MORE Angles:** smallest → largest.
+- **Select TWO OR MORE Regions:** smallest → largest by area.
+- **Select TWO OR MORE Vertices:** left → right or bottom → top.
+- **Select THREE OR MORE Vertices:** nearest → farthest from the first-selected vertex.
+
+Equal values are shown with “=”.
 """
 
 def validate(tool, modes):
@@ -3392,9 +3396,9 @@ def validate(tool, modes):
             return (modes.get("on_frame") is not None,
                     "Choose whether the meeting vertex is on the frame.")
         if IS_PRACTICE:
-            return (False, "Select 1 region or 2+ regions. "
+            return (False, "Select ONE OR MORE Regions. "
                            "(Vertices already in your buffer are kept.)")
-        return (False, "Select 1 region, the FRAME, or 2+ regions. "
+        return (False, "Select ONE OR MORE Regions or the FRAME. "
                        "(Vertices already in your buffer are kept.)")
 
     if tool == "edge":
@@ -3536,15 +3540,15 @@ def validate(tool, modes):
         w = modes.get("what")
         if not w: return (False, "Pick what to measure.")
         if w == "distance":
-            if nV == 2 and s["n"] == 2:        return (True, "")   # two points
-            if nR == 2 and s["n"] == 2:        return (True, "")   # two regions
-            return (False, "Select two vertices or two regions.")
+            if nV >= 2 and s["n"] == nV:        return (True, "")
+            if nR >= 2 and s["n"] == nR:        return (True, "")
+            return (False, "Select a reference first, then one or more targets (all vertices or all regions).")
         if w == "angle":
-            return (nA == 1 and s["n"] == 1, "Select ONE angle.")
+            return (nA >= 1 and s["n"] == nA, "Select one or more angles. Choose Angle under Selection, then click an angle arc.")
         if w in ("area", "sides"):
-            return (nR == 1 and s["n"] == 1, "Select ONE region.")
+            return (nR >= 1 and s["n"] == nR, "Select one or more regions.")
         if w == "regions":
-            return (nF == 1 and s["n"] == 1, "Select FRAME.")
+            return (nF == 1 and s["n"] == 1, "Select FRAME to count all regions in the diagram.")
         if w == "orientation":
             if nV != 3 or s["n"] != 3:
                 return (False, "Select exactly three vertices in cycle order.")
@@ -3587,14 +3591,14 @@ def validate(tool, modes):
                 if nA != 3 or set(s["angles"]) != expected:
                     return (False, "For this practice step, select the three specified angles.")
             return (nA >= 2 and nA == s["n"],
-                    "Select 2+ saved angles.")
+                    "Select TWO OR MORE saved Angles.")
         if by == "area":
-            return (nR >= 2 and nR == s["n"], "Select 2+ regions.")
+            return (nR >= 2 and nR == s["n"], "Select TWO OR MORE Regions.")
         if by in ("left_right", "bottom_top"):
-            return (nV >= 2 and nV == s["n"], "Select 2+ vertices.")
+            return (nV >= 2 and nV == s["n"], "Select TWO OR MORE Vertices.")
         if by == "distance":
             return (nV >= 3 and nV == s["n"],
-                    "Select the reference vertex FIRST, then 2+ more vertices.")
+                    "Select the reference vertex FIRST, then TWO OR MORE other Vertices.")
         return (False, "")
     return (False, "")
 
@@ -3842,7 +3846,7 @@ def record_tool_call(
             normalized_function = "distance"
         elif 'what="angle"' in input_text:
             normalized_function = "angle"
-        elif 'what="edges"' in input_text:
+        elif any(f'what="{name}"' in input_text for name in ("edges", "sides", "edge_count")):
             normalized_function = "edge_count"
         elif 'what="regions"' in input_text:
             normalized_function = "region_count"
@@ -3868,7 +3872,12 @@ def record_tool_call(
             for item in st.session_state.get("selection", [])
         ],
         "selection_context_timing": "after_execution",
+        "tool_version": T.TOOL_VERSION,
+        "selected_object_count": len(st.session_state.get("selection", [])),
+        "batch": isinstance(output, dict) and output.get("type") == "measurements",
     }
+    if tool in ("measure", "sort", "merge"):
+        call["input_count"] = len(st.session_state.get("selection", []))
     call["server_timestamp"] = call["timestamp"]
     calls.append(call)
     if IS_PRACTICE:
@@ -4150,7 +4159,9 @@ def _rank_fmt(by, v):
 
 def ranking_finish(call_str, result, by, ref):
     add_program(call_str + "   # smallest → largest")
-    ordered = answer_like_text(result)
+    groups = T.sort(result, by=by, reference=ref, grouped=True)
+    label_groups = [[code_name(item) for item in group] for group in groups]
+    ordered = ", ".join(" = ".join(labels) for labels in label_groups)
     add_log(participant_output_for_tool("sort", call_str, result, ordered))
     record_tool_call(
         "sort",
@@ -4161,6 +4172,8 @@ def ranking_finish(call_str, result, by, ref):
             "items": [code_name(it) for it in result],
             "order": "smallest_to_largest",
             "sort_by": by,
+            "tie_groups": label_groups,
+            "has_ties": any(len(group) > 1 for group in groups),
         },
         ordered,
         "analysis",
@@ -4174,6 +4187,33 @@ def ranking_finish(call_str, result, by, ref):
         st.session_state.practice_pending_feedback = "sort"
     clear_selection()
     st.rerun()
+
+def measurement_batch_finish(objects, what, reference=None):
+    """Keep object/value associations in the output and record one undoable call."""
+    values = T.measure(list(objects), what=what, reference=reference)
+    labels = [code_name(obj) for obj in objects]
+    reference_label = code_name(reference) if reference is not None else None
+    arguments = f"[{', '.join(labels)}]"
+    call_str = f'measure({arguments}, what="{what}"'
+    if reference is not None:
+        call_str += f", reference={reference_label}"
+    call_str += ")"
+    rows = [
+        {"label": label, "value": round(float(value), 2 if what == "angle" else 4),
+         "object": _tool_output(obj)}
+        for obj, label, value in zip(objects, labels, values)
+    ]
+    unit = "degrees" if what == "angle" else None
+    output = {"type": "measurements", "what": what, "items": rows,
+              "reference": reference_label, "unit": unit, "measurement_count": len(rows)}
+    shown = "; ".join(f"{row['label']}: {row['value']:g}{'°' if unit else ''}" for row in rows)
+    heading = f"Distances from {reference_label}" if reference is not None else what.replace("_", " ").capitalize()
+    add_program(call_str)
+    add_log(f"{heading} — **{shown}**.")
+    record_tool_call("measure", "measure", call_str, output, shown, "analysis")
+    clear_selection()
+    st.rerun()
+
 
 def run_tool(tool, modes):
     sel = st.session_state.selection
@@ -4427,9 +4467,18 @@ def run_tool(tool, modes):
             clear_selection()
             st.rerun()
 
-        # ---- MEASURE (one thing → one number) ------------------------------
+        # ---- MEASURE (scalar or batch, always one recorded call) -----------
         elif tool == "measure":
             w = modes["what"]
+
+            if w == "distance" and s["n"] > 2:
+                objects = s["regions"] or s["vertices"]
+                reference, targets = objects[0], objects[1:]
+                return measurement_batch_finish(targets, "distance", reference)
+            if w == "angle" and len(s["angles"]) > 1:
+                return measurement_batch_finish(s["angles"], "angle")
+            if w in ("area", "sides") and len(s["regions"]) > 1:
+                return measurement_batch_finish(s["regions"], "edge_count" if w == "sides" else w)
 
             if w == "distance":
                 if len(s["regions"]) == 2 and s["n"] == 2:
@@ -5896,6 +5945,7 @@ with col_ctrl:
         display = TOOL_LABELS.get(tool, tool)
         st.markdown(f"**{display} settings**")
 
+        settings_hints = []
         s = sel_sig()
 
         if tool in ("find", "vertex"):
@@ -5940,7 +5990,7 @@ with col_ctrl:
                     selected_labels = natural_join(
                         region.letter for region in s["regions"]
                     )
-                    st.caption(
+                    settings_hints.append(
                         f"Will find the edge identified by Regions "
                         f"{selected_labels}."
                     )
@@ -5972,7 +6022,7 @@ with col_ctrl:
 
         elif tool == "edge":
             modes["object"] = "edge"
-            st.caption(
+            settings_hints.append(
                 "Select two or more Regions that uniquely identify the edge. "
                 "Selection order does not matter."
             )
@@ -5981,15 +6031,15 @@ with col_ctrl:
             if s["edges"] and not s["regions"] and not s["vertices"]:
                 n = len(s["edges"])
                 if n == 1:
-                    st.caption("1 edge selected → diagram regions bordering that edge.")
+                    settings_hints.append("1 edge selected → diagram regions bordering that edge.")
                 else:
-                    st.caption("Select only 1 edge for this tool.")
+                    settings_hints.append("Select only 1 edge for this tool.")
             elif s["vertices"] and not s["regions"]:
                 n = len(s["vertices"])
                 if n == 1:
-                    st.caption("1 vertex selected → every region meeting at that vertex.")
+                    settings_hints.append("1 vertex selected → every region meeting at that vertex.")
                 else:
-                    st.caption("Select only 1 vertex for this tool.")
+                    settings_hints.append("Select only 1 vertex for this tool.")
             elif s["regions"] and s["vertices"]:
                 modes["kind"] = "ordered"
                 modes["ccw"] = st.radio(
@@ -5997,7 +6047,7 @@ with col_ctrl:
                     format_func=lambda b: "Counterclockwise" if b else "Clockwise",
                     index=0,
                     horizontal=True, key="rad_nbr_ccw")
-                st.caption("Region + corner → the regions passed, in walking order.")
+                settings_hints.append("Region + corner → the regions passed, in walking order.")
             elif s["regions"]:
                 modes["kind"] = st.radio(
                     "Neighbor type", ["edge", "vertex"],
@@ -6055,33 +6105,25 @@ with col_ctrl:
                                      }.get(value, value),
                                      index=None, horizontal=True, key="rad_measure")
             if modes["what"] == "distance":
-                if len(s["regions"]) == 2 and s["n"] == 2:
-                    st.caption("Will measure the distance between the two selected regions.")
-                elif len(s["vertices"]) >= 2:
-                    st.caption("Will measure the distance between the two selected vertices.")
+                objects = s["regions"] or s["vertices"]
+                if len(objects) >= 2 and len(objects) == s["n"]:
+                    settings_hints.append(f"Reference: {code_name(objects[0])}. Will measure distance to each of the {len(objects) - 1} other selected objects.")
+                else:
+                    settings_hints.append("Select the reference FIRST, then one or more targets. Use all vertices or all regions.")
             elif modes["what"] == "angle":
                 if s["angles"]:
                     n = len(s["angles"])
-                    if n == 1:
-                        st.caption("1 angle selected — it will be measured.")
-                    else:
-                        st.caption("Select only 1 angle for this tool.")
+                    settings_hints.append(f"{n} angle(s) selected — each will be measured in one call.")
                 else:
-                    st.caption("Use Select: Angle above the map, then click an angle arc.")
+                    settings_hints.append("Use Select: Angle above the map, then click an angle arc.")
             elif modes["what"] == "area":
-                if len(s["regions"]) == 1 and s["n"] == 1:
-                    st.caption("1 region selected — its area will be measured.")
-                else:
-                    st.caption("Select ONE region to measure its area.")
+                settings_hints.append("Select one or more regions to measure each area in one call.")
             elif modes["what"] == "sides":
-                if len(s["regions"]) == 1 and s["n"] == 1:
-                    st.caption("1 region selected — its edge count will be measured.")
-                else:
-                    st.caption("Select ONE region to measure its edge count.")
+                settings_hints.append("Select one or more regions to count each region's edges in one call.")
             elif modes["what"] == "regions":
-                st.caption("Select FRAME to count all regions in the diagram.")
+                settings_hints.append("Select FRAME to count all regions in the diagram.")
             elif modes["what"] == "orientation":
-                st.caption("Click exactly three vertices in sequence: first v₁, then v₂, then v₃.")
+                settings_hints.append("Click exactly three vertices in sequence: first v₁, then v₂, then v₃.")
 
         elif tool == "sort":
             opts = []   # (label, internal_value)
@@ -6103,7 +6145,7 @@ with col_ctrl:
                 )
                 modes["by"] = label2val.get(choice)
             else:
-                st.caption("Select 2+ angles, 2+ vertices, or 2+ regions.")
+                settings_hints.append("Select TWO OR MORE Angles, TWO OR MORE Vertices, or TWO OR MORE Regions.")
 
         elif tool == "merge" and st.session_state.unions:
             for remove_union_index, union in enumerate(st.session_state.unions):
@@ -6120,8 +6162,16 @@ with col_ctrl:
         ready, msg = validate(tool, modes)
         if tool == "intersect" and modes.get("target") is None:
             ready = False
+        # Show one source of guidance: specific validation when invalid,
+        # otherwise the mode's explanation. Preserve guided-practice errors.
         if not ready and msg:
-            st.caption(msg)
+            if tool == "sort" and not modes.get("by") and settings_hints:
+                st.caption(settings_hints[-1])
+            else:
+                st.caption(msg)
+        else:
+            for hint in dict.fromkeys(settings_hints):
+                st.caption(hint)
         if st.button("▶ RUN", type="primary", disabled=not ready,
                      use_container_width=True, key="run_active_tool"):
             push_undo()

@@ -407,9 +407,9 @@ DEFINITIONS_TEXT = (
 TOOL_GUIDE_TEXT = """
 **Measure**
 
-- Select two vertices to measure their distance.
-- Select one angle to measure its size.
-- Select one region to measure its area.
+- Select two or more vertices to measure distance from the first-selected vertex to each other vertex.
+- Select one or more angles to measure each angle in degrees.
+- Select one or more regions to measure each area.
 
 **Draw Line**
 
@@ -1993,7 +1993,20 @@ def compositional_tool_call_from_action(entry: dict, order: int) -> dict | None:
         }.get(action, action.removeprefix("measure_"))
         tool, call_type = "measure", "analysis"
         output = {"type": "number"}
-        if action == "measure_region":
+        if detail.get("kind") == "batch":
+            items = detail["items"]
+            labels = [item.get("to_label") or item["label"] for item in items]
+            reference = items[0].get("from_label") if action == "measure_distance" else None
+            input_text = f"measure([{', '.join(labels)}], what=\"{function}\""
+            if reference is not None:
+                input_text += f", reference={reference}"
+            input_text += ")"
+            output = {"type": "measurements", "items": items,
+                      "measurement_count": len(items), "reference": reference,
+                      "label": "; ".join(
+                          f"{item['label']}: {item.get('area', item.get('degrees', item.get('length')))}"
+                          for item in items)}
+        elif action == "measure_region":
             input_text = f"measure({detail.get('label', 'region')}, what=\"area\")"
             output.update({"value": detail.get("area"), "unit": "square units"})
         elif action == "measure_angle":
@@ -2051,6 +2064,12 @@ def compositional_tool_call_from_action(entry: dict, order: int) -> dict | None:
         "tutorial_step": entry.get("tutorial_step"),
         "tutorial_phase": entry.get("tutorial_phase"),
     }
+    if action.startswith("measure_"):
+        call["batch"] = bool(detail.get("batch", False))
+        if "input_count" in detail:
+            call["input_count"] = detail["input_count"]
+        if "tool_version" in detail:
+            call["tool_version"] = detail["tool_version"]
     if entry.get("client_timestamp"):
         call["client_timestamp"] = entry.get("client_timestamp")
     if entry.get("client_elapsed_ms") is not None:
@@ -3418,6 +3437,85 @@ def set_last_measurement(data, result):
     data["last_run_message"] = ""
 
 
+def run_selected_measurements(data, action):
+    """Measure the entire homogeneous selection atomically in one logged call."""
+    sess = data["session"]
+    vertices = list(data.get("selected_vertex_ids", []))
+    regions = list(data.get("selected_region_indices", []))
+    angles = list(data.get("selected_angles", []))
+    if not angles and data.get("selected_angle"):
+        angles = [data["selected_angle"]]
+    edges = data.get("selected_edges") or ([data["selected_edge"]] if data.get("selected_edge") else [])
+    if edges:
+        return False
+    results = []
+    if action == "measure_region":
+        if not regions or vertices or angles:
+            return False
+        for index in regions:
+            face = find_face_by_cache_idx(sess.res_map, index)
+            if face is None:
+                return False
+            result = measure_region(sess, face)
+            result["face_idx"] = int(index)
+            results.append(result)
+        input_count = len(regions)
+    elif action == "measure_angle":
+        if not angles or vertices or regions:
+            return False
+        for index, selection in enumerate(angles):
+            vertex = find_vertex_by_id(sess.res_map, selection.get("vertex_id"))
+            face = find_face_by_cache_idx(sess.res_map, selection.get("face_idx"))
+            if vertex is None or face is None:
+                return False
+            degrees, region_label = measured_angle_degrees(sess, face, vertex)
+            if degrees is None:
+                return False
+            marker = selection.get("marker_label") or f"a{index + 1}"
+            results.append({"kind": "angle", "label": f"{marker} in {region_label}",
+                            "degrees": round(degrees, 1),
+                            "vertex_id": str(selection["vertex_id"]),
+                            "face_idx": int(selection["face_idx"])})
+        input_count = len(angles)
+    elif action == "measure_distance":
+        if len(vertices) < 2 or regions or angles:
+            return False
+        points = [find_vertex_by_id(sess.res_map, vertex_id) for vertex_id in vertices]
+        if any(point is None for point in points):
+            return False
+        labels = data.get("vertex_selection_labels", {})
+        start = points[0]
+        start_label = labels.get(str(vertices[0])) or vertex_display_name(sess, start)
+        for vertex_id, target in zip(vertices[1:], points[1:]):
+            label = labels.get(str(vertex_id)) or vertex_display_name(sess, target)
+            results.append({"kind": "distance", "label": f"{start_label} to {label}",
+                            "length": round(distance_between_points(start.p, target.p), 4),
+                            "from_vertex_id": str(vertices[0]), "to_vertex_id": str(vertex_id),
+                            "from_label": start_label, "to_label": label})
+        input_count = len(vertices)
+    else:
+        return False
+    # Validate and calculate everything before changing the selection or log.
+    for item in results:
+        item["geometry"] = _action_geometry_context(data, item)
+    result = (results[0] if len(results) == 1 else
+              {"kind": "batch", "items": results, "measurement_count": len(results)})
+    result.update(input_count=input_count, batch=len(results) > 1,
+                  tool_version="2026-10-02-batch-measure")
+    set_last_measurement(data, result)
+    log_action(data, action, result)
+    if action == "measure_region":
+        data["selected_region_indices"] = []
+    elif action == "measure_angle":
+        data["selected_angle"] = None
+        data["selected_angles"] = []
+    else:
+        data["selected_vertex_ids"] = []
+        sync_vertex_selection_labels(data)
+    save_session(data)
+    return True
+
+
 def next_line_label(data):
     counter = int(data.get("line_label_counter", 1))
     data["line_label_counter"] = counter + 1
@@ -3603,6 +3701,12 @@ def participant_output_for_action(entry: dict, angle_number=None, vertex_labels=
     action = entry.get("action", "")
     detail = entry.get("detail", {})
     detail_dict = detail if isinstance(detail, dict) else {}
+    if action.startswith("measure_") and detail_dict.get("kind") == "batch":
+        measurements = []
+        for item in detail_dict["items"]:
+            shown = format_measurement_display(item)
+            measurements.append(f"{shown['label']}: {shown['value']} {shown['unit']}")
+        return "Measured — " + "; ".join(measurements) + "."
     if action == "commit_vertex":
         vertex_id = str(detail_dict.get("vertex_id", ""))
         vertex_label = detail_dict.get("label") or (vertex_labels or {}).get(vertex_id)
@@ -4814,39 +4918,8 @@ if (
                 data["selected_region_indices"] = []
                 save_session(data)
 
-    elif act == "measure_region":
-        selected_indices = [int(value) for value in data.get("selected_region_indices", [])]
-        face_idx = selected_indices[0] if len(selected_indices) == 1 else query_params.get("bridge_face", "-1")
-        target_face = find_face_by_cache_idx(sess.res_map, face_idx)
-        if target_face:
-            result = measure_region(sess, target_face)
-            set_last_measurement(data, result)
-            log_action(data, "measure_region", result)
-            data["selected_region_indices"] = []
-            save_session(data)
-
-    elif act == "measure_angle":
-        stored_angle = data.get("selected_angle") or (
-            data.get("selected_angles", [])[-1] if data.get("selected_angles") else {}
-        )
-        angle_vertex_id = query_params.get("bridge_tgt", stored_angle.get("vertex_id", tgt_id))
-        angle_face_idx = query_params.get("bridge_face", stored_angle.get("face_idx", "-1"))
-        target_v = find_vertex_by_id(sess.res_map, angle_vertex_id)
-        target_face = find_face_by_cache_idx(sess.res_map, angle_face_idx)
-        if target_face and target_v:
-            degrees, region_label = measured_angle_degrees(sess, target_face, target_v)
-            if degrees is not None:
-                result = {
-                    "kind": "angle",
-                    "label": f"Angle in {region_label}",
-                    "degrees": round(degrees, 1),
-                    "vertex_id": str(angle_vertex_id),
-                }
-                set_last_measurement(data, result)
-                log_action(data, "measure_angle", result)
-                data["selected_angle"] = None
-                data["selected_angles"] = []
-                save_session(data)
+    elif act in ("measure_region", "measure_angle"):
+        run_selected_measurements(data, act)
 
     elif act == "measure_edge":
         target_e = find_edge_by_vertex_ids(
@@ -4863,31 +4936,7 @@ if (
             save_session(data)
 
     elif act == "measure_distance":
-        selected_ids = [str(v) for v in data.get("selected_vertex_ids", [])]
-        selected_vertices = [
-            vertex for selected_id in selected_ids
-            for vertex in sess.res_map.vertices
-            if str(getattr(vertex, "num", id(vertex))) == selected_id
-        ]
-        if len(selected_vertices) == 2 and selected_vertices[0].p != selected_vertices[1].p:
-            start_v, target_v = selected_vertices
-            length = distance_between_points(start_v.p, target_v.p)
-            result = {
-                "kind": "distance",
-                "label": "Distance between vertices",
-                "length": round(length, 4),
-                "from_vertex_id": selected_ids[0],
-                "to_vertex_id": selected_ids[1],
-                "from_label": data.get("vertex_selection_labels", {}).get(selected_ids[0])
-                or vertex_display_name(sess, start_v),
-                "to_label": data.get("vertex_selection_labels", {}).get(selected_ids[1])
-                or vertex_display_name(sess, target_v),
-            }
-            set_last_measurement(data, result)
-            log_action(data, "measure_distance", result)
-            data["selected_vertex_ids"] = []
-            sync_vertex_selection_labels(data)
-            save_session(data)
+        run_selected_measurements(data, act)
 
     elif act == "cancel_connection":
         log_action(data, "clear_vertex_selection", {"selection": data.get("selected_vertex_ids", [])})
@@ -6821,14 +6870,14 @@ html_code = f"""
             }});
             const regionMeasureBtn = document.getElementById('measureRegionBtn');
             if (regionMeasureBtn && activeCategory === 'measure' && toolMode === 'Region') {{
-                regionMeasureBtn.classList.toggle('hidden', selectedRegionIndices.length !== 1);
+                regionMeasureBtn.classList.toggle('hidden', selectedRegionIndices.length < 1);
             }}
             const info = document.getElementById('toolInfo');
             const measureInstruction = measureKind === 'distance'
-                ? '<ul><li><strong>Select TWO Vertices</strong> → returns their distance in Output.</li></ul>'
+                ? '<ul><li><strong>Select TWO OR MORE Vertices</strong> → measure distance from the first-selected vertex to each other vertex.</li></ul>'
                 : measureKind === 'angle'
-                    ? '<ul><li><strong>Select ONE Angle</strong> → returns its angle measurement in Output.</li></ul>'
-                    : '<ul><li><strong>Select ONE Region</strong> → returns its area in Output.</li></ul>';
+                    ? '<ul><li><strong>Select ONE OR MORE Angles</strong> → measure each angle in degrees.</li></ul>'
+                    : '<ul><li><strong>Select ONE OR MORE Regions</strong> → measure each region’s area.</li></ul>';
             const instructions = {{
                 highlight: '<ul><li><strong>Select ONE Vertex, Angle, Edge, or Region</strong> → highlights that object.</li></ul>',
                 measure: measureInstruction,
@@ -6901,20 +6950,23 @@ html_code = f"""
             const exactlyTwoRegions = twoRegions && totalSelections === 2;
             const angleSelected = oneAngle && totalSelections === 1 && Boolean(selectedAngleData());
             const edgeSelected = oneEdge && totalSelections === 1 && Boolean(selectedEdgeData());
+            const distanceReady = selectedVertexIds.length >= 2 && totalSelections === selectedVertexIds.length;
+            const anglesReady = selectedAngles.length >= 1 && totalSelections === selectedAngles.length;
+            const regionsReady = selectedRegionIndices.length >= 1 && totalSelections === selectedRegionIndices.length;
             const edgeSideSelected = Boolean(document.querySelector('input[name="edgeSide"]:checked'));
 
             setRunDisabled('submitBtn', !exactlyOneVertex);
             setRunDisabled('runVertexLineBtn', lineStyle === 'segment' ? !exactlyTwoVertices : (!rayDirection || !exactlyOneVertex));
-            setRunDisabled('measureDistanceSingleBtn', !exactlyTwoVertices);
+            setRunDisabled('measureDistanceSingleBtn', !distanceReady);
             setRunDisabled('confirmConnectBtn', !exactlyTwoVertices);
-            setRunDisabled('measureDistanceBtn', !exactlyTwoVertices);
+            setRunDisabled('measureDistanceBtn', !distanceReady);
             setRunDisabled('commitAngleBtn', !angleSelected);
-            setRunDisabled('measureAngleBtn', !angleSelected);
+            setRunDisabled('measureAngleBtn', !anglesReady);
             setRunDisabled('edgeHighlightRun', !(edgeSelected && edgeSideSelected));
             setRunDisabled('extendEdgeBtn', !edgeSelected);
             setRunDisabled('commitRegionBtn', !exactlyOneRegion);
             setRunDisabled('commitUnionHighlightBtn', !exactlyOneRegion);
-            setRunDisabled('measureRegionBtn', !exactlyOneRegion);
+            setRunDisabled('measureRegionBtn', !regionsReady);
             setRunDisabled('execUnionBtn', !(exactlyTwoRegions && !hasExistingUnion));
 
             let requirement = '';
@@ -6927,9 +6979,9 @@ html_code = f"""
                     ? 'Select one edge and choose an adjacent region.'
                     : `Select exactly one ${{toolMode.toLowerCase()}}.`;
             }} else if (activeCategory === 'measure') {{
-                if (measureKind === 'distance' && !exactlyTwoVertices) requirement = 'Select exactly two vertices.';
-                else if (measureKind === 'angle' && !angleSelected) requirement = 'Select exactly one angle.';
-                else if (measureKind === 'area' && !exactlyOneRegion) requirement = 'Select exactly one region.';
+                if (measureKind === 'distance' && !distanceReady) requirement = 'Select the reference vertex FIRST, then one or more other vertices.';
+                else if (measureKind === 'angle' && !anglesReady) requirement = 'Select one or more angles only.';
+                else if (measureKind === 'area' && !regionsReady) requirement = 'Select one or more regions only.';
             }} else if (activeCategory === 'draw') {{
                 if (toolMode === 'Vertex') {{
                     const ready = lineStyle === 'segment' ? exactlyTwoVertices : Boolean(rayDirection) && exactlyOneVertex;
@@ -7179,7 +7231,7 @@ html_code = f"""
             const globalBox = document.getElementById('globalBufferBox');
             if (selectedRegionIndices.length === 2) {{
                 document.getElementById('commitRegionBtn').classList.add('hidden');
-                document.getElementById('measureRegionBtn').classList.add('hidden');
+                document.getElementById('measureRegionBtn').classList.toggle('hidden', activeCategory !== 'measure');
                 globalBox.classList.remove('hidden');
                 document.getElementById('staged_letters_span').innerText = selectedRegionIndices.map(idx => {{
                     const selectedFace = facesData.find(f => Number(f.cache_idx) === Number(idx));
@@ -7570,29 +7622,11 @@ html_code = f"""
         // after the component is rendered, leaving a visibly enabled RUN button
         // with no click handler.
         function runMeasureAngle() {{
-            if (selectedAngles.length !== 1 || totalSelectedInputs() !== 1) {{
-                alert('Select exactly one angle and remove any extra selections before clicking RUN.');
+            if (selectedAngles.length < 1 || totalSelectedInputs() !== selectedAngles.length) {{
+                alert('Select one or more angles and remove other object types before clicking RUN.');
                 return;
             }}
-            let activeAngle = selectedAngleData();
-            if ((!activeAngle?.v || !activeAngle?.f)
-                    && selectedAngle?.vertex_id != null
-                    && selectedAngle?.face_idx != null) {{
-                const v = vertices.find(candidate =>
-                    String(candidate.id) === String(selectedAngle.vertex_id));
-                const rawFace = facesData.find(candidate =>
-                    Number(candidate.cache_idx) === Number(selectedAngle.face_idx));
-                const f = unionBoundaryFace(rawFace);
-                if (v && f) activeAngle = {{v, f}};
-            }}
-            if (!activeAngle?.v || !activeAngle?.f) {{
-                alert('Select one angle before clicking RUN.');
-                return;
-            }}
-            dispatchAction('measure_angle', {{
-                bridge_tgt: activeAngle.v.id,
-                bridge_face: activeAngle.f.cache_idx
-            }});
+            dispatchAction('measure_angle');
         }}
 
         document.querySelectorAll('input[name="toolMode"]').forEach((input) => {{
@@ -7615,8 +7649,8 @@ html_code = f"""
             else alert('Choose a line style.');
         }});
         document.getElementById('measureDistanceSingleBtn')?.addEventListener('click', () => {{
-            if (selectedVertexIds.length === 2) dispatchAction('measure_distance');
-            else alert('Select two vertices to measure distance.');
+            if (selectedVertexIds.length >= 2 && totalSelectedInputs() === selectedVertexIds.length) dispatchAction('measure_distance');
+            else alert('Select a reference vertex, then one or more other vertices.');
         }});
         document.getElementById('confirmConnectBtn')?.addEventListener('click', () => dispatchAction('confirm_connection'));
         document.getElementById('measureDistanceBtn')?.addEventListener('click', () => dispatchAction('measure_distance'));
@@ -7662,8 +7696,8 @@ html_code = f"""
             dispatchAction('commit_union_highlight', {{ bridge_face: lockedFace.cache_idx }});
         }});
         document.getElementById('measureRegionBtn')?.addEventListener('click', () => {{
-            if (selectedRegionIndices.length === 1 && totalSelectedInputs() === 1) {{
-                dispatchAction('measure_region', {{ bridge_face: selectedRegionIndices[0] }});
+            if (selectedRegionIndices.length >= 1 && totalSelectedInputs() === selectedRegionIndices.length) {{
+                dispatchAction('measure_region');
             }}
         }});
         document.getElementById('addToBufferBtn')?.addEventListener('click', () => {{
@@ -7747,24 +7781,8 @@ if show_drawing_pad:
         if action_id and st.session_state.get("_last_component_action_id") != action_id:
             st.session_state["_last_component_action_id"] = action_id
             if component_action.get("bridge_act") == "measure_angle":
-                angle_vertex_id = component_action.get("bridge_tgt", "none")
-                angle_face_idx = component_action.get("bridge_face", "-1")
-                target_v = find_vertex_by_id(sess.res_map, angle_vertex_id)
-                target_face = find_face_by_cache_idx(sess.res_map, angle_face_idx)
-                if target_face and target_v:
-                    degrees, region_label = measured_angle_degrees(sess, target_face, target_v)
-                    if degrees is not None:
-                        result = {
-                            "kind": "angle",
-                            "label": f"Angle in {region_label}",
-                            "degrees": round(degrees, 1),
-                            "vertex_id": str(angle_vertex_id),
-                        }
-                        set_last_measurement(data, result)
-                        log_action(data, "measure_angle", result)
-                        data["selected_angle"] = None
-                        data["selected_angles"] = []
-                        save_session(data)
+                if run_selected_measurements(data, "measure_angle"):
+                    st.rerun()
             else:
                 next_query_params = session_query_params()
                 next_query_params.update({

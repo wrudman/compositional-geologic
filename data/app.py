@@ -3824,7 +3824,9 @@ def _rank_fmt(by, v):
 
 def ranking_finish(call_str, result, by, ref):
     add_program(call_str + "   # smallest → largest")
-    ordered = answer_like_text(result)
+    groups = T.sort(result, by=by, reference=ref, grouped=True)
+    label_groups = [[code_name(item) for item in group] for group in groups]
+    ordered = ", ".join(" = ".join(labels) for labels in label_groups)
     add_log(participant_output_for_tool("sort", call_str, result, ordered))
     record_tool_call(
         "sort",
@@ -3835,6 +3837,8 @@ def ranking_finish(call_str, result, by, ref):
             "items": [code_name(it) for it in result],
             "order": "smallest_to_largest",
             "sort_by": by,
+            "tie_groups": label_groups,
+            "has_ties": any(len(group) > 1 for group in groups),
         },
         ordered,
         "analysis",

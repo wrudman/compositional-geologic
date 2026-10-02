@@ -42,7 +42,8 @@ def Q1(X):
     return neighbors(X, "edge")
 
 def Q2(A, B):
-    return measure(A, what="sides") == measure(B, what="sides")
+    first, second = measure([A, B], what="sides")
+    return first == second
 
 def Q4(face, v, go_counterclockwise):
     return neighbors(face, "ordered", start=v,
@@ -71,13 +72,14 @@ def Q7(all_regions):
     )
 
 def Q8(all_regions, k):
-    return [r for r in all_regions if measure(r, what="sides") == k]
+    regions = list(all_regions)
+    return [r for r, count in zip(regions, measure(regions, what="sides")) if count == k]
 
 def Q9(X):
     return measure(X, what="sides")
 
-def Q10(p, u, v, w):
-    return sort([u, v, w], by="distance", reference=p)
+def Q10(p, *targets):
+    return sort(list(targets), by="distance", reference=p)
 
 def Q11(X):
     return sort(find(X, object="vertex", which="all"), by="angle", reference=X)
@@ -88,11 +90,11 @@ def Q12(va, vb):
 def Q13(p):
     return neighbors(p)
 
-def Q14(A, B):
-    return measure(merge(A, B), what="sides")
+def Q14(*regions):
+    return measure(merge(*regions), what="sides")
 
-def Q15(A, B):
-    return neighbors(merge(A, B), "edge")
+def Q15(*regions):
+    return neighbors(merge(*regions), "edge")
 
 def Q16(region_list):
     return sort(region_list, by="area")
@@ -104,8 +106,10 @@ def Q19(p, direction):
     label = {0: "right", 1: "up", 2: "left", 3: "down"}[direction]
     return intersect(draw(p, label), "faces")
 
-def Q20(u, v, w, axis):
-    return sort([u, v, w], by=("left_right" if axis == 0 else "bottom_top"))
+def Q20(u, v=None, w=None, axis=0):
+    """Accept a point list plus axis, or the legacy three-point signature."""
+    points = list(u) if isinstance(u, (list, tuple)) else [u, v, w]
+    return sort(points, by=("left_right" if axis == 0 else "bottom_top"))
 
 def Q21(u, v, w):
     return measure(u, v, w, what="orientation")
@@ -156,25 +160,23 @@ def Q29(A, B):
     """
     raise NotImplementedError("Q29 needs continuous segment-path optimization.")
 
-def Q30(A, B):
-    U = merge(A, B)
+def Q30(*regions):
+    U = merge(*regions)
     start = find(U, object="vertex", which="bottommost")
     return neighbors(U, "ordered", start=start, go_counterclockwise=False)
 
 def Q31(edge_1):
     crossed = intersect(draw(edge_1, kind="full"), "faces")
-    return max(crossed, key=lambda region: measure(region, what="edge_count"))
+    return max(zip(crossed, measure(list(crossed), what="edge_count")), key=lambda pair: pair[1])[0]
 
 def Q32(X):
     adjacent = neighbors(X, "edge")
-    return max(adjacent, key=lambda region: measure(region, what="area"))
+    return sort(list(adjacent), by="area")[-1]
 
 def Q33(A, B, C):
-    U = merge(A, B)
-    return (
-        measure(U, what="edge_count")
-        == measure(C, what="edge_count")
-    )
+    U = merge(A) if isinstance(A, (list, tuple)) else merge(A, B)
+    first, second = measure([U, C], what="edge_count")
+    return first == second
 
 def Q34(v1, v2):
     right_ray_faces = intersect(draw(v1, "right"), "faces")

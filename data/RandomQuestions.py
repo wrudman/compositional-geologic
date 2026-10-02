@@ -2,7 +2,7 @@ import Questions
 import numpy as np
 import Graph
 import TestQuestions
-from itertools import combinations
+from itertools import combinations, islice
 
 global numTries
 global map
@@ -29,6 +29,136 @@ question22_target_answer = None
 question1_complex_neighbor_filter = False
 question5_complex_pair_filter = False
 question24_distance_difficulty_filter = False
+
+# Per-operation cardinality, independent of diagram complexity. None for area
+# preserves the legacy random 3/4-object policy (3 with the balanced filter).
+INPUT_COUNTS = {"union": 2, "angle": 4, "distance": 3, "position": 3, "area": None}
+
+
+def set_input_counts(**counts):
+    """Configure exact N for future generation; distance excludes its reference."""
+    for name, count in counts.items():
+        if name not in INPUT_COUNTS:
+            raise ValueError(f"Unknown input count: {name}")
+        if name == "area" and count is None:
+            continue
+        minimum = 3 if name == "angle" else 2
+        if isinstance(count, bool) or not isinstance(count, int) or count < minimum:
+            raise ValueError(f"{name} must be an integer >= {minimum}.")
+    INPUT_COUNTS.update(counts)
+
+
+def add_input_count_arguments(parser):
+    for name, default in INPUT_COUNTS.items():
+        parser.add_argument(f"--{name}-inputs", type=int, default=default,
+                            help=f"Number of {name} inputs (distance excludes reference).")
+
+
+def configure_input_count_arguments(args):
+    set_input_counts(**{name: getattr(args, f"{name}_inputs") for name in INPUT_COUNTS})
+
+
+def _connected_region_groups():
+    """Bounded sampling avoids enumerating exponentially many subsets."""
+    faces = [face for face in map.faces if face.bounded]
+    count = INPUT_COUNTS["union"]
+    if count > len(faces):
+        return []
+    groups, seen = [], set()
+    for _ in range(200):
+        group = [faces[np.random.randint(len(faces))]]
+        while len(group) < count:
+            frontier = list(dict.fromkeys(
+                edge.reverse.leftFace for face in group for edge in face.edges
+                if edge.reverse.leftFace.bounded and edge.reverse.leftFace not in group
+            ))
+            if not frontier:
+                break
+            group.append(frontier[np.random.randint(len(frontier))])
+        key = frozenset(group)
+        if len(group) == count and key not in seen and Questions.FaceUnion(group) is not False:
+            seen.add(key)
+            groups.append(group)
+    return groups
+
+
+def _random_union_question(question_id):
+    for regions in _connected_region_groups():
+        union = Questions.FaceUnion(regions)
+        if question_id == 14:
+            result = _ask(14, Questions.Question14, regions)
+        elif question_id == 15:
+            if question15_complex_union_neighbor_filter:
+                neighbors = {e.reverse.leftFace for e in union.edges if e.reverse.leftFace.bounded}
+                touches = {f for v in union.vertices for f in v.faces if f.bounded and f not in regions}
+                if not (3 <= len(neighbors) <= 5 and union.numSides >= 5 and touches - neighbors):
+                    continue
+            result = _ask(15, Questions.Question15, regions, None, map)
+        elif question_id == 30:
+            result = _ask(30, Questions.Question30, regions, None, True)
+            if result[0] and not 4 <= len(result[2]) <= 6:
+                continue
+        else:
+            others = [f for f in complex_faces() if f not in regions
+                      and min(union.numSides, f.numSides) >= 5
+                      and abs(union.numSides - f.numSides) <= 2]
+            if not others:
+                continue
+            other = others[np.random.randint(len(others))]
+            result = _ask(33, Questions.Question33, regions, None, other)
+        if result[0]:
+            return result
+    return failureOutput
+
+
+def _random_area_question():
+    count = INPUT_COUNTS["area"] or 3
+    for regions in _connected_region_groups():
+        remaining = [f for f in map.faces if f.bounded and f not in regions]
+        np.random.shuffle(remaining)
+        for others in islice(combinations(remaining, count - 1), 2000):
+            if question16_balanced_union_area_filter:
+                areas = sorted([sum(f.area for f in regions)] + [f.area for f in others])
+                if any(not 1.3 <= b / a <= 1.6 for a, b in zip(areas, areas[1:])):
+                    continue
+            result = _ask(16, Questions.Question16, [regions, *others], map)
+            if result[0]:
+                return result
+    return failureOutput
+
+
+def _random_distance_question():
+    count = INPUT_COUNTS["distance"]
+    if count >= len(map.vertices):
+        return failureOutput
+    minimum, maximum = question10_distance_ratio_band or (1.3, None)
+    refs = list(map.vertices)
+    np.random.shuffle(refs)
+    for reference in refs:
+        candidates = sorted((v for v in map.vertices if v is not reference),
+                            key=lambda v: Graph.pointDist(reference.p, v.p))
+        # Build spaced sequences directly rather than enumerate all N-subsets.
+        for _ in range(30):
+            targets = []
+            previous = None
+            for vertex in candidates:
+                distance = Graph.pointDist(reference.p, vertex.p)
+                if distance < 0.08 * np.hypot(*map.bounds):
+                    continue
+                if previous is not None and (distance / previous < minimum
+                        or maximum is not None and distance / previous > maximum):
+                    continue
+                if np.random.random() < 0.25:
+                    continue
+                targets.append(vertex)
+                previous = distance
+                if len(targets) == count:
+                    np.random.shuffle(targets)
+                    result = _ask(10, Questions.Question10, reference, targets, randomCodes(count + 1))
+                    if result[0]:
+                        return result
+                    break
+    return failureOutput
 
 
 def set_line_path_length_band(question_id, min_length=None, max_length=None):
@@ -243,9 +373,9 @@ def _question15_candidate_details(fa, fb):
 
 
 def _question11_angle_profile_is_eligible(face):
-    """Keep four angles challenging, distinguishable, and label-readable."""
+    """Keep all selected region angles distinguishable and label-readable."""
     vertices = face.trueVertices[1:]
-    if len(vertices) != 4:
+    if len(vertices) != INPUT_COUNTS["angle"]:
         return False
     big_x, big_y = map.bounds
     diagonal = float(np.hypot(big_x, big_y))
@@ -295,7 +425,7 @@ def _question11_angle_profile_is_eligible(face):
     )
     adjacent_gaps = [
         angles_degrees[index + 1] - angles_degrees[index]
-        for index in range(3)
+        for index in range(len(vertices) - 1)
     ]
     return min(adjacent_gaps) >= 12.0 and max(adjacent_gaps) <= 60.0
 
@@ -597,6 +727,8 @@ def randomQuestion9():
 
 def randomQuestion10():
     global map
+    if INPUT_COUNTS["distance"] != 3:
+        return _random_distance_question()
     if question10_distance_ratio_band is not None:
         min_ratio, max_ratio = question10_distance_ratio_band
         reference_vertices = sorted(
@@ -656,7 +788,7 @@ def randomQuestion11():
     global map
     eligible_faces = [
         face for face in map.faces
-        if face.bounded and len(face.trueVertices) - 1 == 4
+        if face.bounded and len(face.trueVertices) - 1 == INPUT_COUNTS["angle"]
     ]
     if question11_visual_difficulty_filter:
         eligible_faces = [
@@ -668,7 +800,7 @@ def randomQuestion11():
     face = choose_from_complex_candidates(
         eligible_faces, Questions.FaceLocalComplexity
     )
-    codes = randomCodes(4)
+    codes = randomCodes(INPUT_COUNTS["angle"])
     return _ask(11, Questions.Question11, face, codes)
 
 def randomQuestion12():
@@ -716,6 +848,8 @@ def randomQuestion13():
 
 def randomQuestion14():
     global map
+    if INPUT_COUNTS["union"] != 2:
+        return _random_union_question(14)
     eligible_edges = internal_adjacent_edges()
     if not eligible_edges:
         return failureOutput
@@ -729,6 +863,8 @@ def randomQuestion14():
 
 def randomQuestion15():
     global map
+    if INPUT_COUNTS["union"] != 2:
+        return _random_union_question(15)
     eligible_edges = internal_adjacent_edges()
     if not eligible_edges:
         return failureOutput
@@ -772,6 +908,8 @@ def randomQuestion15():
 
 def randomQuestion16():
     global map
+    if INPUT_COUNTS["union"] != 2 or INPUT_COUNTS["area"] is not None:
+        return _random_area_question()
     if question16_balanced_union_area_filter:
         bounded_faces = [face for face in map.faces if face.bounded]
         adjacent_pairs = []
@@ -868,15 +1006,18 @@ def randomQuestion19():
 
 def randomQuestion20():
     global map
+    count = INPUT_COUNTS["position"]
+    if len(complex_vertices()) < count:
+        return failureOutput
     pool = sorted(
         complex_vertices(), key=Questions.VertexLocalComplexity, reverse=True
-    )[:max(3, int(np.ceil(len(complex_vertices()) * 0.65)))]
-    va,vb,vc = np.random.choice(pool,size=3,replace=False)
+    )[:max(count, int(np.ceil(len(complex_vertices()) * 0.65)))]
+    vertices = list(np.random.choice(pool, size=count, replace=False))
     direction = np.random.choice([0,1])
-    codeA, codeB, codeC = randomCodes(3)
+    codes = randomCodes(count)
     return _ask(
         20, Questions.Question20,
-        va, vb, vc, direction, codeA, codeB, codeC,
+        vertices, direction, codes,
     )
 
 def randomQuestion21():
@@ -1067,6 +1208,8 @@ def _adjacent_face_pairs():
 
 
 def randomQuestion30():
+    if INPUT_COUNTS["union"] != 2:
+        return _random_union_question(30)
     candidates = _adjacent_face_pairs()
     if not candidates:
         return failureOutput
@@ -1095,6 +1238,8 @@ def randomQuestion32():
 
 
 def randomQuestion33():
+    if INPUT_COUNTS["union"] != 2:
+        return _random_union_question(33)
     pairs = _adjacent_face_pairs()
     if not pairs:
         return failureOutput

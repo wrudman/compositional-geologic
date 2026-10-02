@@ -445,35 +445,45 @@ def Question9(f):
 
 #                          QUESTION 10
 
-def Question10(vp,vu,vv,vw,codeP,codeU,codeV,codeW):
-    if not distinct([vp,vu,vv,vw]):
+def IndexedLabels(prefix, count):
+    digits = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+    return [prefix + str(i + 1).translate(digits) for i in range(count)]
+
+
+def JoinNames(names):
+    return (" and ".join(names) if len(names) <= 2
+            else ", ".join(names[:-1]) + ", and " + names[-1])
+
+
+def Question10(vp, vu, vv=None, vw=None, codeP=None, codeU=None, codeV=None, codeW=None):
+    """Accept legacy inputs or (reference, candidate_list, description_codes)."""
+    targets, codes = (list(vu), list(vv)) if isinstance(vu, (list, tuple)) else ([vu, vv, vw], [codeP, codeU, codeV, codeW])
+    vertices = [vp] + targets
+    if len(targets) < 2 or len(codes) != len(vertices) or not distinct(vertices):
         return failureOutput
-    distA = Graph.pointDist(vp.p,vu.p)
-    distB = Graph.pointDist(vp.p,vv.p)
-    distC = Graph.pointDist(vp.p,vw.p)
-    dists, text, vertexPairs = order3([distA,distB,distC], ["v₂","v₃","v₄"], 
-                                      [vu,vv,vw])
+    labels = IndexedLabels("v", len(vertices))
+    ordered = sorted(range(len(targets)), key=lambda i: Graph.pointDist(vp.p, targets[i].p))
+    dists = [Graph.pointDist(vp.p, targets[i].p) for i in ordered]
     q = Question10Quality(dists)
     if q==0:
         return failureOutput  
-    question = LetVerticesBeText([vp,vu,vv,vw],['v₁','v₂','v₃','v₄'],[codeP,codeU,codeV,codeW]) 
+    question = LetVerticesBeText(vertices, labels, codes)
     if question == "":
         return failureOutput                
-    question = question + "\nOrder v₂, v₃, and v₄ from closest to farthest from v₁."
-    answerText = "[" + text[0] + ", " + text[1] + ", " + text[2] + "]" 
-    return question, answerText, vertexPairs, q
+    question += "\nOrder " + JoinNames(labels[1:]) + " from closest to farthest from v₁."
+    answerText = "[" + ", ".join(labels[i + 1] for i in ordered) + "]"
+    return question, answerText, [targets[i] for i in ordered], q
 
 
       
 def Question10Quality(dists):
     if dists[0] == 0:
         return 0
-    r1 = dists[1] / dists[0]
-    r2 = dists[2] / dists[1]
-    if r1 < 1.3 or r2 < 1.3:
+    ratios = [b / a for a, b in zip(dists, dists[1:])]
+    if any(ratio < 1.3 for ratio in ratios):
         return 0
     else:
-        return r1 + r2 
+        return sum(ratios)
 
     
 
@@ -509,7 +519,7 @@ def Question11(fa,codes):
     global smallAng
     vvs = fa.trueVertices[1:]
     n = len(vvs)
-    if n != 4:
+    if n < 3 or len(codes) != n:
         return failureOutput
     angles = []
     for v in vvs:
@@ -693,34 +703,30 @@ def Question13(v, code):
     return question, answerText, answerNames, len(answerNames)
     
 
-def Question14(fa,fb):
-    fu = FaceUnion(fa,fb)
+def Question14(fa, fb=None):
+    regions = list(fa) if isinstance(fa, (list, tuple)) else [fa, fb]
+    fu = FaceUnion(*regions)
     if fu==False:
         return failureOutput
-    question = UnionText(fa,fb,'U')
+    question = UnionTextMany(regions, 'U')
     question += "How many edges does U have? \n"
     question += union_def
     return question, str(fu.numSides), fu.numSides, fu.numSides + len(fu.edges) 
 
 def Question15(fa,fb,map):
-    if fa==fb or not fa.bounded or not fb.bounded:
-        return failureOutput
-    fu = FaceUnion(fa,fb)
+    regions = list(fa) if isinstance(fa, (list, tuple)) else [fa, fb]
+    fu = FaceUnion(*regions)
     if fu==False:
         return failureOutput
-    question = UnionText(fa,fb,'U')
+    question = UnionTextMany(regions, 'U')
     question += "Which regions share an edge with U?\n\n"
     question += "A region that touches U only at a vertex does not count.\n"
     question += union_def
     question += none_answer_def
     answerSet = set()
-    for e in fa.edges:
+    for e in fu.edges:
         f = e.reverse.leftFace
-        if f != fb and f.bounded:
-            answerSet.add(f)
-    for e in fb.edges:
-        f = e.reverse.leftFace
-        if f != fa and f.bounded:
+        if f not in regions and f.bounded:
             answerSet.add(f)
     answerText = Faces2Text(answerSet)
     return question, answerText, answerSet, len(answerSet)
@@ -741,12 +747,12 @@ def Question16(faces,map):
     question = ""
     for f in faces:
         if type(f) is list:
-            [fa,fb] = f
-            f = FaceUnion(fa,fb)
+            regions = f
+            f = FaceUnion(*regions)
             if f==False:
                 return failureOutput
             f.letter = 'U'
-            question += UnionText(fa,fb,f.letter)
+            question += UnionTextMany(regions, f.letter)
         newFaces += [f]
     letters = [f.letter for f in newFaces]
     if len(letters) == 1:
@@ -938,24 +944,32 @@ def Q19OtherEnd(p,direction,bounds):
 
 #                          QUESTION 20-21
 
-def Question20(va,vb,vc, direction, codeA, codeB, codeC):
-    if not distinct([va,vb,vc]):
+def Question20(va, vb, vc, direction=None, codeA=None, codeB=None, codeC=None):
+    """Accept legacy inputs or (vertices, direction, description_codes)."""
+    if isinstance(va, (list, tuple)):
+        vertices, direction, codes = list(va), vb, list(vc)
+    else:
+        vertices, codes = [va, vb, vc], [codeA, codeB, codeC]
+    if len(vertices) < 2 or len(codes) != len(vertices) or not distinct(vertices):
         return failureOutput
-    question = LetVerticesBeText([va,vb,vc],['v₁','v₂','v₃'],[codeA,codeB,codeC])
+    labels = IndexedLabels("v", len(vertices))
+    question = LetVerticesBeText(vertices, labels, codes)
     if question == "":
         return failureOutput
-    question += "\nOrder v₁, v₂, and v₃ from "
+    question += "\nOrder " + JoinNames(labels) + " from "
     if direction == 0:
-        c = [va.p.x, vb.p.x, vc.p.x]
+        c = [v.p.x for v in vertices]
         question += "left to right."
     else:
-        c = [va.p.y, vb.p.y, vc.p.y]  
+        c = [v.p.y for v in vertices]
         question += "bottom to top."
-    c, vvs, names = order3(c,[va,vb,vc], ['v₁','v₂','v₃'])
-    quality = min(c[1]-c[0], c[2]-c[1])
+    ordered = sorted(range(len(vertices)), key=lambda i: c[i])
+    c = [c[i] for i in ordered]
+    vvs, names = [vertices[i] for i in ordered], [labels[i] for i in ordered]
+    quality = min(b - a for a, b in zip(c, c[1:]))
     if quality < 0.05:
        return failureOutput  
-    answerText = "[" + names[0] + ", " + names[1] + ", " + names[2] + "]" 
+    answerText = "[" + ", ".join(names) + "]"
     return question, answerText, vvs, quality
 
 def Question21(va,vb,vc, codeA, codeB, codeC):
@@ -1266,8 +1280,9 @@ def Question29(fe, fb, map, samples=400):
 #                          COMPOSITIONAL QUESTIONS 30-34
 
 def Question30(fa, fb, clockwise=True):
-    """Trace the outside boundary of the union of two adjacent regions."""
-    fu = FaceUnion(fa, fb)
+    """Trace the outside boundary of a connected union."""
+    regions = list(fa) if isinstance(fa, (list, tuple)) else [fa, fb]
+    fu = FaceUnion(*regions)
     if fu is False:
         return failureOutput
     vertices = list(fu.trueVertices[1:])
@@ -1299,7 +1314,7 @@ def Question30(fa, fb, clockwise=True):
     answer = Question30Compute(fu, start, not clockwise)
     if not answer:
         return failureOutput
-    question = UnionText(fa, fb, "U")
+    question = UnionTextMany(regions, "U")
     question += "Let v₁ be the bottommost vertex of U. "
     question += "Starting at v₁, trace the boundary of U clockwise until you return to v₁. "
     question += "List, in order, the regions on the other side of U’s boundary.\n\n"
@@ -1383,13 +1398,14 @@ def Question32(face):
 
 def Question33(fa, fb, fc):
     """Compare the edge count of a union with another region."""
-    if fc in (fa, fb):
+    regions = list(fa) if isinstance(fa, (list, tuple)) else [fa, fb]
+    if fc in regions:
         return failureOutput
-    fu = FaceUnion(fa, fb)
+    fu = FaceUnion(*regions)
     if fu is False:
         return failureOutput
     same = fu.numSides == fc.numSides
-    question = UnionText(fa, fb, "U")
+    question = UnionTextMany(regions, "U")
     question += f"Do U and region {fc.letter} have the same number of edges?"
     return question, "Yes" if same else "No", same, fu.numSides + fc.numSides
 
@@ -2017,7 +2033,16 @@ def decode(l,code):
     return l[code%len(l)]
           
 
-def FaceUnion(f1,f2):  #Only for pairs of regions that meet in consecutive edges
+def FaceUnion(f1, f2=None, *extra):
+    if isinstance(f1, (list, tuple)) or extra:
+        import map_helpers
+        regions = list(f1) if isinstance(f1, (list, tuple)) else [f1, f2, *extra]
+        try:
+            return map_helpers.merge(*regions)
+        except ValueError:
+            return False
+    if f2 is None or f1 is f2:
+        return False
     [found,start,stop] = consecCommonEdges(f1,f2)
     if not found:
         return False
@@ -2071,7 +2096,11 @@ def VerticesBetween(va,vb,f):
         return f.vertices[b:n]+f.vertices[0:t], f.edges[b:n]+f.edges[0:t]
 
 def UnionText(fa,fb,uname):
-    return "Let " + uname + " be the union of regions " + fa.letter + " and " + fb.letter + ". " 
+    return UnionTextMany([fa, fb], uname)
+
+
+def UnionTextMany(regions, uname="U"):
+    return "Let " + uname + " be the union of regions " + JoinNames([face.letter for face in regions]) + ". "
 
 def ShowPseudoFace(f):
     print("Vertices:")
