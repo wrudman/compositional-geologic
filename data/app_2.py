@@ -6067,10 +6067,11 @@ html_code = f"""
     <style>
         body {{
             margin: 0; padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: var(--survey-font, 'Source Sans 3', 'Source Sans Pro', sans-serif);
             background: transparent; display: {component_body_display}; gap: {component_body_gap}px;
             width:100%; box-sizing:border-box; {component_body_columns}
         }}
+        button, input, select, textarea {{ font-family: inherit; }}
         .diagram-column {{ width:{component_diagram_column_width}; display:flex; flex-direction:column; align-items:{"flex-start" if selection_only_demo else "stretch"}; gap:10px; }}
         .pad-container {{ position: relative; width: {component_display_side}px; height: {component_display_side}px; border-radius: 8px; overflow: hidden; box-shadow: {component_pad_shadow}; }}
         canvas {{ position: absolute; top: 0; left: 0; width:{component_display_side}px; height:{component_display_side}px; cursor: crosshair; }}
@@ -6090,7 +6091,7 @@ html_code = f"""
         #selectionControls {{ order: 5; }}
         #placeholderText {{ order: 6; }}
         #panelHeader {{ display: none; }}
-        .tool-heading {{ margin:0 0 7px; color:var(--survey-text, #111827); font-size:1.1rem; font-weight:600; line-height:1.2; }}
+        .tool-heading {{ margin:0 0 0.35rem; color:var(--survey-text, #31333f); font-size:1.25rem; font-weight:600; line-height:1.6; }}
         .mode-row {{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }}
         .mode-option {{ display: flex; align-items: center; gap: 5px; color:var(--survey-text, #303440); font-size: 15px; cursor: pointer; }}
         .mode-option input {{ accent-color: #ff4b4b; cursor: pointer; }}
@@ -6280,10 +6281,25 @@ html_code = f"""
     </div>
 
     <script>
+        // Share the host page's loaded font faces with this isolated iframe.
+        function syncSurveyFont() {{
+            try {{
+                const host = window.parent.document;
+                const root = host.querySelector(".stApp") || host.body;
+                const style = window.parent.getComputedStyle(root);
+                document.documentElement.style.setProperty("--survey-font", style.fontFamily);
+                document.documentElement.style.fontSize = window.parent.getComputedStyle(host.documentElement).fontSize;
+                host.fonts.forEach(face => document.fonts.add(face));
+            }} catch (_) {{
+                // Retain the Streamlit font fallback if host access is unavailable.
+            }}
+        }}
+        syncSurveyFont();
         // Follow the actual Streamlit theme, including manual theme changes.
         window.addEventListener("message", function(event) {{
             if (event.source !== window.parent) return;
             const message = event.data;
+            if (message?.type === "streamlit:render") syncSurveyFont();
             if (message?.type === "streamlit:render" && message.theme?.textColor) {{
                 document.documentElement.style.setProperty("--survey-text", message.theme.textColor);
             }}
