@@ -3668,7 +3668,7 @@ def format_measurement_display(measurement: dict):
     kind = measurement.get("kind", "measurement")
     if kind == "region":
         value = measurement.get("area", "")
-        unit = "area units"
+        unit = ""
         detail = ""
     elif kind == "angle":
         value = measurement.get("degrees", "")
@@ -3676,11 +3676,11 @@ def format_measurement_display(measurement: dict):
         detail = ""
     elif kind == "edge":
         value = measurement.get("length", "")
-        unit = "length units"
+        unit = ""
         detail = f"Segments measured: {measurement.get('segment_count', 1)}"
     elif kind == "distance":
         value = measurement.get("length", "")
-        unit = "length units"
+        unit = ""
         from_label = measurement.get("from_label") or f"vertex {measurement.get('from_vertex_id', '?')}"
         to_label = measurement.get("to_label") or f"vertex {measurement.get('to_vertex_id', '?')}"
         detail = f"From {from_label} to {to_label}"
@@ -3705,7 +3705,8 @@ def participant_output_for_action(entry: dict, angle_number=None, vertex_labels=
         measurements = []
         for item in detail_dict["items"]:
             shown = format_measurement_display(item)
-            measurements.append(f"{shown['label']}: {shown['value']} {shown['unit']}")
+            suffix = "°" if shown["unit"] == "degrees" else ""
+            measurements.append(f"{shown['label']}: {shown['value']}{suffix}")
         return "Measured — " + "; ".join(measurements) + "."
     if action == "commit_vertex":
         vertex_id = str(detail_dict.get("vertex_id", ""))
@@ -3753,10 +3754,11 @@ def participant_output_for_action(entry: dict, angle_number=None, vertex_labels=
         faces = detail_dict.get("faces", [])
         return f"Created the union of Regions {' and '.join(faces)}."
     if action == "measure_distance" and detail_dict:
-        return f"Measured distance between the two selected vertices: {detail_dict.get('length', '')} length units."
+        return f"Measured distance between the two selected vertices: {detail_dict.get('length', '')}."
     if action.startswith("measure_") and detail_dict:
         display = format_measurement_display(detail_dict)
-        result = f"Measured {display['label']}: {display['value']} {display['unit']}".strip() + "."
+        suffix = "°" if display["unit"] == "degrees" else ""
+        result = f"Measured {display['label']}: {display['value']}{suffix}."
         if display["detail"]:
             result += f" {display['detail']}."
         return result
