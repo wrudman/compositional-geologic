@@ -3707,7 +3707,7 @@ def participant_output_for_action(entry: dict, angle_number=None, vertex_labels=
             shown = format_measurement_display(item)
             suffix = "°" if shown["unit"] == "degrees" else ""
             measurements.append(f"{shown['label']}: {shown['value']}{suffix}")
-        return "Measured — " + "; ".join(measurements) + "."
+        return "Measured: " + "; ".join(measurements) + "."
     if action == "commit_vertex":
         vertex_id = str(detail_dict.get("vertex_id", ""))
         vertex_label = detail_dict.get("label") or (vertex_labels or {}).get(vertex_id)

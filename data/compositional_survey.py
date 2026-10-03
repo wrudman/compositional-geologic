@@ -4209,7 +4209,7 @@ def measurement_batch_finish(objects, what, reference=None):
     shown = "; ".join(f"{row['label']}: {row['value']:g}{'°' if unit else ''}" for row in rows)
     heading = f"Distances from {reference_label}" if reference is not None else what.replace("_", " ").capitalize()
     add_program(call_str)
-    add_log(f"{heading} — **{shown}**.")
+    add_log(f"{heading}: **{shown}**.")
     record_tool_call("measure", "measure", call_str, output, shown, "analysis")
     clear_selection()
     st.rerun()
