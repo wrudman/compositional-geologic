@@ -6070,6 +6070,11 @@ tool_box_guide_html = (
     else ""
 )
 
+# Use the native info component as the typography/style source for the iframe.
+with st.container(key="annotation_instruction_style"):
+    st.info("- **Select an object** → use the selected tool.")
+st.markdown("<style>.st-key-annotation_instruction_style { display:none; }</style>", unsafe_allow_html=True)
+
 html_code = f"""
 <!DOCTYPE html>
 <html>
@@ -6118,9 +6123,9 @@ html_code = f"""
         .tool-choice:hover {{ background:#f8fafc; border-color:#94a3b8; }}
         .tool-choice.active {{ background:#e3f9ea; border-color:#8fd4a8; color:#1e5631; }}
         .tool-choice.active:hover {{ background:#d2f2de; border-color:#6fc593; color:#1e5631; }}
-        .tool-info {{ display:none; box-sizing:border-box; width:100%; background:#eff6ff; color:#1e3a5f; border-radius:10px; padding:14px 18px; font-size:15px; line-height:1.5; }}
-        .tool-info ul {{ margin:0; padding-left:22px; }}
-        .tool-info li {{ padding-left:5px; }}
+        .tool-info {{ display:none; box-sizing:border-box; width:100%; background:rgba(28,131,225,0.1); color:#004280; border-radius:0.5rem; padding:1rem; font-size:1rem; line-height:1.6; }}
+        .tool-info ul {{ margin:0; padding:0; list-style-type:disc; }}
+        .tool-info li {{ margin:0.2em 0 0.2em 1.2em; padding:0 0 0 0.6em; }}
         .category-section {{ display:none; }}
         .setting-label {{ margin:2px 0 4px; color:#4b5563; font-size:13px; font-weight:600; }}
         .setting-choice {{ display:flex; align-items:center; gap:6px; margin:4px 0 6px; color:#374151; font-size:14px; }}
@@ -6304,12 +6309,35 @@ html_code = f"""
                 // Retain the Streamlit font fallback if host access is unavailable.
             }}
         }}
+        function syncInstructionStyle() {{
+            try {{
+                const host = window.parent.document;
+                const sample = host.querySelector('.st-key-annotation_instruction_style');
+                if (!sample) return;
+                const pairs = [
+                    ['[data-testid="stAlertContainer"]', '#toolInfo', ['backgroundColor', 'color', 'padding', 'borderRadius', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight']],
+                    ['[data-testid="stMarkdownContainer"]', '#toolInfo', ['fontFamily', 'fontSize', 'lineHeight']],
+                    ['ul', '#toolInfo ul', ['margin', 'padding', 'listStyleType']],
+                    ['li', '#toolInfo li', ['margin', 'padding', 'fontSize', 'lineHeight']],
+                    ['strong', '#toolInfo strong', ['fontWeight']]
+                ];
+                for (const [source, target, properties] of pairs) {{
+                    const element = sample.querySelector(source);
+                    if (!element) continue;
+                    const style = window.parent.getComputedStyle(element);
+                    document.querySelectorAll(target).forEach(node => {{
+                        properties.forEach(property => node.style[property] = style[property]);
+                    }});
+                }}
+            }} catch (_) {{ /* Use the matching default styles without host access. */ }}
+        }}
         syncSurveyFont();
+        syncInstructionStyle();
         // Follow the actual Streamlit theme, including manual theme changes.
         window.addEventListener("message", function(event) {{
             if (event.source !== window.parent) return;
             const message = event.data;
-            if (message?.type === "streamlit:render") syncSurveyFont();
+            if (message?.type === "streamlit:render") {{ syncSurveyFont(); syncInstructionStyle(); }}
             if (message?.type === "streamlit:render" && message.theme?.textColor) {{
                 document.documentElement.style.setProperty("--survey-text", message.theme.textColor);
             }}
@@ -6912,6 +6940,7 @@ html_code = f"""
             }};
             if (activeCategory && instructions[activeCategory]) {{
                 info.innerHTML = instructions[activeCategory];
+                syncInstructionStyle();
                 info.style.display = 'block';
             }} else {{
                 info.innerHTML = '';
