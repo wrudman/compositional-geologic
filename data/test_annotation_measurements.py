@@ -56,7 +56,7 @@ class AnnotationMeasurements(unittest.TestCase):
         self.assertTrue(call["batch"])
         self.assertEqual(self.data["selected_region_indices"], [])
         for item in result["items"]:
-            self.assertIn(item["label"], call["display_text"])
+            self.assertIn(item["label"].removeprefix("Region ") + ":", call["display_text"])
             self.assertIn("face", item["geometry"])
 
     def test_multiple_angles_keep_distinct_labels(self):
@@ -66,7 +66,7 @@ class AnnotationMeasurements(unittest.TestCase):
             for i, v in enumerate(face.vertices[1:4], 1)]
         result, call = self.run_measure("measure_angle")
         self.assertEqual([x["degrees"] for x in result["items"]], [90., 90., 90.])
-        self.assertIn("a1", call["display_text"])
+        self.assertEqual(call["display_text"], "Angle: **a1: 90°; a2: 90°; a3: 90°**.")
         self.assertIn("a3", call["display_text"])
         self.assertEqual(self.data["selected_angles"], [])
 

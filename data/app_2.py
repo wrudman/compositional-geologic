@@ -3701,13 +3701,30 @@ def participant_output_for_action(entry: dict, angle_number=None, vertex_labels=
     action = entry.get("action", "")
     detail = entry.get("detail", {})
     detail_dict = detail if isinstance(detail, dict) else {}
-    if action.startswith("measure_") and detail_dict.get("kind") == "batch":
-        measurements = []
-        for item in detail_dict["items"]:
-            shown = format_measurement_display(item)
-            suffix = "°" if shown["unit"] == "degrees" else ""
-            measurements.append(f"{shown['label']}: {shown['value']}{suffix}")
-        return "Measured: " + "; ".join(measurements) + "."
+    if action.startswith("measure_") and detail_dict:
+        items = detail_dict.get("items", []) if detail_dict.get("kind") == "batch" else [detail_dict]
+        if items:
+            kind = items[0].get("kind")
+            heading = {"region": "Area", "angle": "Angle", "edge": "Length"}.get(kind, "Measurement")
+            if kind == "distance":
+                reference = items[0].get("from_label") or (vertex_labels or {}).get(str(items[0].get("from_vertex_id")))
+                heading = f"Distances from {reference}" if reference else "Distance"
+            measurements = []
+            for item in items:
+                shown = format_measurement_display(item)
+                label = str(shown["label"])
+                if kind == "region":
+                    label = label.removeprefix("Region ")
+                elif kind == "angle":
+                    label = label.split(" in ", 1)[0]
+                elif kind == "distance":
+                    label = item.get("to_label") or (vertex_labels or {}).get(str(item.get("to_vertex_id"))) or label
+                value = shown["value"]
+                if isinstance(value, (int, float)):
+                    value = f"{value:g}"
+                suffix = "°" if kind == "angle" else ""
+                measurements.append(f"{label}: {value}{suffix}")
+            return heading + ": **" + "; ".join(measurements) + "**."
     if action == "commit_vertex":
         vertex_id = str(detail_dict.get("vertex_id", ""))
         vertex_label = detail_dict.get("label") or (vertex_labels or {}).get(vertex_id)
@@ -3753,15 +3770,6 @@ def participant_output_for_action(entry: dict, angle_number=None, vertex_labels=
     if action == "execute_union":
         faces = detail_dict.get("faces", [])
         return f"Created the union of Regions {' and '.join(faces)}."
-    if action == "measure_distance" and detail_dict:
-        return f"Measured distance between the two selected vertices: {detail_dict.get('length', '')}."
-    if action.startswith("measure_") and detail_dict:
-        display = format_measurement_display(detail_dict)
-        suffix = "°" if display["unit"] == "degrees" else ""
-        result = f"Measured {display['label']}: {display['value']}{suffix}."
-        if display["detail"]:
-            result += f" {display['detail']}."
-        return result
     if action == "undo":
         return "Undid the most recent annotation."
     if action == "clear_all":
