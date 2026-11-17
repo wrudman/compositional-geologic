@@ -1,0 +1,515 @@
+"""
+tools_human.py
+
+A point-and-click vocabulary of exactly SEVEN verbs for solving map-region
+problems. The seven verbs below are the whole public surface — there are no
+lower-level getters to learn. Anything more specific (which corner, which walk
+direction, how to order) is a *mode* of one of the seven, chosen in the UI, not
+a separate verb.
+
+THE SEVEN VERBS
+---------------
+    find        get a described object
+                vertex:
+                  one region            -> a corner of it
+                  two or more regions   -> the point where they meet
+                  the frame             -> a frame corner
+                edge:
+                  one region + what lies opposite -> that edge
+    neighbors   get regions
+                  a point               -> the regions meeting there
+                  a region              -> the regions bordering it
+                                           (share an edge, touch at a corner,
+                                            or in walking order from a corner)
+                  an edge               -> the regions on either side of it
+    draw        make a line             (segment, full line, or ray)
+    intersect   ask a line what it hits (which regions, or another line)
+    merge       join two or more edge-connected regions in one call
+    measure     inspect selected geometry (length, angle, area, edge count,
+                regions, or cycle orientation)
+    sort        SEVERAL things -> them, ordered smallest -> largest
+
+Everything in / everything out is a plain object (a Point, a Region, a Line, a
+list, a number, or a boolean), so verbs chain by clicking.
+
+SETUP
+-----
+    import tools_human as t
+    t.setup(my_map)
+"""
+
+import map_helpers as _engine
+
+TOOL_VERSION = "2026-10-02-batch-measure"
+
+
+# ==============================================================================
+# SETUP
+# ==============================================================================
+
+def setup(map):
+    """Load the diagram. Call once when the interface starts."""
+    _engine.use_map(map)
+
+
+# ==============================================================================
+# VERB 1 — VERTEX     (get a point)
+# ==============================================================================
+
+def find(*objs, object="vertex", which="all", on_frame=False):
+    """Find a described vertex or edge.
+
+    Examples:
+        find(A, object="vertex", which="rightmost")
+        find(A, B, object="edge")
+        find(A, "Outside", object="edge")
+    """
+    if object == "edge":
+        if len(objs) < 2:
+            raise ValueError("Finding an edge requires two or more regions.")
+        return _engine.edge_among(*objs)
+    if object != "vertex":
+        raise ValueError('object must be "vertex" or "edge".')
+    return vertex(*objs, which=which, on_frame=on_frame)
+
+
+def vertex(*objs, which="all", on_frame=False):
+    """
+    Returns a vertex (or, with which="all", every vertex).
+
+    ONE REGION            -> a corner of it, chosen by `which`:
+        "all", "leftmost", "rightmost", "topmost", "bottommost",
+        "bottom_left", "bottom_right", "top_left", "top_right",
+        "sharpest", "widest"
+    THE FRAME ("frame")   -> a frame corner, chosen by `which`:
+        "all", "top_left", "top_right", "bottom_left", "bottom_right"
+    TWO OR MORE REGIONS   -> the single point where they all meet
+                             (set on_frame=True if it lies on the frame).
+
+    Examples:
+        vertex(A, which="rightmost")
+        vertex("frame", which="top_left")
+        vertex(E, C, on_frame=True)
+    """
+    if len(objs) == 1 and objs[0] == "frame":
+        return _frame_corner(which)
+    if len(objs) == 1:
+        return _region_corner(objs[0], which)
+    return _engine.vertex_overlap(*objs, on_frame=on_frame)
+
+
+# ==============================================================================
+# VERB 2 — EDGE       (get a boundary edge)
+# ==============================================================================
+
+def edge(region, *meets):
+    """
+    Return the unique edge of ``region`` that meets the supplied regions.
+
+    Use the string ``"Outside"`` for the outside of the frame. A returned edge
+    can contain several collinear topology segments but behaves as one
+    question-level edge.
+
+    Examples:
+        edge(A, B)
+        edge(A, B, C)
+        edge(A, "Outside")
+    """
+    return _engine.edge_by_meeting(region, *meets)
+
+
+# ==============================================================================
+# VERB 3 — NEIGHBORS     (get regions)
+# ==============================================================================
+
+def neighbors(obj, kind="edge", start=None, go_counterclockwise=True):
+    """
+    Returns the regions related to the selection.
+
+    A POINT                  -> every region that meets at that point.
+    AN EDGE                  -> the labeled regions inside the frame on either
+                                side of the edge.
+    A REGION, kind="edge"    -> regions sharing a full edge (a border).
+    A REGION, kind="vertex"  -> regions touching only at a corner.
+    A REGION, kind="ordered" -> the bordering regions in walking order;
+        give start=<a corner> and go_counterclockwise=<True/False>.
+        (CCW -> regions on the right; CW -> regions on the left. Returns []
+        if a corner where 3+ regions meet makes the order ambiguous.)
+
+    Examples:
+        neighbors(p)
+        neighbors(some_edge)
+        neighbors(A, "edge")
+        neighbors(A, "vertex")
+        neighbors(A, "ordered", start=p, go_counterclockwise=True)
+    """
+    if _is_point(obj):
+        return _engine.regions_at(obj)
+    if _is_edge(obj):
+        return _engine.regions_along_edge(obj)
+    if kind == "edge":
+        return _engine.edge_neighbors(obj)
+    if kind == "vertex":
+        return _engine.vertex_only_neighbors(obj)
+    if kind == "ordered":
+        return _boundary_walk(obj, start, go_counterclockwise)
+    raise ValueError('kind must be "edge", "vertex", or "ordered".')
+
+
+# ==============================================================================
+# VERB 3 — DRAW     (make a line)
+# ==============================================================================
+
+def draw(a, b=None, kind="segment"):
+    """
+    Draws a line you can then intersect with regions.
+
+      * an EDGE                 -> draw(edge)            (uses the edge's ends)
+      * TWO vertices            -> draw(p, q)
+      * ONE vertex + direction  -> draw(p, "up"/"down"/"left"/"right")  (a ray)
+
+    kind: "segment" (default) or "full" (the infinite line through the points).
+          (kind is ignored when drawing a ray.)
+    """
+    if b is None and isinstance(a, (list, tuple)) and a:
+        points = [endpoint for segment in a for endpoint in (segment.tail, segment.head)]
+        pa, pb = max(
+            ((first, second) for first in points for second in points if first is not second),
+            key=lambda pair: _engine.dist(pair[0], pair[1]),
+        )
+        return _engine.extend(pa, pb) if kind == "full" else _engine.segment(pa, pb)
+    if b is None and hasattr(a, "head") and hasattr(a, "tail"):
+        pa, pb = a.tail, a.head
+        return _engine.extend(pa, pb) if kind == "full" else _engine.segment(pa, pb)
+    if isinstance(b, str):
+        return _engine.ray(a, b)
+    if b is None:
+        raise ValueError("draw needs an edge, two points, or a point and a direction.")
+    return _engine.extend(a, b) if kind == "full" else _engine.segment(a, b)
+
+
+# ==============================================================================
+# VERB 4 — INTERSECT     (ask a line what it hits)
+# ==============================================================================
+
+def intersect(line, target="faces"):
+    """
+    target = "faces"       -> regions the line passes through, in travel order
+                              (a full/infinite line returns them unordered).
+    target = another line  -> True/False: do the two lines cross?
+
+    Examples:
+        intersect(line, "faces")
+        intersect(draw(p, q), draw(u, v))
+    """
+    if target == "faces":
+        if isinstance(line, dict) and line.get("type") == "extend":
+            return list(_engine.regions_crossed(line))
+        return _engine.regions_in_order(line)
+    if isinstance(target, dict) and "type" in target:
+        return _engine.crosses(line, target)
+    raise ValueError('target must be "faces" or another drawn line.')
+
+
+# ==============================================================================
+# VERB 5 — MERGE     (join two bordering regions)
+# ==============================================================================
+
+def merge(*regions):
+    """
+    Join any number of edge-connected regions in one call: merge(A, B, C).
+    A list is also accepted: merge([A, B, C]). Vertex-only contact does not
+    connect regions. The result supports area, side count, and neighbors.
+    """
+    return _engine.merge(*regions)
+
+
+# ==============================================================================
+# VERB 6 — MEASURE     (one object or a batch -> numeric values)
+# ==============================================================================
+
+def measure(*args, what, reference=None):
+    """
+    Measure one object, or a list of objects in one call.
+
+    A list returns values in input order. For angles, pass saved angle objects
+    or (vertex, region) pairs. For distances, pass a list of targets plus an
+    explicit reference of the same type (vertices or regions). Scalar calls
+    retain their existing return type. Orientation still requires three points.
+
+        measure([A, B, C], what="area")
+        measure([a1, a2, a3], what="angle")
+        measure([p, q, r], what="distance", reference=origin)
+
+    what:
+        "distance" a drawn line -> its length
+                   (or two points -> the straight-line distance between them)
+                   (or two regions -> the distance between their closest points)
+        "angle"   a corner (its point + the region it belongs to)
+                  -> the interior angle there, in degrees
+        "area"    a region -> its area
+        "edge_count" a region -> how many boundary edges it has
+                     ("sides" is retained as a backwards-compatible alias)
+        "frame_edge_count" a region -> how many of its edges lie on the frame
+        "regions" the frame -> how many bounded regions are in the diagram
+        "orientation" three ordered vertices -> clockwise or counterclockwise
+
+    Examples:
+        measure(L1, what="distance")
+        measure(p, q, what="distance")    # distance between two points
+        measure(A, B, what="distance")    # distance between two regions
+        measure(p, A, what="angle")       # angle at corner p inside region A
+        measure(A, what="area")
+        measure(A, what="edge_count")
+        measure("frame", what="regions")
+        measure(v1, v2, v3, what="orientation")
+    """
+    items = list(args)
+
+    if len(items) == 1 and isinstance(items[0], (list, tuple)):
+        batch = list(items[0])
+        if not batch:
+            raise ValueError("Select at least one object to measure.")
+        if what not in ("angle", "area", "edge_count", "sides",
+                        "frame_edge_count", "distance", "length"):
+            raise ValueError(f'Batch measurement is not supported for {what}.')
+        if what in ("distance", "length"):
+            if reference is None:
+                raise ValueError("Batch distance requires a reference vertex or region.")
+            same_type = (_is_point(reference) and all(_is_point(x) for x in batch)
+                         or _is_region(reference) and all(_is_region(x) for x in batch))
+            if not same_type:
+                raise ValueError("Reference and targets must all be vertices or all be regions.")
+            return [measure(reference, obj, what="distance") for obj in batch]
+        if reference is not None:
+            raise ValueError("reference is only used for batch distance measurements.")
+        if what == "angle":
+            values = []
+            for obj in batch:
+                if hasattr(obj, "vertex") and hasattr(obj, "face"):
+                    values.append(measure(obj.vertex, obj.face, what="angle"))
+                elif isinstance(obj, (list, tuple)) and len(obj) == 2:
+                    values.append(measure(*obj, what="angle"))
+                else:
+                    raise ValueError("Each angle needs a vertex and its region.")
+            return values
+        if not all(_is_region(obj) for obj in batch):
+            raise ValueError("Select regions for area or edge-count measurements.")
+        return [measure(obj, what=what) for obj in batch]
+
+    if reference is not None:
+        raise ValueError("Pass distance targets as a list when using reference.")
+
+    if what in ("distance", "length"):
+        if len(items) == 1 and isinstance(items[0], dict):   # a drawn line
+            return _line_len(items[0])
+        if len(items) == 2 and _is_region(items[0]) and _is_region(items[1]):
+            return _engine.region_dist(items[0], items[1])
+        if len(items) != 2:
+            raise ValueError('what="distance" requires a line, two vertices, or two regions.')
+        return _engine.dist(items[0], items[1])              # two points
+
+    if what == "angle":
+        import numpy as _np
+        if len(items) == 1 and hasattr(items[0], "vertex") and hasattr(items[0], "face"):
+            items = [items[0].vertex, items[0].face]
+        if len(items) != 2 or not _is_point(items[0]) or not _is_region(items[1]):
+            raise ValueError("Select one angle, or supply its vertex and region.")
+        return _engine.angle_at(items[0], items[1]) * 180.0 / _np.pi
+
+    if what in ("area", "edge_count", "sides", "frame_edge_count"):
+        if len(items) != 1 or not _is_region(items[0]):
+            raise ValueError("Select one region, or pass a list of regions.")
+
+    if what == "area":
+        return _engine.area(items[0])
+
+    if what in ("edge_count", "sides"):
+        return _engine.side_count(items[0])
+
+    if what == "frame_edge_count":
+        return _engine.frame_edge_count(items[0])
+
+    if what == "regions":
+        if len(items) != 1 or items[0] != "frame":
+            raise ValueError('what="regions" requires the frame.')
+        return _engine.region_count()
+
+    if what == "orientation":
+        if len(items) != 3:
+            raise ValueError('what="orientation" requires exactly three vertices.')
+        return _engine.orientation(items[0], items[1], items[2])
+
+    raise ValueError(
+        'what must be one of: distance, angle, area, edge_count, '
+        'frame_edge_count, regions, orientation.'
+    )
+
+
+# ==============================================================================
+# VERB 7 — SORT     (several things -> them, ordered smallest -> largest)
+# ==============================================================================
+
+def sort(items, by, reference=None, *, grouped=False):
+    """
+    Put several objects in and get them back in order, smallest -> largest.
+    Sort only ranks things that have a numeric size.
+    With grouped=True, return a list of tied groups instead of a flat list.
+    Ties use unrounded values with a numerical tolerance (absolute 1e-9,
+    relative 1e-12; angles are compared in radians). Each member is compared
+    to the first value of its group so approximate equality cannot chain.
+
+    by:
+        "angle"       saved angle objects by interior angle
+                      (or corners of a region with `reference` set to that region)
+        "area"        regions, by area
+        "left_right"  points, left to right
+        "bottom_top"  points, bottom to top
+        "distance"    points, by distance from `reference` (a point)
+
+    Examples:
+        sort([a1, a2, a3, a4], by="angle")
+        sort([A, B, C], by="area")
+        sort([u, v, w], by="left_right")
+        sort([u, v, w], by="distance", reference=p)
+    """
+    if by == "angle":
+        def key(item):
+            if hasattr(item, "vertex") and hasattr(item, "face"):
+                return _engine.angle_at(item.vertex, item.face)
+            return _engine.angle_at(item, reference)
+    elif by == "area":
+        key = _engine.area
+    elif by == "left_right":
+        key = _engine.x_of
+    elif by == "bottom_top":
+        key = _engine.y_of
+    elif by == "distance":
+        key = lambda v: _engine.dist(v, reference)
+    else:
+        raise ValueError('by must be one of: angle, area, left_right, bottom_top, distance.')
+    ordered = sorted(items, key=key)
+    if not grouped:
+        return ordered
+    import math
+    groups = []
+    anchor = None
+    for item in ordered:
+        value = key(item)
+        if not groups or not math.isclose(value, anchor, rel_tol=1e-12, abs_tol=1e-9):
+            groups.append([item])
+            anchor = value
+        else:
+            groups[-1].append(item)
+    return groups
+
+
+# ==============================================================================
+# PRIVATE IMPLEMENTATION  (not part of the vocabulary)
+# ==============================================================================
+
+def _is_point(o):
+    return hasattr(o, "outarcs")
+
+def _is_region(o):
+    return hasattr(o, "edges") and hasattr(o, "bounded")
+
+def _is_edge(o):
+    # A half-edge has tail/head/reverse/leftFace. A region has .edges (no .tail);
+    # a point has .outarcs. So this is unambiguous against the other selectables.
+    return (hasattr(o, "tail") and hasattr(o, "head")
+            and hasattr(o, "reverse") and hasattr(o, "leftFace"))
+
+
+_CORNER_MODES = {
+    "leftmost":   _engine.leftmost,
+    "rightmost":  _engine.rightmost,
+    "topmost":    _engine.topmost,
+    "bottommost": _engine.bottommost,
+    "sharpest":   _engine.sharpest_corner,
+    "widest":     _engine.widest_corner,
+    "bottom_left":  lambda region: _engine.diagonal_corner(region, "bottom_left"),
+    "bottom_right": lambda region: _engine.diagonal_corner(region, "bottom_right"),
+    "top_left":     lambda region: _engine.diagonal_corner(region, "top_left"),
+    "top_right":    lambda region: _engine.diagonal_corner(region, "top_right"),
+}
+
+
+def _region_corner(region, which):
+    if which == "all":
+        return _engine.vertices(region)
+    if which not in _CORNER_MODES:
+        raise ValueError(
+            'region corner must be one of: "all", "leftmost", "rightmost", '
+            '"topmost", "bottommost", "bottom_left", "bottom_right", '
+            '"top_left", "top_right", "sharpest", "widest".')
+    return _CORNER_MODES[which](region)
+
+
+def _frame_corner(which):
+    pts = {
+        "bottom_left":  _engine.frame_corner("bottom_left"),
+        "bottom_right": _engine.frame_corner("bottom_right"),
+        "top_right":    _engine.frame_corner("top_right"),
+        "top_left":     _engine.frame_corner("top_left"),
+    }
+    if which == "all":
+        return list(pts.values())
+    if which in pts:
+        return pts[which]
+    raise ValueError(
+        'frame corner must be one of: "all", "top_left", "top_right", '
+        '"bottom_left", "bottom_right".')
+
+
+def _boundary_walk(face, start_vertex, go_counterclockwise):
+    import Graph as _g
+    edges = face.edges
+    n = len(edges)
+    if n == 0:
+        return []
+
+    start_idx = None
+    for i, e in enumerate(edges):
+        if e.tail == start_vertex:
+            start_idx = i
+            break
+    if start_idx is None:
+        for i, e in enumerate(edges):
+            if _g.vecDist(e.tail.p, start_vertex.p) < 1e-9:
+                start_idx = i
+                break
+    if start_idx is None:
+        return []
+
+    result = []
+    for k in range(n):
+        e = edges[(start_idx + k) % n]
+        nb = e.reverse.leftFace
+        if not result or result[-1] != nb:
+            result.append(nb)
+    if len(result) > 1 and result[0] == result[-1]:
+        result.pop()
+    if not go_counterclockwise:
+        result.reverse()
+    return result
+
+
+def _point_dist(a, b):
+    import Graph as _g
+    return _g.vecDist(a, b)
+
+
+def _line_len(line):
+    """Length of a drawn line. Meaningful for segments; rays/full lines reach
+    the frame, so their 'length' is just the drawn extent."""
+    if hasattr(_engine, "_line_endpoints"):
+        a, b = _engine._line_endpoints(line)
+    else:
+        a, b = line["a"], line["b"]
+    return _point_dist(a, b)
+
+
+# The seven human verbs — the entire public vocabulary.
+# ``vertex`` and ``edge`` remain compatibility helpers; new traces use ``find``.
+VERBS = ["find", "neighbors", "draw", "intersect", "merge", "measure", "sort"]

@@ -1,0 +1,1072 @@
+"""
+map_helpers.py
+
+A composable vocabulary of spatial helper functions for solving map region questions.
+
+These functions are designed to be readable and writable by non-experts.
+They can be combined freely to express complex spatial queries in plain terms.
+
+SETUP
+-----
+Before using any of the line-crossing queries (regions_crossed, regions_in_order),
+or frame_corner, call use_map(map) once so the helpers know which diagram to work on:
+
+    import map_helpers as mh
+    mh.use_map(my_map)
+
+EXAMPLE (Question 10 - sort u, v, w by distance from p)
+-------
+    p = vertex_overlap(E, C, on_frame=True)
+    u = rightmost(J)
+    v = vertex_overlap(C, H, on_frame=True)
+    w = vertex_overlap(I, L, H, on_frame=True)
+    sort([u, v, w], key=lambda pt: dist(pt, p))
+
+Most operations depend only on the shared geometry modules Graph and
+FinalizeFaces. Infinite-line intersection uses the benchmark's canonical
+``Questions.TraceSegment`` routine so Q12 tool results and dataset answers
+cannot silently diverge.
+"""
+
+import numpy as np
+import Graph
+import FinalizeFaces
+
+
+# ==============================================================================
+# CONSTANTS
+# ==============================================================================
+
+epsilon = 0.0001
+angleeps = 0.00001
+smallDist = 0.07
+smallAng = 0.1
+
+# The current diagram. Set this once with use_map(map) before running queries.
+_MAP = None
+
+
+def use_map(map):
+    """
+    Tells the helpers which diagram (map) to work on.
+
+    Call this once at the start, before using any query that needs to look at
+    the whole diagram: regions_crossed, regions_in_order, or frame_corner.
+
+    Example:
+        use_map(my_map)
+    """
+    global _MAP
+    _MAP = map
+
+
+def region_count():
+    """Return the number of bounded regions in the current diagram."""
+    if _MAP is None:
+        raise RuntimeError("Call use_map(map) before region_count().")
+    return sum(1 for face in _MAP.faces if face.bounded)
+
+
+def orientation(a, b, c):
+    """Return the direction of the ordered cycle a -> b -> c -> a."""
+    pa = getattr(a, "p", a)
+    pb = getattr(b, "p", b)
+    pc = getattr(c, "p", c)
+    signed_area_twice = ((pb.x - pa.x) * (pc.y - pa.y) -
+                         (pb.y - pa.y) * (pc.x - pa.x))
+    if abs(signed_area_twice) < epsilon:
+        raise ValueError("The three vertices are collinear; orientation is undefined.")
+    return "Counterclockwise" if signed_area_twice > 0 else "Clockwise"
+
+
+# ==============================================================================
+# PRIVATE INTERNALS
+# These are the lower-level routines that the public functions are built on.
+# Non-experts do not need to call these directly.
+# ==============================================================================
+
+class _PseudoFace:
+    """A synthetic region produced by merging two real regions."""
+    def __init__(self, vertices, edges):
+        self.vertices = vertices
+        self.edges = edges
+        self.bounded = True
+        self.convex = Graph.computeConvex(self)
+        self.box = Graph.BoundingBox(self)
+        self.trueVertices = FinalizeFaces.SetTrueVertices(self)
+        self.numSides = len(self.trueVertices) - 1
+        self.letter = 'Z'
+
+
+def _signed_dist(p1, p2, n):
+    """Signed distance of p1 from the line through p2 with unit normal n."""
+    return ((p1.x - p2.x) * n.x) + ((p1.y - p2.y) * n.y)
+
+
+def _cross_lines(pa, pb, pc, pd):
+    """
+    Returns (crosses, quality): whether segment pa-pb crosses segment pc-pd,
+    plus a confidence score. quality == 0 means the configuration is too
+    ambiguous (near-parallel or near-touching) to judge cleanly.
+    """
+    nab = Graph.UnitNormal(pa, pb)
+    ncd = Graph.UnitNormal(pc, pd)
+    dota = _signed_dist(pa, pc, ncd)
+    dotb = _signed_dist(pb, pc, ncd)
+    dotc = _signed_dist(pc, pa, nab)
+    dotd = _signed_dist(pd, pa, nab)
+    if (dota * dotb < 0) and (dotc * dotd) < 0:
+        answer = True
+        quality = min(abs(dota), abs(dotb), abs(dotc), abs(dotd))
+    else:
+        answer = False
+        if (dota * dotb < 0):
+            quality = min(abs(dotc), abs(dotd))
+        elif (dotc * dotd < 0):
+            quality = min(abs(dota), abs(dotb))
+        else:
+            quality = max(min(abs(dotc), abs(dotd)), min(abs(dota), abs(dotb)))
+    if quality < 0.02:
+        quality = 0
+    return answer, quality
+
+
+def _one_point_def_side(aj, bj):
+    """Definite left/right test for a single vertex relative to a line."""
+    left = (aj > np.pi / 2 and bj > -np.pi / 2) or (aj < np.pi / 2 and bj < -np.pi / 2)
+    right = (aj > -np.pi / 2 and bj > np.pi / 2) or (aj < -np.pi / 2 and bj < np.pi / 2)
+    return left, right
+
+
+def _two_point_def_side(aj, ak, bj, bk, visible_seg):
+    """Definite left/right test for an edge (two vertices) relative to a line."""
+    left = visible_seg and ((aj > np.pi / 2 and bj > -np.pi / 2) or (aj < np.pi / 2 and bj < -np.pi / 2))
+    left = left or (aj > np.pi / 2 and ak < np.pi / 2) or (aj < np.pi / 2 and ak > np.pi / 2)
+    left = left or (bj > -np.pi / 2 and bk < -np.pi / 2) or (bj < -np.pi / 2 and bk > -np.pi / 2)
+    right = visible_seg and ((aj > -np.pi / 2 and bj > np.pi / 2) or (aj < -np.pi / 2 and bj < np.pi / 2))
+    right = right or (bj > np.pi / 2 and bk < np.pi / 2) or (bj < np.pi / 2 and bk > np.pi / 2)
+    right = right or (aj > -np.pi / 2 and ak < -np.pi / 2) or (aj < -np.pi / 2 and ak > -np.pi / 2)
+    return left, right
+
+
+def _line_crosses_faces(pa, pb, infinite_line, map):
+    """
+    Returns (faces, quality): every bounded region whose interior the line
+    pa-pb passes through.
+
+    infinite_line=True treats pa-pb as an infinite line (extended both ways).
+    infinite_line=False treats it as the finite segment from pa to pb.
+    """
+    d = Graph.vecDist(pa, pb)
+    if d < epsilon:
+        return [], -1
+    # Vertices keep their original creation num (never renumbered), which can be
+    # larger than len(map.vertices) after rolled-back splits. Size by max num.
+    n = max(v.num for v in map.vertices) + 1
+    angleAtA = [100] * n
+    angleAtB = [100] * n
+    coins = []
+    for v in map.vertices:
+        i = v.num
+        if Graph.vecDist(v.p, pa) < epsilon or Graph.vecDist(v.p, pb) < epsilon:
+            coins += [v]
+        else:
+            angleAtA[i] = Graph.signedAngle(pb, pa, v.p)
+            angleAtB[i] = Graph.signedAngle(pa, pb, v.p)
+    crossedFaces = []
+    quality = 100
+    for f in map.faces[1:]:
+        extremeLeft = -100
+        extremeRight = 100
+        nv = len(f.vertices) - 1
+        for i in range(nv):
+            v1 = f.vertices[i]
+            j = v1.num
+            if (v1 in coins or abs(angleAtA[j]) < angleeps):
+                continue
+            v2 = f.vertices[i + 1]
+            k = v2.num
+            if angleAtA[j] > 0:
+                dval = max(angleAtA[j], -angleAtB[j])
+            else:
+                dval = min(angleAtA[j], -angleAtB[j])
+            extremeLeft = max(extremeLeft, np.sin(dval))
+            extremeRight = min(extremeRight, np.sin(dval))
+            if v2 in coins:
+                dLeft, dRight = _one_point_def_side(angleAtA[j], angleAtB[j])
+            else:
+                dLeft, dRight = _two_point_def_side(
+                    angleAtA[j], angleAtA[k], angleAtB[j], angleAtB[k], infinite_line)
+            if dLeft:
+                extremeLeft = 1
+            if dRight:
+                extremeRight = -1
+        if -smallAng < extremeLeft < smallAng or -smallAng < extremeRight < smallAng:
+            return [], -1
+        if extremeLeft > smallAng and extremeRight < -smallAng:
+            crossedFaces += [f]
+        quality = min(quality, abs(extremeLeft), abs(extremeRight))
+    return crossedFaces, quality
+
+
+def _faces_crossed_in_order(pa, pb, faces):
+    """
+    Given the (unordered) set of regions a line passes through, returns them
+    in the order they are entered when travelling from pa to pb. A region that
+    is entered, left, and re-entered appears more than once.
+    """
+    currentFace = False
+    fine = int(100 * (abs(pb.x - pa.x) + abs(pb.y - pa.y)))
+    if fine <= 0:
+        return []
+    crossedFaces = []
+    for i in range(fine + 1):
+        t = i / fine
+        px = (1 - t) * pa.x + t * pb.x
+        py = (1 - t) * pa.y + t * pb.y
+        if (currentFace is not False and
+                Graph.pointInsideFace(Graph.Vector(px, py), currentFace)):
+            continue
+        for face in faces:
+            if (face != currentFace and
+                    Graph.pointInsideFace(Graph.Vector(px, py), face)):
+                currentFace = face
+                crossedFaces += [face]
+    return crossedFaces
+
+
+def _walk_samples(pa, pb, map, steps):
+    ordered = []
+    current = None
+    for i in range(steps + 1):
+        t = i / steps
+        p = Graph.Vector((1 - t) * pa.x + t * pb.x,
+                         (1 - t) * pa.y + t * pb.y)
+        f = next((face for face in map.faces
+                  if face.bounded and Graph.pointInsideFace(p, face)), None)
+        if f is not None and f is not current:
+            ordered.append(f)
+            current = f
+    return ordered
+
+
+def _sample_faces_in_order(pa, pb, map):
+    """
+    Robust ordered region walk from pa to pb. Samples points densely along the
+    segment and records each bounded region as it is entered. A region entered,
+    left, and re-entered appears more than once. Unlike the angle-classification
+    path, this never bails out on near-tangent or near-parallel geometry, so it
+    is used for finite segments and rays where that gating was returning nothing.
+    """
+    d = Graph.vecDist(pa, pb)
+    if d < epsilon:
+        return []
+    steps = max(120, int(800 * d))
+    ordered = _walk_samples(pa, pb, map, steps)
+    if ordered:
+        return ordered
+    # Fallback: the line may run almost exactly along shared boundaries, so every
+    # sample landed on an edge. Nudge a hair to one side and retry before giving up.
+    nx, ny = -(pb.y - pa.y) / d, (pb.x - pa.x) / d   # unit normal
+    for off in (0.5 * smallDist, -0.5 * smallDist):
+        qa = Graph.Vector(pa.x + nx * off, pa.y + ny * off)
+        qb = Graph.Vector(pb.x + nx * off, pb.y + ny * off)
+        ordered = _walk_samples(qa, qb, map, steps)
+        if ordered:
+            return ordered
+    return ordered
+
+
+def _ray_other_end(p, direction, bounds):
+    """The point where a ray from p in the given direction meets the frame."""
+    maxX, maxY = bounds
+    if direction == 0:
+        return Graph.Vector(maxX, p.y)
+    if direction == 1:
+        return Graph.Vector(p.x, maxY)
+    if direction == 2:
+        return Graph.Vector(0, p.y)
+    if direction == 3:
+        return Graph.Vector(p.x, 0)
+
+
+def _ray_edges_cross(pa, pb, angleAtA, f):
+    """
+    True if the ray crosses any edge of region f. Matches the reference engine:
+    an edge crosses when its two endpoints fall on opposite angular sides of the
+    ray direction (the extremeLeft/extremeRight gating in the caller handles the
+    rest). Kept faithful to the original so answers match the ground truth.
+    """
+    for e in f.edges:
+        if angleAtA[e.tail.num] * angleAtA[e.head.num] < 0:
+            return True
+    return False
+
+
+def _ray_crosses_faces(pa, direction, map):
+    """
+    Returns (ordered_faces, quality): the regions a ray from pa in the given
+    direction (0=right, 1=up, 2=left, 3=down) passes through, in order.
+    """
+    pb = _ray_other_end(pa, direction, map.bounds)
+    dir_for_match = -1 if direction == 3 else direction
+    dir_radians = dir_for_match * np.pi / 2
+    # Size by max vertex num (vertices are never renumbered; nums can be sparse).
+    n = max(v.num for v in map.vertices) + 1
+    angleAtA = [100] * n
+    coins = []
+    for v in map.vertices:
+        i = v.num
+        if Graph.vecDist(v.p, pa) < epsilon:
+            coins += [v]
+        else:
+            angleAtA[i] = Graph.PointDirection(pa, v.p) - dir_radians
+            if angleAtA[i] < -np.pi:
+                angleAtA[i] += 2 * np.pi
+            if angleAtA[i] > np.pi:
+                angleAtA[i] -= 2 * np.pi
+    crossedFaces = []
+    quality = 100
+    for f in map.faces[1:]:
+        extremeLeft = -100
+        extremeRight = 100
+        nv = len(f.vertices) - 1
+        for i in range(nv):
+            v1 = f.vertices[i]
+            j = v1.num
+            if (v1 in coins or abs(angleAtA[j]) < angleeps):
+                continue
+            dval = np.sin(angleAtA[j])
+            extremeLeft = max(extremeLeft, dval)
+            extremeRight = min(extremeRight, dval)
+            v2 = f.vertices[i + 1]
+            if v2 not in coins:
+                dLeft, dRight = _one_point_def_side(angleAtA[j], angleAtA[v2.num])
+                if dLeft:
+                    extremeLeft = 1
+                if dRight:
+                    extremeRight = -1
+        if -smallAng < extremeLeft < smallAng or -smallAng < extremeRight < smallAng:
+            return [], -1
+        if _ray_edges_cross(pa, pb, angleAtA, f):
+            crossedFaces += [f]
+        quality = min(quality, abs(extremeLeft), abs(extremeRight))
+    crossedFaces = _faces_crossed_in_order(pa, pb, crossedFaces)
+    return crossedFaces, quality
+
+
+def _consec_common_edges(f1, f2):
+    """
+    Finds the run of consecutive edges that f1 and f2 share.
+    Returns (found, start_edge, stop_edge). found is False if the regions do
+    not share a single connected run of edges.
+    """
+    n = len(f1.edges)
+    stop = -1
+    start = -1
+    if f1.edges[0].reverse in f2.edges:
+        for i in range(1, n):
+            if f1.edges[i].reverse in f2.edges:
+                if start != -1:
+                    return False, False, False
+                if stop != -1:
+                    start = i
+            else:
+                if stop == -1:
+                    stop = i - 1
+        if start == -1:
+            start = 0
+    else:
+        for i in range(1, n):
+            if f1.edges[i].reverse in f2.edges:
+                if stop != -1:
+                    return False, False, False
+                if start == -1:
+                    start = i
+            else:
+                if start != -1 and stop == -1:
+                    stop = i - 1
+        if stop == -1:
+            stop = n - 1
+    if start != -1 and stop != -1:
+        return True, f1.edges[start], f1.edges[stop]
+    return False, False, False
+
+
+def _vertices_between(va, vb, f):
+    """Returns (vertices, edges) of f going from va around to vb."""
+    n = len(f.edges)
+    b = f.vertices.index(va)
+    t = f.vertices.index(vb)
+    if b < t:
+        return f.vertices[b:t], f.edges[b:t]
+    return f.vertices[b:n] + f.vertices[0:t], f.edges[b:n] + f.edges[0:t]
+
+
+def _face_union(f1, f2):
+    """
+    Combines two adjacent regions into a single _PseudoFace.
+    Returns False if they do not share a connected run of edges.
+    """
+    found, start, stop = _consec_common_edges(f1, f2)
+    if not found:
+        return False
+    va, vb = start.tail, stop.head
+    vv1, ee1 = _vertices_between(vb, va, f1)
+    vv2, ee2 = _vertices_between(va, vb, f2)
+    pf = _PseudoFace(vv1 + vv2 + [vv1[0]], ee1 + ee2)
+    pf.area = f1.area + f2.area
+    return pf
+
+
+def _line_endpoints(line):
+    """
+    Converts a line object (from segment/ray/extend) into two Graph.Vector
+    endpoints suitable for crossing/ordering computations.
+    """
+    if line['type'] == 'segment':
+        return line['a'], line['b']
+    if line['type'] == 'ray':
+        if _MAP is None:
+            raise RuntimeError("Call use_map(map) before using a ray.")
+        return line['a'], _ray_other_end(line['a'], line['direction'], _MAP.bounds)
+    if line['type'] == 'extend':
+        if _MAP is None:
+            raise RuntimeError("Call use_map(map) before using an extended line.")
+        pa, pb = line['a'], line['b']
+        dx, dy = pb.x - pa.x, pb.y - pa.y
+        length = (dx * dx + dy * dy) ** 0.5
+        if length < epsilon:
+            return pa, pb
+        ux, uy = dx / length, dy / length
+        maxX, maxY = _MAP.bounds
+        far = (maxX + maxY) * 2  # comfortably beyond the frame in both directions
+        back = Graph.Vector(pa.x - ux * far, pa.y - uy * far)
+        fwd = Graph.Vector(pb.x + ux * far, pb.y + uy * far)
+        return back, fwd
+    raise ValueError("Unknown line type. Use segment(), ray(), or extend().")
+
+
+# ==============================================================================
+# VERTEX GETTERS
+# Return a single point (vertex) on the diagram.
+# ==============================================================================
+
+def vertex_overlap(*regions, on_frame=False):
+    """
+    Returns the point where exactly the given regions meet at a single shared vertex.
+
+    Use this to identify a corner or junction common to several regions. Pass
+    on_frame=True if the point also touches the outer frame of the diagram.
+
+    Example:
+        p = vertex_overlap(E, C, on_frame=True)
+        # the point where regions E and C meet at the frame boundary
+    """
+    region_set = set(regions)
+    for v in regions[0].vertices:
+        faces_at_v = set(v.faces)
+        bounded_faces = {f for f in faces_at_v if f.bounded}
+        has_outside = any(not f.bounded for f in faces_at_v)
+        if bounded_faces == region_set and has_outside == on_frame:
+            return v
+    return None
+
+
+def leftmost(region):
+    """
+    Returns the vertex of the region furthest to the left (smallest x).
+
+    Example:
+        leftmost(A)
+    """
+    return min(region.trueVertices[1:], key=lambda v: v.p.x)
+
+
+def rightmost(region):
+    """
+    Returns the vertex of the region furthest to the right (largest x).
+
+    Example:
+        rightmost(J)
+    """
+    return max(region.trueVertices[1:], key=lambda v: v.p.x)
+
+
+def topmost(region):
+    """
+    Returns the vertex of the region that is highest up (largest y).
+
+    Example:
+        topmost(B)
+    """
+    return max(region.trueVertices[1:], key=lambda v: v.p.y)
+
+
+def bottommost(region):
+    """
+    Returns the vertex of the region that is lowest down (smallest y).
+
+    Example:
+        bottommost(C)
+    """
+    return min(region.trueVertices[1:], key=lambda v: v.p.y)
+
+
+def sharpest_corner(region):
+    """
+    Returns the vertex of the region with the smallest interior angle
+    (the most pointed corner).
+
+    Example:
+        sharpest_corner(A)
+    """
+    return min(region.trueVertices[1:], key=lambda v: Graph.angleAtFace(v, region))
+
+
+def widest_corner(region):
+    """
+    Returns the vertex of the region with the largest interior angle
+    (the most open / flattest corner).
+
+    Example:
+        widest_corner(A)
+    """
+    return max(region.trueVertices[1:], key=lambda v: Graph.angleAtFace(v, region))
+
+
+def diagonal_corner(region, position):
+    """Return the corner selected by the generator's diagonal description."""
+    candidates = []
+    corners = region.trueVertices[1:]
+    for vertex in corners:
+        alternatives = [other for other in corners if other is not vertex]
+        bottom_left = bottom_right = top_left = top_right = True
+        for other in alternatives:
+            if other.p.x - vertex.p.x < -epsilon:
+                bottom_left = top_left = False
+            elif vertex.p.x - other.p.x < -epsilon:
+                bottom_right = top_right = False
+            if other.p.y - vertex.p.y < -epsilon:
+                bottom_left = bottom_right = False
+            elif vertex.p.y - other.p.y < -epsilon:
+                top_left = top_right = False
+            if (other.p.x - vertex.p.x < smallDist and
+                    other.p.y - vertex.p.y < smallDist):
+                bottom_left = False
+            if (vertex.p.x - other.p.x < smallDist and
+                    other.p.y - vertex.p.y < smallDist):
+                bottom_right = False
+            if (other.p.x - vertex.p.x < smallDist and
+                    vertex.p.y - other.p.y < smallDist):
+                top_left = False
+            if (vertex.p.x - other.p.x < smallDist and
+                    vertex.p.y - other.p.y < smallDist):
+                top_right = False
+        matches = {
+            "bottom_left": bottom_left,
+            "bottom_right": bottom_right,
+            "top_left": top_left,
+            "top_right": top_right,
+        }
+        if matches.get(position, False):
+            candidates.append(vertex)
+    if len(candidates) != 1:
+        raise ValueError(
+            f'Region does not have a unique "{position}" described vertex.'
+        )
+    return candidates[0]
+
+
+def frame_corner(position):
+    """
+    Returns the vertex at one of the four corners of the outer diagram frame.
+
+    position must be one of: 'bottom_left', 'bottom_right', 'top_right', 'top_left'.
+    Requires use_map(map) to have been called first.
+
+    Example:
+        frame_corner('bottom_left')
+    """
+    positions = ['bottom_left', 'bottom_right', 'top_right', 'top_left']
+    if position not in positions:
+        raise ValueError(f"position must be one of {positions}")
+    if _MAP is None:
+        raise RuntimeError("Call use_map(map) before using frame_corner().")
+    return _MAP.vertices[positions.index(position)]
+
+
+def vertices(region):
+    """
+    Returns all corner vertices of the region as a list.
+
+    Use this when you want to sort or iterate over a region's corners.
+
+    Example:
+        sort(vertices(A), key=lambda v: angle_at(v, A))
+    """
+    return region.trueVertices[1:]
+
+
+def described_edges(region):
+    """Return uniquely describable boundary edges and what each one meets.
+
+    One geometric edge may contain several collinear half-edge segments after
+    topology splitting.  The returned ``segments`` keep those pieces together.
+    """
+    groups = []
+    true_vertices = region.trueVertices[:-1]
+    for index, start in enumerate(true_vertices):
+        stop = true_vertices[(index + 1) % len(true_vertices)]
+        start_index = region.vertices.index(start)
+        stop_index = region.vertices.index(stop)
+        if start_index < stop_index:
+            segments = region.edges[start_index:stop_index]
+        else:
+            segments = (
+                region.edges[start_index:]
+                + region.edges[:stop_index]
+            )
+        meets = []
+        has_outside = False
+        for segment in segments:
+            opposite = segment.reverse.leftFace
+            if opposite.bounded:
+                if opposite not in meets:
+                    meets.append(opposite)
+            else:
+                has_outside = True
+        key = (
+            tuple(sorted(id(face) for face in meets)),
+            has_outside,
+        )
+        groups.append({
+            "segments": tuple(segments),
+            "meets": tuple(sorted(meets, key=lambda face: face.letter)),
+            "meets_outside": has_outside,
+            "description_key": key,
+        })
+
+    # A referring expression must identify exactly one geometric edge.
+    key_counts = {}
+    for group in groups:
+        key = group["description_key"]
+        key_counts[key] = key_counts.get(key, 0) + 1
+    return [
+        group for group in groups
+        if key_counts[group["description_key"]] == 1
+    ]
+
+
+def edge_by_meeting(region, *meeting_objects):
+    """Find the unique edge of ``region`` meeting the given regions/Outside."""
+    requested_faces = {
+        item for item in meeting_objects
+        if item != "Outside"
+    }
+    requested_outside = "Outside" in meeting_objects
+    matches = [
+        group
+        for group in described_edges(region)
+        if set(group["meets"]) == requested_faces
+        and group["meets_outside"] == requested_outside
+    ]
+    if len(matches) != 1:
+        raise ValueError("The description does not identify a unique edge.")
+    return matches[0]["segments"]
+
+
+def edge_among(*regions):
+    """Return the unique geometric edge identified by an unordered region set."""
+    if len(regions) < 2:
+        raise ValueError("Finding an edge requires two or more regions.")
+
+    candidates = []
+    seen_geometry = set()
+    for owner in regions:
+        others = [region for region in regions if region is not owner]
+        try:
+            segments = edge_by_meeting(owner, *others)
+        except ValueError:
+            continue
+        geometry_key = frozenset(
+            frozenset((id(segment), id(segment.reverse)))
+            for segment in segments
+        )
+        if geometry_key not in seen_geometry:
+            seen_geometry.add(geometry_key)
+            candidates.append(segments)
+
+    if len(candidates) != 1:
+        raise ValueError(
+            "The selected regions do not identify one unique edge."
+        )
+    return candidates[0]
+
+
+# ==============================================================================
+# NUMERIC GETTERS
+# Return a number. Designed to be passed as the key in sort(), or compared.
+# ==============================================================================
+
+def dist(point_a, point_b):
+    """
+    Returns the straight-line distance between two points.
+
+    Example:
+        sort([u, v, w], key=lambda pt: dist(pt, p))
+    """
+    return Graph.pointDist(point_a.p, point_b.p)
+
+
+def region_dist(region_a, region_b):
+    """
+    Returns the shortest distance between two regions (the distance between
+    their closest pair of points, which may lie on their boundaries).
+
+    Example:
+        region_dist(A, B)
+    """
+    return Graph.distBetweenFaces(region_a, region_b)
+
+
+def angle_at(vertex, region):
+    """
+    Returns the interior angle (radians) of the region at the given vertex.
+
+    Example:
+        sort(vertices(A), key=lambda v: angle_at(v, A))
+    """
+    return Graph.angleAtFace(vertex, region)
+
+
+def area(region):
+    """
+    Returns the area of the region.
+
+    Example:
+        sort([A, B, C], key=area)
+    """
+    return region.area
+
+
+def side_count(region):
+    """
+    Returns the number of sides of the region.
+
+    Example:
+        side_count(merge(A, B))
+    """
+    return region.numSides
+
+
+def frame_edge_count(region):
+    """Return the number of the region's boundary edges lying on the frame."""
+    return sum(
+        1
+        for edge in region.edges
+        if not edge.reverse.leftFace.bounded
+    )
+
+
+def x_of(point):
+    """
+    Returns the x-coordinate (left-right position) of the point.
+    Larger means further right.
+
+    Example:
+        sort([u, v, w], key=x_of)   # left to right
+    """
+    if hasattr(point, "p"):
+        return point.p.x
+    return (point.box[0] + point.box[1]) / 2
+
+
+def y_of(point):
+    """
+    Returns the y-coordinate (up-down position) of the point.
+    Larger means further up.
+
+    Example:
+        sort([u, v, w], key=y_of)   # bottom to top
+    """
+    if hasattr(point, "p"):
+        return point.p.y
+    return (point.box[2] + point.box[3]) / 2
+
+
+# ==============================================================================
+# LINE / PATH CONSTRUCTORS
+# Return a line object you can pass into the region-query functions.
+# ==============================================================================
+
+def segment(point_a, point_b):
+    """
+    Creates a finite line segment from point_a to point_b.
+
+    Example:
+        regions_in_order(segment(p, q))
+    """
+    return {'type': 'segment', 'a': point_a.p, 'b': point_b.p}
+
+
+def ray(point, direction):
+    """
+    Creates a ray starting at point and going in one direction until it hits
+    the frame. direction must be one of: 'left', 'right', 'up', 'down'.
+    Requires use_map(map) to have been called first.
+
+    Example:
+        regions_in_order(ray(p, 'right'))
+    """
+    direction_map = {'right': 0, 'up': 1, 'left': 2, 'down': 3}
+    if direction not in direction_map:
+        raise ValueError(f"direction must be one of {list(direction_map.keys())}")
+    return {'type': 'ray', 'a': point.p, 'direction': direction_map[direction]}
+
+
+def extend(point_a, point_b):
+    """
+    Creates the full infinite line through point_a and point_b, extended in
+    both directions until it meets the frame.
+
+    Example:
+        regions_crossed(extend(p, q))
+    """
+    return {'type': 'extend', 'a': point_a.p, 'b': point_b.p}
+
+
+# ==============================================================================
+# REGION SET QUERIES
+# Return a set or ordered list of regions.
+# ==============================================================================
+
+def edge_neighbors(region):
+    """
+    Returns the set of regions that share at least one edge with the region.
+    Regions that only touch at a single vertex are not included.
+
+    Example:
+        edge_neighbors(A)
+    """
+    neighbors = set()
+    for e in region.edges:
+        neighbor = e.reverse.leftFace
+        if neighbor.bounded:
+            neighbors.add(neighbor)
+    return neighbors
+
+
+def vertex_only_neighbors(region):
+    """
+    Returns regions with point-only contact and no shared edge.
+
+    This contact relation does not require a corner on both regions. Keep all
+    boundary incidence points here; vertices(region) separately lists corners.
+
+    Example:
+        vertex_only_neighbors(A)
+    """
+    edge_nbrs = edge_neighbors(region)
+    source_faces = set(getattr(region, "source_faces", (region,)))
+    result = set()
+    for v in region.vertices[1:]:
+        for f in v.faces:
+            if f.bounded and f not in source_faces and f not in edge_nbrs:
+                result.add(f)
+    return result
+
+
+def regions_at(point):
+    """
+    Returns the list of regions that meet at the given point.
+
+    Example:
+        regions_at(p)
+    """
+    return [f for f in point.faces if f.bounded]
+
+
+def regions_crossed(line):
+    """
+    Returns an unordered set of regions whose interior the line passes through.
+    The line must come from segment(), ray(), or extend(). A region counts only
+    if the line goes through its interior, not merely along its boundary.
+    Requires use_map(map) to have been called first.
+
+    Example:
+        regions_crossed(extend(p, q))
+    """
+    if _MAP is None:
+        raise RuntimeError("Call use_map(map) before using regions_crossed().")
+    if line['type'] == 'ray':
+        faces, _ = _ray_crosses_faces(line['a'], line['direction'], _MAP)
+        return set(faces)
+    pa, pb = line['a'], line['b']
+    infinite = (line['type'] == 'extend')
+    if infinite:
+        # Keep the public tool exactly aligned with the Q12 answer generator,
+        # including its treatment of lines coinciding with region boundaries.
+        import Questions as _questions
+        frame_a, frame_b = _questions.GetFrameIntersections(
+            pa, pb, _MAP.bounds
+        )
+        return set(
+            _questions.TraceSegment(
+                frame_a, frame_b, _MAP, min_dist=0.0005
+            )
+        )
+    faces, _ = _line_crosses_faces(pa, pb, infinite, _MAP)
+    return set(faces)
+
+
+def regions_in_order(line):
+    """
+    Returns an ordered list of regions in the order you enter them while
+    travelling along the line. A region entered more than once appears more
+    than once. The line must come from segment(), ray(), or extend().
+    Requires use_map(map) to have been called first.
+
+    Example:
+        regions_in_order(segment(p, q))
+        regions_in_order(ray(p, 'up'))
+    """
+    if _MAP is None:
+        raise RuntimeError("Call use_map(map) before using regions_in_order().")
+    if line['type'] == 'ray':
+        pa = line['a']
+        pb = _ray_other_end(pa, line['direction'], _MAP.bounds)
+        return _sample_faces_in_order(pa, pb, _MAP)
+    if line['type'] == 'segment':
+        return _sample_faces_in_order(line['a'], line['b'], _MAP)
+    if line['type'] == 'extend':
+        order_a, order_b = _line_endpoints(line)
+        return _sample_faces_in_order(order_a, order_b, _MAP)
+    raise ValueError("Unknown line type. Use segment(), ray(), or extend().")
+
+
+# ==============================================================================
+# REGION OPERATIONS
+# ==============================================================================
+
+def merge(*regions):
+    """
+    Merge two or more regions (or one list of regions) in a single call.
+    Their edge-adjacency graph must be connected; pairwise adjacency is not
+    required. Input order is irrelevant. As with the existing polygon tools,
+    the resulting boundary must be a simple cycle without holes or pinches.
+    """
+    if len(regions) == 1 and isinstance(regions[0], (list, tuple)):
+        regions = tuple(regions[0])
+    if len(regions) < 2:
+        raise ValueError("Select at least two regions to merge.")
+    if any(not getattr(r, "bounded", False) or not hasattr(r, "edges") for r in regions):
+        raise ValueError("Merge accepts bounded regions only.")
+    if len({id(r) for r in regions}) != len(regions):
+        raise ValueError("Select distinct regions to merge.")
+    # Flatten existing unions for the Python API, while the survey continues
+    # to select original regions. Do not modify the map's half-edge topology.
+    sources = []
+    for region in regions:
+        sources.extend(getattr(region, "source_faces", (region,)))
+    if len(set(sources)) != len(sources):
+        raise ValueError("The selected regions overlap.")
+    selected = set(sources)
+    visited, pending = set(), [sources[0]]
+    while pending:
+        face = pending.pop()
+        if face in visited:
+            continue
+        visited.add(face)
+        pending.extend(e.reverse.leftFace for e in face.edges
+                       if e.reverse.leftFace in selected and e.reverse.leftFace not in visited)
+    if visited != selected:
+        raise ValueError("Selected regions must form one connected group through shared edges; vertex-only contact does not count.")
+    boundary = [e for f in sources for e in f.edges if e.reverse.leftFace not in selected]
+    outgoing = {e.tail: e for e in boundary}
+    if not boundary or len(outgoing) != len(boundary):
+        raise ValueError("The union has a pinched boundary; select regions forming a simple boundary.")
+    ordered, seen = [], set()
+    edge = boundary[0]
+    while edge not in seen:
+        seen.add(edge)
+        ordered.append(edge)
+        edge = outgoing.get(edge.head)
+        if edge is None:
+            raise ValueError("The union boundary is not closed.")
+    if edge is not ordered[0] or len(ordered) != len(boundary):
+        raise ValueError("Unions with holes are not supported by the polygon tools.")
+    result = _PseudoFace([e.tail for e in ordered] + [ordered[0].tail], ordered)
+    result.area = sum(f.area for f in sources)
+    result.source_faces = tuple(sources)
+    return result
+
+
+def is_convex(region):
+    """
+    Returns True if the region is convex (no inward dents), False otherwise.
+
+    Example:
+        is_convex(A)
+    """
+    return region.convex
+
+
+# ==============================================================================
+# SORTING & COMPARISON
+# ==============================================================================
+
+def sort(items, key):
+    """
+    Returns the items sorted in increasing order by the key function.
+    key takes one item and returns a number; build it inline with lambda.
+
+    Example:
+        sort([u, v, w], key=lambda pt: dist(pt, p))
+        sort([A, B, C], key=area)
+    """
+    return sorted(items, key=key)
+
+
+def min_of(*values):
+    """
+    Returns the smallest of the given values.
+
+    Example:
+        min_of(region_dist(A, B), region_dist(A, C))
+    """
+    return min(values)
+
+
+def crosses(line_a, line_b):
+    """
+    Returns True if line_a and line_b cross each other, False otherwise.
+    Both arguments must come from segment(), ray(), or extend().
+
+    Example:
+        crosses(segment(p, q), segment(u, v))
+    """
+    pa, pb = _line_endpoints(line_a)
+    pc, pd = _line_endpoints(line_b)
+    result, quality = _cross_lines(pa, pb, pc, pd)
+    if quality == 0:
+        raise ValueError(
+            "The lines are too close to parallel or near-touching to judge clearly.")
+    return result
+
+def regions_along_edge(edge):
+    """
+    Returns the bounded regions bordering a single edge.
+ 
+    Used by neighbors() when the selection is an edge rather than a region:
+    it answers "which labeled regions inside the frame sit on either side of
+    this edge?". Frame edges therefore return only their bounded side.
+ 
+    Example:
+        regions_along_edge(some_edge)   # -> [region_on_one_side, region_on_other]
+    """
+    out = []
+    for f in (edge.leftFace, edge.reverse.leftFace):
+        if f is not None and getattr(f, "bounded", False) and f not in out:
+            out.append(f)
+    return out
