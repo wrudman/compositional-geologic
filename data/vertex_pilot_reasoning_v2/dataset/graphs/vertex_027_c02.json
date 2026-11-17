@@ -1,0 +1,144 @@
+{
+  "coordinate_system": "origin_bottom_left",
+  "bounds": [
+    1.0,
+    1.0
+  ],
+  "vertices": [
+    {
+      "id": 0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": 1,
+      "x": 1.0,
+      "y": 0.0
+    },
+    {
+      "id": 2,
+      "x": 1.0,
+      "y": 1.0
+    },
+    {
+      "id": 3,
+      "x": 0.0,
+      "y": 1.0
+    },
+    {
+      "id": 4,
+      "x": 0.0,
+      "y": 0.6316246652512696
+    },
+    {
+      "id": 5,
+      "x": 0.08907609911142786,
+      "y": 0.3898494025584589
+    },
+    {
+      "id": 6,
+      "x": 0.3713870505754807,
+      "y": 0.27386431297505376
+    },
+    {
+      "id": 7,
+      "x": 0.41116897399615626,
+      "y": 0.0
+    },
+    {
+      "id": 8,
+      "x": 0.17561791567699103,
+      "y": 0.824382084323009
+    },
+    {
+      "id": 9,
+      "x": 0.49701323752008386,
+      "y": 0.7826654970833324
+    },
+    {
+      "id": 10,
+      "x": 0.5558005344439553,
+      "y": 0.4441994655560447
+    },
+    {
+      "id": 11,
+      "x": 0.12991884310076274,
+      "y": 0.28235686986393277
+    }
+  ],
+  "regions": [
+    {
+      "label": "E",
+      "vertex_ids": [
+        1,
+        10,
+        8,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "label": "D",
+      "vertex_ids": [
+        1,
+        2,
+        3,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "label": "C",
+      "vertex_ids": [
+        10,
+        9,
+        8
+      ]
+    },
+    {
+      "label": "A",
+      "vertex_ids": [
+        7,
+        6,
+        5,
+        4,
+        0,
+        11
+      ]
+    },
+    {
+      "label": "B",
+      "vertex_ids": [
+        0,
+        7,
+        11
+      ]
+    }
+  ],
+  "generation_trace": [
+    {
+      "split_type": "VV",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "EEPath",
+      "is_path_split": true,
+      "internal_bend_count": 2
+    },
+    {
+      "split_type": "SameEdgePath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VVPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    }
+  ]
+}

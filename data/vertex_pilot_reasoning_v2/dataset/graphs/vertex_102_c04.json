@@ -1,0 +1,191 @@
+{
+  "coordinate_system": "origin_bottom_left",
+  "bounds": [
+    1.0,
+    1.0
+  ],
+  "vertices": [
+    {
+      "id": 0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": 1,
+      "x": 1.0,
+      "y": 0.0
+    },
+    {
+      "id": 2,
+      "x": 1.0,
+      "y": 1.0
+    },
+    {
+      "id": 3,
+      "x": 0.0,
+      "y": 1.0
+    },
+    {
+      "id": 4,
+      "x": 0.0,
+      "y": 0.8485690003565354
+    },
+    {
+      "id": 5,
+      "x": 0.5002608005022389,
+      "y": 0.31414287988711653
+    },
+    {
+      "id": 6,
+      "x": 0.0,
+      "y": 0.2672108636689231
+    },
+    {
+      "id": 7,
+      "x": 0.3998740938453911,
+      "y": 0.7332074271787246
+    },
+    {
+      "id": 8,
+      "x": 0.6182014184398416,
+      "y": 0.2848680851065083
+    },
+    {
+      "id": 9,
+      "x": 1.0,
+      "y": 0.3598174192299082
+    },
+    {
+      "id": 10,
+      "x": 0.8092179257743822,
+      "y": 0.14234658477571138
+    },
+    {
+      "id": 14,
+      "x": 0.7958990727890358,
+      "y": 0.6822500471308042
+    },
+    {
+      "id": 15,
+      "x": 0.36626692338554695,
+      "y": 1.0
+    },
+    {
+      "id": 16,
+      "x": 1.0,
+      "y": 0.5919435592968798
+    }
+  ],
+  "regions": [
+    {
+      "label": "D",
+      "vertex_ids": [
+        6,
+        5,
+        4
+      ]
+    },
+    {
+      "label": "F",
+      "vertex_ids": [
+        1,
+        9,
+        10
+      ]
+    },
+    {
+      "label": "E",
+      "vertex_ids": [
+        8,
+        10,
+        9
+      ]
+    },
+    {
+      "label": "A",
+      "vertex_ids": [
+        8,
+        9,
+        14
+      ]
+    },
+    {
+      "label": "H",
+      "vertex_ids": [
+        5,
+        6,
+        0,
+        1,
+        10,
+        8
+      ]
+    },
+    {
+      "label": "C",
+      "vertex_ids": [
+        8,
+        7,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "label": "G",
+      "vertex_ids": [
+        3,
+        7,
+        8,
+        14,
+        9,
+        16,
+        15
+      ]
+    },
+    {
+      "label": "B",
+      "vertex_ids": [
+        2,
+        15,
+        16
+      ]
+    }
+  ],
+  "generation_trace": [
+    {
+      "split_type": "SameEdgePath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VVPath",
+      "is_path_split": true,
+      "internal_bend_count": 2
+    },
+    {
+      "split_type": "EE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "VV",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "VVPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VV",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "EE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    }
+  ]
+}

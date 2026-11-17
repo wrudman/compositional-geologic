@@ -1,0 +1,479 @@
+{
+  "coordinate_system": "origin_bottom_left",
+  "bounds": [
+    1.0,
+    1.0
+  ],
+  "vertices": [
+    {
+      "id": 0,
+      "x": 0.0,
+      "y": 0.0
+    },
+    {
+      "id": 1,
+      "x": 1.0,
+      "y": 0.0
+    },
+    {
+      "id": 2,
+      "x": 1.0,
+      "y": 1.0
+    },
+    {
+      "id": 3,
+      "x": 0.0,
+      "y": 1.0
+    },
+    {
+      "id": 4,
+      "x": 0.6575038444914901,
+      "y": 0.32121443457060495
+    },
+    {
+      "id": 5,
+      "x": 1.0,
+      "y": 0.8245709579384042
+    },
+    {
+      "id": 6,
+      "x": 0.5249923112917948,
+      "y": 0.48775339179686994
+    },
+    {
+      "id": 7,
+      "x": 0.8243926536105168,
+      "y": 0.5664860073928533
+    },
+    {
+      "id": 8,
+      "x": 1.0,
+      "y": 0.3729287684952841
+    },
+    {
+      "id": 9,
+      "x": 0.33203649569202065,
+      "y": 0.0
+    },
+    {
+      "id": 10,
+      "x": 0.3542756506989342,
+      "y": 0.46172722569305347
+    },
+    {
+      "id": 11,
+      "x": 0.625949739454583,
+      "y": 0.0
+    },
+    {
+      "id": 12,
+      "x": 0.9413050635429612,
+      "y": 0.05504780279420352
+    },
+    {
+      "id": 13,
+      "x": 0.8887180188185954,
+      "y": 0.49558555626287093
+    },
+    {
+      "id": 14,
+      "x": 0.4617064055310558,
+      "y": 0.5495028495998496
+    },
+    {
+      "id": 15,
+      "x": 0.6384002392891879,
+      "y": 1.0
+    },
+    {
+      "id": 16,
+      "x": 0.3423502026712707,
+      "y": 0.2141322055024037
+    },
+    {
+      "id": 17,
+      "x": 0.11239674218952389,
+      "y": 0.0864558613894505
+    },
+    {
+      "id": 18,
+      "x": 0.6925296308841224,
+      "y": 0.8388532827855419
+    },
+    {
+      "id": 19,
+      "x": 0.911077552435518,
+      "y": 0.9041063476637579
+    },
+    {
+      "id": 20,
+      "x": 0.7267386800912243,
+      "y": 0.4229668355331244
+    },
+    {
+      "id": 21,
+      "x": 0.913101366489239,
+      "y": 0.29131879700355656
+    },
+    {
+      "id": 27,
+      "x": 0.7910408504564388,
+      "y": 0.635665094153166
+    },
+    {
+      "id": 28,
+      "x": 0.8186233843917066,
+      "y": 0.8044041004780765
+    },
+    {
+      "id": 31,
+      "x": 0.3379029590583369,
+      "y": 0.1217989556670245
+    },
+    {
+      "id": 32,
+      "x": 0.1882586874900256,
+      "y": 0.20415448954634496
+    },
+    {
+      "id": 33,
+      "x": 0.38370923360645076,
+      "y": 0.8224718399899349
+    },
+    {
+      "id": 38,
+      "x": 0.3539769751316044,
+      "y": 0.5695784293333492
+    },
+    {
+      "id": 39,
+      "x": 0.24493502037230608,
+      "y": 0.6400781253469281
+    },
+    {
+      "id": 40,
+      "x": 0.2547739461897008,
+      "y": 0.7514114264396071
+    },
+    {
+      "id": 41,
+      "x": 0.28228160886203785,
+      "y": 1.0
+    },
+    {
+      "id": 42,
+      "x": 0.0,
+      "y": 0.7191785852122683
+    },
+    {
+      "id": 43,
+      "x": 0.2587085462428326,
+      "y": 0.46091637570366417
+    },
+    {
+      "id": 44,
+      "x": 0.0,
+      "y": 0.23262236374572565
+    },
+    {
+      "id": 63,
+      "x": 0.11865558133706527,
+      "y": 0.43461208678102703
+    }
+  ],
+  "regions": [
+    {
+      "label": "G",
+      "vertex_ids": [
+        5,
+        7,
+        13,
+        8
+      ]
+    },
+    {
+      "label": "J",
+      "vertex_ids": [
+        1,
+        8,
+        13,
+        21,
+        12
+      ]
+    },
+    {
+      "label": "O",
+      "vertex_ids": [
+        9,
+        11,
+        16,
+        31
+      ]
+    },
+    {
+      "label": "H",
+      "vertex_ids": [
+        11,
+        10,
+        16
+      ]
+    },
+    {
+      "label": "K",
+      "vertex_ids": [
+        2,
+        15,
+        14,
+        6,
+        18,
+        19
+      ]
+    },
+    {
+      "label": "R",
+      "vertex_ids": [
+        6,
+        28,
+        19,
+        18
+      ]
+    },
+    {
+      "label": "Q",
+      "vertex_ids": [
+        4,
+        12,
+        21,
+        20
+      ]
+    },
+    {
+      "label": "E",
+      "vertex_ids": [
+        13,
+        7,
+        20,
+        21
+      ]
+    },
+    {
+      "label": "I",
+      "vertex_ids": [
+        6,
+        27,
+        28
+      ]
+    },
+    {
+      "label": "F",
+      "vertex_ids": [
+        6,
+        11,
+        1,
+        12,
+        4,
+        20,
+        7,
+        5,
+        2,
+        19,
+        28,
+        27
+      ]
+    },
+    {
+      "label": "D",
+      "vertex_ids": [
+        16,
+        10,
+        32,
+        31
+      ]
+    },
+    {
+      "label": "C",
+      "vertex_ids": [
+        17,
+        9,
+        31,
+        32
+      ]
+    },
+    {
+      "label": "S",
+      "vertex_ids": [
+        3,
+        40,
+        14,
+        15,
+        33
+      ]
+    },
+    {
+      "label": "L",
+      "vertex_ids": [
+        3,
+        33,
+        41
+      ]
+    },
+    {
+      "label": "M",
+      "vertex_ids": [
+        33,
+        15,
+        41
+      ]
+    },
+    {
+      "label": "T",
+      "vertex_ids": [
+        0,
+        9,
+        17,
+        32,
+        10,
+        38,
+        39,
+        40,
+        3,
+        42,
+        43,
+        44
+      ]
+    },
+    {
+      "label": "B",
+      "vertex_ids": [
+        42,
+        44,
+        63
+      ]
+    },
+    {
+      "label": "A",
+      "vertex_ids": [
+        44,
+        43,
+        42,
+        63
+      ]
+    },
+    {
+      "label": "N",
+      "vertex_ids": [
+        10,
+        11,
+        6
+      ]
+    },
+    {
+      "label": "P",
+      "vertex_ids": [
+        6,
+        14,
+        40,
+        39,
+        38,
+        10
+      ]
+    }
+  ],
+  "generation_trace": [
+    {
+      "split_type": "VEPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VVPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "EE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "SameEdgePath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "EE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "EE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "VE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "VVPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VEPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VV",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "EE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "VEPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "EE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "VVPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VEPath",
+      "is_path_split": true,
+      "internal_bend_count": 2
+    },
+    {
+      "split_type": "VE",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    },
+    {
+      "split_type": "SameEdgePath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VVPath",
+      "is_path_split": true,
+      "internal_bend_count": 1
+    },
+    {
+      "split_type": "VV",
+      "is_path_split": false,
+      "internal_bend_count": 0
+    }
+  ]
+}
