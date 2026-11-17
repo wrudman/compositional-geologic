@@ -1,0 +1,128 @@
+{
+  "levels": {
+    "C-009": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "C-027": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "C-030": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "C-031": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "C-032": [
+      2
+    ],
+    "C-090": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "C-091": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "C-093": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "C-094": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "C-095": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "C-097": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "C-098": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "C-099": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "C-100": [
+      3,
+      4
+    ],
+    "C-101": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "C-102": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ]
+  },
+  "total_pairs": 74,
+  "excluded": {
+    "C-008": "new incident-edge counting tool deferred",
+    "C-028": "previous user decision: skip this run",
+    "C-092": "line/vertex intersection tool extension deferred"
+  },
+  "interpretations": {
+    "C-032": "9% height gap per new workbook, replacing earlier 8%",
+    "C-097": "upper cell 6？ interpreted as 6; previously validated endpoint",
+    "C-099": "P/Q numeric bounds 0–4 take precedence over L text 1–4",
+    "C-102": "lower text n_a>=1,n_b>=1,so2 interpreted as 2",
+    "C-100": "User approved upper 4 in chat after level 5 could not be found; workbook raw upper 6 retained"
+  },
+  "generation_attempts": 184,
+  "model_calls": 0,
+  "vertex_definition": "A vertex of a region is a point on its boundary where the boundary changes direction.",
+  "vertex_only_contact_definition": "Here, vertex-only contact means touching at a point without sharing an edge; the contact point need not be a corner of both regions.",
+  "definition_revision": "corner_only_20261105"
+}
