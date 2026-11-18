@@ -6,7 +6,7 @@
   "generator/DrawGraph.py": "ae89a24f1ec6504e2a097b8ceb99f363e5d476e910d37a6d08a2f41fc3fd0387",
   "generator/BuildRandomMap.py": "a852ee1db86e7b214ba7e3e22e008d2aed55fc350f768394057a003ead9f2c4d",
   "generator/GraphCheck.py": "4af060fa8811da40cdd2cbec9ba8ecefe02c1354103dcae2657d55cc51e7ce82",
-  "generator/Questions.py": "49249849b42eb5d4840b9207d252b9528502ab3ccc462662c30064412b3bee64",
+  "generator/Questions.py": "32f37c380b36486f62fd0fca606ec27c4dbee2dac2cc9add21d206867b590331",
   "generator/RandomQuestions.py": "b2d8b5b248b87a5d2cd6446a8eb388623611261cc1bad5fbe1fb6fc01dc270d8",
   "generator/TestQuestions.py": "9cde0560f59ceb72e3e7843af2e89469717c83af1e5417f6b589218d5dc759b0",
   "tools/map_helpers.py": "5266bbac0af2adc240f06129f52661fa02b8bec42337ac51a92c7e27f021e24b",
@@ -18,5 +18,6 @@
   "agent/geo_agent.py": "9ca661d1e0f4426c59b23c2498847b52064de9a89fe1e472d25c540e760a5cce",
   "agent/geo_agent_annotation.py": "c3c31fc5891dd30e930630ef4e8d27e27b321ed1ae6ab10d261911cb69a36acc",
   "agent/visual_tools.py": "4c2523a21dbc45bfa66d3cd4a26ea1ed3afa6707babc23c75da41e977a8b77c5",
-  "agent/visual_tools_annotation.py": "cd7b1d2103b38c6c997a4d929f410dd132d08b3c292b03dbef39ff2fb8043f2d"
+  "agent/visual_tools_annotation.py": "cd7b1d2103b38c6c997a4d929f410dd132d08b3c292b03dbef39ff2fb8043f2d",
+  "generator/line_crossing_quality.py": "f5be0173552e9c9b61e693a916c4c1dca2709818b82bcaeb783cddd1feef77b8"
 }

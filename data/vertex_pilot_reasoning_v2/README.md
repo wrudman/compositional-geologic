@@ -85,3 +85,7 @@ The local comparison baseline is `data/geo_agent/` (the retained October 20 sour
 The original system-prompt definitions and normal request/tool-dispatch feedback loop are largely retained. `agent/visual_tools.py` matches the local baseline; shared vertex lookup changes are in `tools/map_helpers.py` and `tools/tools_human.py`. This comparison does not establish that the full serving configuration matches William's earlier successful run, or rule out a request/parser integration issue.
 
 **Version distinction:** the existing 32,768-token results predate the November 17 vertex fixes and are unchanged. Use a new run directory with modified source. This document describes local code; it does not confirm upload to GitHub or TACC. Human-survey checkbox changes are in the parent workspace's survey files, not this agent-only package. The atomic-operation script is a draft reference-procedure count; macro costs and sorting/search strategies need agreement before cross-type aggregation.
+
+### Provisional line-crossing generation constraint
+
+Future C-099 generation rejects point-only contact and boundary overlap for relevant candidate regions. Every crossed region must have at least 5% of its area on each side of the line (provisional threshold). The defining edge’s necessary overlap with its extended line is exempt. The area safeguard also applies to legacy extended-edge questions 12 and 31, alongside their existing crossing checks. Existing dataset items and answers are unchanged; use a fresh generation output/cache.
