@@ -56,7 +56,7 @@ def setup(map):
 # VERB 1 — VERTEX     (get a point)
 # ==============================================================================
 
-def find(*objs, object="vertex", which="all", on_frame=False):
+def find(*objs, object="vertex", which="all", on_frame=None):
     """Find a described vertex or edge.
 
     Examples:
@@ -73,7 +73,7 @@ def find(*objs, object="vertex", which="all", on_frame=False):
     return vertex(*objs, which=which, on_frame=on_frame)
 
 
-def vertex(*objs, which="all", on_frame=False):
+def vertex(*objs, which="all", on_frame=None):
     """
     Returns a vertex (or, with which="all", every vertex).
 
@@ -83,8 +83,8 @@ def vertex(*objs, which="all", on_frame=False):
         "sharpest", "widest"
     THE FRAME ("frame")   -> a frame corner, chosen by `which`:
         "all", "top_left", "top_right", "bottom_left", "bottom_right"
-    TWO OR MORE REGIONS   -> the single point where they all meet
-                             (set on_frame=True if it lies on the frame).
+    TWO OR MORE REGIONS   -> their unique shared boundary point; other regions may also meet there
+                             (omit on_frame to search all locations; multiple matches are ambiguous).
 
     Examples:
         vertex(A, which="rightmost")
