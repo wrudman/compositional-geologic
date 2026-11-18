@@ -1,13 +1,16 @@
+# Generated experiment outputs
 runs/
 *.out
 *.log
 *.zip
 Attempt*_color.png
 Attempt*_bw.png
+# Python and notebook caches
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 .pytest_cache/
+# Local environments, models and credentials
 .venv/
 venv/
 envs/

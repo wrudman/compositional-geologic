@@ -10,6 +10,8 @@ Self-contained code snapshot for GeoLogic map experiments: **74 question–diagr
 | `agent/geo_agent.py` | System prompts, tool schemas, dispatch, model loop and response logging |
 | `agent/geo_env.py` | Compositional environment |
 | `runner_compat.py` | Diagram reconstruction and geometry checks |
+| `calculate_atomic_operations.py` | Draft per-item operation counts with explicit assumptions; not validated minimum counts |
+| `audit_tool_calling.py` | Offline consistency checks across saved responses, traces and message history |
 | `evaluate_results.py` | Standalone format-aware scoring, no model calls |
 | `geo_agent_tutorial_vertex_pilot_v1.ipynb` | Configuration and shared runner definitions; legacy filename |
 | `dataset/dataset.json` | Questions, gold answers, complexity metadata and generation settings |
@@ -65,6 +67,21 @@ Evaluation is written separately under `evaluation/format_type_aware_v1/`. Adjus
 
 Region vertices are boundary direction changes; vertex-only contact can occur at a point that is not a corner of both regions. Reconstruction requires exact labeled topology, with a 1e-12 absolute coordinate tolerance for cross-platform floating-point differences.
 
-Each question type × complexity level has one pair; diagrams can be reused. Current `question_complexity` records the generator's question-specific parameter, **not a fully standardized atomic-operation count**. The vertex-finding tool repeatedly returned “No vertex found.” We should investigate why these selections failed. “No vertex found” is a normal tool response, so it is not counted as a tool execution error. Strategy efficiency has not yet been evaluated against validated reference programs.
+Each question type × complexity level has one pair; diagrams can be reused. Current `question_complexity` records the generator's question-specific parameter, **not a fully standardized atomic-operation count**. Historical runs included repeated “No vertex found” responses. The November 17 lookup changes below address identified selection restrictions; their model-level impact has not yet been tested. “No vertex found” is a normal tool response, so it is not counted as a tool execution error. Strategy efficiency has not yet been evaluated against validated reference programs.
 
 This upload excludes model weights, environments, credentials, execution results, reasoning datasets, reports, caches, ZIP archives and internal taxonomy spreadsheets. Original local files are unchanged. The generator modules support replay of the packaged maps; the ad-hoc dataset-search scripts are not included.
+
+## Changes relative to William's original agent
+
+The local comparison baseline is `data/geo_agent/` (the retained October 20 source snapshot), not a verified upstream Git commit. This package changes more than experiment parameters; it does not replace the original agent architecture.
+
+- **Configuration:** dataset/source paths, optional compositional and no-tools conditions, 10 normal requests, recommended thinking-mode VL sampling parameters, and a 32,768-token output cap per request for the reasoning run.
+- **Response recording:** save full SDK responses, returned reasoning fields, finish reasons, per-request and aggregate token usage, incremental tool traces, and generation completion/incompletion status. Returned reasoning is recorded but is not added to subsequent model messages.
+- **Final-answer behavior:** after exhausting the normal request budget, send one additional request with tools disabled. Earlier responses without tool calls still end the episode, as in the original loop. This is an execution-logic change, not only logging.
+- **Batch execution:** add server startup/health checks, a reasoning-text capture preflight, per-episode persistence, resumable execution, run-directory locking, and source/configuration manifests. Reconstruction checks use exact labeled topology and a 1e-12 absolute coordinate tolerance across platforms.
+- **Evaluation:** keep model execution and format-aware offline scoring separate; changing scoring rules does not require a new model run.
+- **Vertex selection fix (November 17, after the saved run):** Many valid vertex selections returned no result because the lookup required all regions meeting at the point to be specified. Two regions now suffice if they identify a unique shared point. `on_frame` is optional: both frame and interior points are searched unless the model explicitly specifies a filter.
+
+The original system-prompt definitions and normal request/tool-dispatch feedback loop are largely retained. `agent/visual_tools.py` matches the local baseline; shared vertex lookup changes are in `tools/map_helpers.py` and `tools/tools_human.py`. This comparison does not establish that the full serving configuration matches William's earlier successful run, or rule out a request/parser integration issue.
+
+**Version distinction:** the existing 32,768-token results predate the November 17 vertex fixes and are unchanged. Use a new run directory with modified source. This document describes local code; it does not confirm upload to GitHub or TACC. Human-survey checkbox changes are in the parent workspace's survey files, not this agent-only package. The atomic-operation script is a draft reference-procedure count; macro costs and sorting/search strategies need agreement before cross-type aggregation.

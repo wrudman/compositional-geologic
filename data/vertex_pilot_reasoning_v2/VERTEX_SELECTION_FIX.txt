@@ -1,0 +1,5 @@
+Meeting-vertex lookup accepts a unique shared boundary point even if additional regions meet there.
+Omitting on_frame now searches both frame and interior points. Explicit False/True still filters the location.
+No candidates return None; multiple candidates raise an ambiguity error rather than selecting the first.
+The parent workspace human survey now has an optional frame-location checkbox; Yes/No is shown only when enabled.
+Existing experiment outputs are unchanged. Use a NEW run directory after this source change.
