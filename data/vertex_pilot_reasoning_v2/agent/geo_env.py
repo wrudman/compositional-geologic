@@ -776,7 +776,7 @@ class Env:
                     result = T.vertex("frame", which=which)
                     return self._finish_vertex(f'vertex("frame", which="{which}")', result)
                 elif len(s["regions"]) >= 2:
-                    onf = modes.get("on_frame", False)
+                    onf = modes.get("on_frame")
                     result = T.vertex(*s["regions"], on_frame=onf)
                     args = ", ".join(o.letter for o in s["regions"])
                     return self._finish_vertex(f"vertex({args}, on_frame={onf})", result)
@@ -1101,16 +1101,18 @@ def participant_output_for_tool(env, tool, call_str, result, output_text=None):
                 return f"Found and labeled all vertices of {target_text}: {emphasized_list}."
             return (f"Found and labeled {emphasized_list} as the {property_name} "
                     f"vertex of {target_text}.")
-        meeting_match = re.match(r"vertex\((.+),\s*on_frame=(True|False)\)", call_str)
+        meeting_match = re.match(r"vertex\((.+),\s*on_frame=(True|False|None)\)", call_str)
         if meeting_match:
             regions = [part.strip() for part in meeting_match.group(1).split(",")]
-            location = "on the frame" if meeting_match.group(2) == "True" else "not on the frame"
+            frame_mode = meeting_match.group(2)
+            location = {"True": " on the frame", "False": " not on the frame", "None": ""}[frame_mode]
             region_text = natural_join(regions)
             if no_result:
-                return f"No vertex was found where Regions {region_text} meet {location}."
+                return f"No vertex was found where Regions {region_text} meet{location}."
             location_sentence = ("This vertex is on the frame."
                                  if meeting_match.group(2) == "True"
-                                 else "This vertex is not on the frame.")
+                                 else "This vertex is not on the frame." if frame_mode == "False"
+                                 else "")
             return (f"Found and labeled {emphasized_list} where Regions {region_text} "
                     f"meet. {location_sentence}")
         if no_result:

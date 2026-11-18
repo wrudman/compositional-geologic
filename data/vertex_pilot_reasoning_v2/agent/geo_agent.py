@@ -126,8 +126,8 @@ TOOLS = [
                 "    \"sharpest\", \"widest\"\n"
                 "THE FRAME (\"frame\")   -> a frame corner, chosen by `which`:\n"
                 "    \"all\", \"top_left\", \"top_right\", \"bottom_left\", \"bottom_right\"\n"
-                "TWO OR MORE REGIONS   -> the single point where they all meet\n"
-                "                         (set on_frame=True if it lies on the frame).\n\n"
+                "TWO OR MORE REGIONS   -> their unique shared boundary point; other regions may also meet there\n"
+                "                         (omit on_frame to search all locations; multiple matches are ambiguous).\n\n"
                 "With object=\"edge\": return the unique edge of the first region that "
                 "meets the supplied regions. Use the string \"Outside\" for the outside "
                 "of the frame. A returned edge can contain several collinear topology "
@@ -162,7 +162,7 @@ TOOLS = [
                     "on_frame": {
                         "type": "boolean",
                         "description": "For two or more regions: whether the meeting "
-                                       "point lies on the frame. Default false.",
+                                       "point lies on the frame. Optional: omit to search both frame and interior points.",
                     },
                 },
                 "required": ["objs"],
@@ -439,7 +439,7 @@ def dispatch(env, name, args):
         for r in objs:
             env.select_region(r)
         if len(objs) >= 2:
-            return env.run("vertex", {"on_frame": args.get("on_frame", False)})
+            return env.run("vertex", {"on_frame": args.get("on_frame")})
         return env.run("vertex", {"which": args.get("which", "all")})
 
     if name == "neighbors":
