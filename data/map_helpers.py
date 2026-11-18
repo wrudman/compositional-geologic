@@ -452,25 +452,38 @@ def _line_endpoints(line):
 # Return a single point (vertex) on the diagram.
 # ==============================================================================
 
-def vertex_overlap(*regions, on_frame=False):
-    """
-    Returns the point where exactly the given regions meet at a single shared vertex.
+def vertex_overlap(*regions, on_frame=None):
+    """Return the unique shared boundary vertex of all supplied regions.
 
-    Use this to identify a corner or junction common to several regions. Pass
-    on_frame=True if the point also touches the outer frame of the diagram.
-
-    Example:
-        p = vertex_overlap(E, C, on_frame=True)
-        # the point where regions E and C meet at the frame boundary
+    Other regions may meet at the same point; they need not be supplied.
+    Omit on_frame to search both frame and interior points; True/False filters
+    whether the point also meets Outside. No match returns
+    None; multiple matches raise an explicit ambiguity error.
+    Boundary topology vertices are used, not only geometric corners.
     """
-    region_set = set(regions)
+    if len(regions) < 2:
+        raise ValueError("Meeting-vertex selection requires at least two regions.")
+    common = set(regions[0].vertices)
+    for region in regions[1:]:
+        common.intersection_update(region.vertices)
+    candidates = []
+    seen = set()
     for v in regions[0].vertices:
-        faces_at_v = set(v.faces)
-        bounded_faces = {f for f in faces_at_v if f.bounded}
-        has_outside = any(not f.bounded for f in faces_at_v)
-        if bounded_faces == region_set and has_outside == on_frame:
-            return v
-    return None
+        if v not in common or id(v) in seen:
+            continue
+        seen.add(id(v))
+        has_outside = any(not f.bounded for f in v.faces)
+        if on_frame is None or has_outside == on_frame:
+            candidates.append(v)
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        labels = ", ".join(str(getattr(r, "letter", "?")) for r in regions)
+        raise ValueError(
+            f"Ambiguous vertex selection: Regions {labels} share "
+            f"{len(candidates)} matching boundary points. "
+            "Specify additional regions or a more precise selection.")
+    return candidates[0]
 
 
 def leftmost(region):
@@ -859,8 +872,10 @@ def edge_neighbors(region):
 
 def vertex_only_neighbors(region):
     """
-    Returns the set of regions that touch the region at a vertex but share no
-    edge with it.
+    Returns regions with point-only contact and no shared edge.
+
+    This contact relation does not require a corner on both regions. Keep all
+    boundary incidence points here; vertices(region) separately lists corners.
 
     Example:
         vertex_only_neighbors(A)

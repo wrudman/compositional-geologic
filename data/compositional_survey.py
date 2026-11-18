@@ -3276,7 +3276,7 @@ TOOL_LABELS = {
 INSTRUCTIONS = {
     "find": (
         "- **Select ONE Region** → find all its vertices or choose leftmost / rightmost / topmost / bottommost / sharpest / widest.\n"
-        "- **Select TWO OR MORE Regions** → find their meeting vertex or vertices. Choose Find Vertex and specify whether the vertex is on the frame.\n"
+        "- **Select TWO OR MORE Regions** → find their meeting vertex or vertices. Choose Find Vertex and optionally filter by frame location.\n"
         "- **Select the FRAME** → find one corner or all corners.\n"
         "- **Select TWO OR MORE Regions** → find the unique edge they identify. Choose Find Edge."
     ),
@@ -3393,8 +3393,7 @@ def validate(tool, modes):
         if nR == 1:
             return (modes.get("which") is not None, "Choose which corner to find.")
         if nR >= 2:
-            return (modes.get("on_frame") is not None,
-                    "Choose whether the meeting vertex is on the frame.")
+            return (True, "")
         if IS_PRACTICE:
             return (False, "Select ONE OR MORE Regions. "
                            "(Vertices already in your buffer are kept.)")
@@ -3647,19 +3646,21 @@ def participant_output_for_tool(tool, call_str, result, output_text=None):
             return f"Found and labeled {emphasized_list} as the {property_name} vertex of {target_text}."
         meeting_match = re.match(
             r"(?:vertex|find)\((.+?)(?:,\s*object=\"vertex\")?,\s*"
-            r"on_frame=(True|False)\)",
+            r"on_frame=(True|False|None)\)",
             call_str,
         )
         if meeting_match:
             regions = [part.strip() for part in meeting_match.group(1).split(",")]
-            location = "on the frame" if meeting_match.group(2) == "True" else "not on the frame"
+            frame_mode = meeting_match.group(2)
+            location = {"True": " on the frame", "False": " not on the frame", "None": ""}[frame_mode]
             region_text = natural_join(regions)
             if no_result:
-                return f"No vertex was found where Regions {region_text} meet {location}."
+                return f"No vertex was found where Regions {region_text} meet{location}."
             location_sentence = (
                 "This vertex is on the frame."
                 if meeting_match.group(2) == "True"
-                else "This vertex is not on the frame."
+                else "This vertex is not on the frame." if frame_mode == "False"
+                else ""
             )
             return f"Found and labeled {emphasized_list} where Regions {region_text} meet. {location_sentence}"
         if no_result:
@@ -4236,7 +4237,7 @@ def run_tool(tool, modes):
                               "v" if not isinstance(result, list) else "r",
                               trace_tool)
             elif len(s["regions"]) >= 2:
-                onf = modes["on_frame"]
+                onf = modes.get("on_frame")
                 result = T.find(
                     *s["regions"], object="vertex", on_frame=onf
                 )
@@ -6000,11 +6001,16 @@ with col_ctrl:
                     ["all", "top_left", "top_right", "bottom_left", "bottom_right"],
                     horizontal=True, key="rad_vtx_frame")
             elif len(s["regions"]) >= 2:
-                modes["on_frame"] = st.radio(
-                    "Is the meeting vertex on the frame?", [False, True],
-                    format_func=lambda b: "Yes" if b else "No",
-                    index=0,
-                    horizontal=True, key="rad_vtx_onframe")
+                filter_frame = st.checkbox(
+                    "Filter by frame location (optional)",
+                    value=False, key="chk_vtx_filter_frame")
+                modes["on_frame"] = None
+                if filter_frame:
+                    modes["on_frame"] = st.radio(
+                        "Is the meeting vertex on the frame?", [False, True],
+                        format_func=lambda b: "Yes" if b else "No",
+                        index=0,
+                        horizontal=True, key="rad_vtx_onframe")
             else:
                 vertex_options = [
                     "all", "leftmost", "rightmost", "topmost", "bottommost",
