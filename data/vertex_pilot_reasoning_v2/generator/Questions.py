@@ -1,4 +1,5 @@
 import Graph
+from line_crossing_quality import assess_line_polygon, DEFAULT_MIN_SMALLER_AREA_FRACTION
 import Split
 import FinalizeFaces
 import numpy as np
@@ -609,6 +610,11 @@ def Question12(va, vb, code, map):
     # The line has no intrinsic direction, so Q12 uses an unordered set rather
     # than a path sequence for both its machine-readable and text answers.
     unique_faces = set(true_path)
+    if any(not assess_line_polygon(
+            [(v.p.x, v.p.y) for v in face.vertices],
+            (va.p.x, va.p.y), (vb.p.x, vb.p.y))['acceptable']
+           for face in unique_faces):
+        return failureOutput
     unique_letters = sorted(f.letter for f in unique_faces)
 
     # 6. Formulate the final question text
@@ -1363,6 +1369,11 @@ def Question31(va, vb, code, map):
     if not true_faces or true_faces != set(robust_path):
         return failureOutput
     if len(true_faces) < 3:
+        return failureOutput
+    if any(not assess_line_polygon(
+            [(v.p.x, v.p.y) for v in face.vertices],
+            (va.p.x, va.p.y), (vb.p.x, vb.p.y))['acceptable']
+           for face in true_faces):
         return failureOutput
     max_sides = max(face.numSides for face in true_faces)
     winners = [face for face in true_faces if face.numSides == max_sides]
@@ -2528,9 +2539,21 @@ def VertexPropertyCandidates(m, provenance, condition_ids=None, union_sizes=(2,3
             if len(crossed)<2:continue
             tool_crossed=set(_vp_helpers.regions_crossed(_vp_helpers.extend(e.tail,e.head)))
             if crossed!=tool_crossed:continue
+            # Generation constraints, not a change to the definition of crossing.
+            # The defining edge necessarily lies on L1: only candidate neighbors
+            # and genuinely crossed regions are screened for ambiguous contacts.
+            assessed = crossed | ns[f]
+            crossing_quality = {
+                h.letter: assess_line_polygon(
+                    [_vp_position(v) for v in _vp_vertices(h)],
+                    _vp_position(e.tail), _vp_position(e.head))
+                for h in assessed
+            }
+            if any(not q['acceptable'] for q in crossing_quality.values()):
+                continue
             hits=crossed & ns[f]
             if len(hits)<=4:
-                yield emit('C-099',len(hits),f'Let e₁ be the edge of {f.letter} that meets region {g.letter}. Extend e₁ in both directions to form straight line L1. Which of the regions that touch region {f.letter} only at a vertex does L1 pass through? Do not include a region if the line only coincides with its boundary without entering its interior. Enter “None” if there are none.',_vp_names(hits),{'target_region':f.letter,'all_line_crossed_regions':_vp_labels(crossed),'all_vertex_only_neighbors':_vp_labels(ns[f]),'intersection':_vp_labels(hits),'line_endpoints':[_vp_position(e.tail),_vp_position(e.head)],'minimum_line_crossed_regions':2,'minimum_vertex_only_neighbors':1,'empty_intersection_allowed':True})
+                yield emit('C-099',len(hits),f'Let e₁ be the edge of {f.letter} that meets region {g.letter}. Extend e₁ in both directions to form straight line L1. Which of the regions that touch region {f.letter} only at a vertex does L1 pass through? Do not include a region if the line only coincides with its boundary without entering its interior. Enter “None” if there are none.',_vp_names(hits),{'target_region':f.letter,'all_line_crossed_regions':_vp_labels(crossed),'all_vertex_only_neighbors':_vp_labels(ns[f]),'intersection':_vp_labels(hits),'line_endpoints':[_vp_position(e.tail),_vp_position(e.head)],'minimum_line_crossed_regions':2,'minimum_vertex_only_neighbors':1,'empty_intersection_allowed':True,'line_crossing_constraints':{'minimum_smaller_area_fraction':DEFAULT_MIN_SMALLER_AREA_FRACTION,'reject_candidate_boundary_overlap':True,'reject_candidate_point_only_touch':True,'checked_regions':crossing_quality}})
         for n in ((3,4,5,6,7) if "C-091" in requested else ()):
             if len(_vp_corners(f))!=n+2:continue
             vs=_vp_corners(f); top=max(vs,key=lambda v:v.p.y);bottom=min(vs,key=lambda v:v.p.y)
