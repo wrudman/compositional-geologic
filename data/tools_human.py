@@ -14,6 +14,8 @@ THE SEVEN VERBS
                   one region            -> a corner of it
                   two or more regions   -> the point where they meet
                   the frame             -> a frame corner
+                centroid:
+                  one or more regions   -> their area centroid points
                 edge:
                   one region + what lies opposite -> that edge
     neighbors   get regions
@@ -40,7 +42,7 @@ SETUP
 
 import map_helpers as _engine
 
-TOOL_VERSION = "2026-10-02-batch-measure"
+TOOL_VERSION = "2026-11-22-centroid-incident-count"
 
 
 # ==============================================================================
@@ -57,19 +59,24 @@ def setup(map):
 # ==============================================================================
 
 def find(*objs, object="vertex", which="all", on_frame=None):
-    """Find a described vertex or edge.
+    """Find a described vertex, edge, or an area centroid.
 
     Examples:
         find(A, object="vertex", which="rightmost")
         find(A, B, object="edge")
         find(A, "Outside", object="edge")
     """
+    if object == "centroid":
+        if not objs or any(not _is_region(o) or not o.bounded for o in objs):
+            raise ValueError("Select one or more bounded regions for centroid finding.")
+        points = [_engine.centroid(region) for region in objs]
+        return points[0] if len(points) == 1 else points
     if object == "edge":
         if len(objs) < 2:
             raise ValueError("Finding an edge requires two or more regions.")
         return _engine.edge_among(*objs)
     if object != "vertex":
-        raise ValueError('object must be "vertex" or "edge".')
+        raise ValueError('object must be "vertex", "edge", or "centroid".')
     return vertex(*objs, which=which, on_frame=on_frame)
 
 
@@ -160,7 +167,14 @@ def neighbors(obj, kind="edge", start=None, go_counterclockwise=True):
 # VERB 3 — DRAW     (make a line)
 # ==============================================================================
 
-def draw(a, b=None, kind="segment"):
+def draw(a, b=None, kind="segment", extension_direction=None):
+    if extension_direction is not None:
+        if b is None:
+            segments = getattr(a, "segments", (a,))
+            points = [v for e in segments for v in (e.tail,e.head)]
+            a,b = max(((x,y) for x in points for y in points),key=lambda pair:_engine.dist(*pair))
+        return _engine.extend_piece(a,b,extension_direction)
+
     """
     Draws a line you can then intersect with regions.
 
@@ -177,10 +191,14 @@ def draw(a, b=None, kind="segment"):
             ((first, second) for first in points for second in points if first is not second),
             key=lambda pair: _engine.dist(pair[0], pair[1]),
         )
-        return _engine.extend(pa, pb) if kind == "full" else _engine.segment(pa, pb)
+        line = _engine.extend(pa, pb) if kind == "full" else _engine.segment(pa, pb)
+        line['source_edge_endpoints'] = (pa.p, pb.p)
+        return line
     if b is None and hasattr(a, "head") and hasattr(a, "tail"):
         pa, pb = a.tail, a.head
-        return _engine.extend(pa, pb) if kind == "full" else _engine.segment(pa, pb)
+        line = _engine.extend(pa, pb) if kind == "full" else _engine.segment(pa, pb)
+        line['source_edge_endpoints'] = (pa.p, pb.p)
+        return line
     if isinstance(b, str):
         return _engine.ray(a, b)
     if b is None:
@@ -196,24 +214,40 @@ def intersect(line, target="faces"):
     """
     target = "faces"       -> regions the line passes through, in travel order
                               (a full/infinite line returns them unordered).
+    target = "vertices"    -> distinct vertices; original edge endpoints are automatically excluded for edge-derived lines
     target = another line  -> True/False: do the two lines cross?
 
     Examples:
         intersect(line, "faces")
         intersect(draw(p, q), draw(u, v))
     """
+    if target == "edges":
+        from sel_types import EdgeSel
+        edges=_engine.crossed_edges(line)
+        return [EdgeSel([e],e.leftFace if e.leftFace.bounded else e.reverse.leftFace,"crossed edge") for e in edges]
+    if target == "vertices":
+        return _engine.line_vertices(line, exclude_source_endpoints=bool(line.get("source_edge_endpoints")))
     if target == "faces":
         if isinstance(line, dict) and line.get("type") == "extend":
             return list(_engine.regions_crossed(line))
         return _engine.regions_in_order(line)
     if isinstance(target, dict) and "type" in target:
         return _engine.crosses(line, target)
-    raise ValueError('target must be "faces" or another drawn line.')
+    raise ValueError('target must be "faces", "vertices", "edges", or another drawn line.')
 
 
 # ==============================================================================
 # VERB 5 — MERGE     (join two bordering regions)
 # ==============================================================================
+
+def _crossed_edge_details(edges):
+    """Raw geometry for saved traces; does not create visible edge labels."""
+    return [{'segments':[{'tail_vertex_id':getattr(e.tail,'num',None),
+                          'head_vertex_id':getattr(e.head,'num',None),
+                          'tail':[float(e.tail.p.x),float(e.tail.p.y)],
+                          'head':[float(e.head.p.x),float(e.head.p.y)]}
+                         for e in edge.segments]} for edge in edges]
+
 
 def merge(*regions):
     """
@@ -228,7 +262,7 @@ def merge(*regions):
 # VERB 6 — MEASURE     (one object or a batch -> numeric values)
 # ==============================================================================
 
-def measure(*args, what, reference=None):
+def measure(*args, what, reference=None, merged_regions=(), line=None, area_sides="above_below"):
     """
     Measure one object, or a list of objects in one call.
 
@@ -248,15 +282,19 @@ def measure(*args, what, reference=None):
         "angle"   a corner (its point + the region it belongs to)
                   -> the interior angle there, in degrees
         "area"    a region -> its area
+        "parallel" two straight edges -> whether their supporting lines are distinct and parallel
+        "convexity" one region or union -> True if convex, otherwise False
+        "incident_edge_count" one diagram vertex -> edges leaving it, including the frame
         "edge_count" a region -> how many boundary edges it has
                      ("sides" is retained as a backwards-compatible alias)
         "frame_edge_count" a region -> how many of its edges lie on the frame
         "regions" the frame -> how many bounded regions are in the diagram
-        "orientation" three ordered vertices -> clockwise or counterclockwise
+        "orientation" three or more ordered vertices -> clockwise or counterclockwise
 
     Examples:
         measure(L1, what="distance")
         measure(p, q, what="distance")    # distance between two points
+        measure(p, edge, what="distance") # shortest distance to a finite edge
         measure(A, B, what="distance")    # distance between two regions
         measure(p, A, what="angle")       # angle at corner p inside region A
         measure(A, what="area")
@@ -265,6 +303,28 @@ def measure(*args, what, reference=None):
         measure(v1, v2, v3, what="orientation")
     """
     items = list(args)
+    if what == "extension":
+        if len(items)!=1 or not isinstance(items[0],dict):raise ValueError("Choose an edge extension.")
+        return _engine.edge_extension_lengths(items[0])
+    if line is not None:
+        if what != "area" or len(items)!=1 or not _is_region(items[0]) or reference is not None:
+            raise ValueError("Area by line requires one region and one full line.")
+        return _engine.cut_region_areas(items[0],line,sides=area_sides)
+
+    if what == "parallel":
+        if len(items) != 2 or not all(_is_edge(e) or hasattr(e, "segments") for e in items):
+            raise ValueError("Parallel requires exactly two straight edges.")
+        return _engine.edges_parallel(*items)
+
+    if what == "convexity":
+        if len(items) != 1 or not _is_region(items[0]) or not getattr(items[0], "bounded", True):
+            raise ValueError("Select exactly one bounded region or union for convexity.")
+        return bool(_engine.is_convex(items[0]))
+
+    if what == "incident_edge_count":
+        if len(items) != 1 or not _is_point(items[0]):
+            raise ValueError("Select exactly one diagram vertex for incident edge count.")
+        return _engine.incident_edge_count(items[0], merged_regions=merged_regions)
 
     if len(items) == 1 and isinstance(items[0], (list, tuple)):
         batch = list(items[0])
@@ -303,10 +363,14 @@ def measure(*args, what, reference=None):
     if what in ("distance", "length"):
         if len(items) == 1 and isinstance(items[0], dict):   # a drawn line
             return _line_len(items[0])
+        if len(items) == 2:
+            for point, edge in (items, items[::-1]):
+                if _is_point(point) and (_is_edge(edge) or hasattr(edge, "segments")):
+                    return _engine.point_edge_distance(point, edge)
         if len(items) == 2 and _is_region(items[0]) and _is_region(items[1]):
             return _engine.region_dist(items[0], items[1])
         if len(items) != 2:
-            raise ValueError('what="distance" requires a line, two vertices, or two regions.')
+            raise ValueError('what="distance" requires a line, two points, two regions, or one point and one edge.')
         return _engine.dist(items[0], items[1])              # two points
 
     if what == "angle":
@@ -336,19 +400,29 @@ def measure(*args, what, reference=None):
         return _engine.region_count()
 
     if what == "orientation":
-        if len(items) != 3:
-            raise ValueError('what="orientation" requires exactly three vertices.')
-        return _engine.orientation(items[0], items[1], items[2])
+        if len(items) < 3 or not all(_is_point(p) for p in items):
+            raise ValueError('what="orientation" requires at least three ordered points.')
+        return _engine.orientation(*items)
 
     raise ValueError(
         'what must be one of: distance, angle, area, edge_count, '
-        'frame_edge_count, regions, orientation.'
+        'frame_edge_count, incident_edge_count, convexity, parallel, regions, orientation.'
     )
 
 
 # ==============================================================================
 # VERB 7 — SORT     (several things -> them, ordered smallest -> largest)
 # ==============================================================================
+
+def edge_length(edge):
+    """Length of a selected edge; count each underlying segment once."""
+    import math
+    segments = getattr(edge, "segments", (edge,))
+    if not segments or not all(_is_edge(e) for e in segments):
+        raise ValueError("Select edges for edge-length sorting.")
+    unique = {tuple(sorted((id(e.tail), id(e.head)))): e for e in segments}
+    return math.fsum(_engine.dist(e.tail, e.head) for e in unique.values())
+
 
 def sort(items, by, reference=None, *, grouped=False):
     """
@@ -363,6 +437,7 @@ def sort(items, by, reference=None, *, grouped=False):
         "angle"       saved angle objects by interior angle
                       (or corners of a region with `reference` set to that region)
         "area"        regions, by area
+        "edge_length" selected edges, shortest to longest
         "left_right"  points, left to right
         "bottom_top"  points, bottom to top
         "distance"    points, by distance from `reference` (a point)
@@ -378,6 +453,10 @@ def sort(items, by, reference=None, *, grouped=False):
             if hasattr(item, "vertex") and hasattr(item, "face"):
                 return _engine.angle_at(item.vertex, item.face)
             return _engine.angle_at(item, reference)
+    elif by == "edge_length":
+        if len(items) < 2:
+            raise ValueError("Select two or more edges.")
+        key = edge_length
     elif by == "area":
         key = _engine.area
     elif by == "left_right":
@@ -387,7 +466,7 @@ def sort(items, by, reference=None, *, grouped=False):
     elif by == "distance":
         key = lambda v: _engine.dist(v, reference)
     else:
-        raise ValueError('by must be one of: angle, area, left_right, bottom_top, distance.')
+        raise ValueError('by must be one of: angle, area, edge_length, left_right, bottom_top, distance.')
     ordered = sorted(items, key=key)
     if not grouped:
         return ordered

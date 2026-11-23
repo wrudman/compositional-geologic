@@ -1,3 +1,4 @@
+from edge_label_layout import edge_label_position
 import survey_union_helpers as union_helpers
 from tutorial_content import TUTORIAL_BLUE_BOX_GUIDE
 from tutorial_content import TUTORIAL_SELECTION_TITLE, TUTORIAL_FRAME_TEXT, TUTORIAL_DIRECTION_TEXT, TUTORIAL_DIRECTION_QUESTION, render_tutorial_progress
@@ -27,6 +28,19 @@ import DrawGraph
 from tutorial_label_positions import apply_tutorial_label_positions, draw_tutorial_faces
 import map_helpers
 import tools_human as T
+
+# Streamlit reruns this file but normally retains imported tool modules.
+# Refresh changed tool code while preserving the currently active diagram.
+import importlib
+for _tool_module in (map_helpers, T):
+    _tool_stamp = os.stat(_tool_module.__file__).st_mtime_ns
+    if getattr(_tool_module, "_survey_source_stamp", None) != _tool_stamp:
+        _active_map = getattr(map_helpers, "_MAP", None)
+        importlib.invalidate_caches()
+        importlib.reload(_tool_module)
+        if _active_map is not None:
+            map_helpers.use_map(_active_map)
+        _tool_module._survey_source_stamp = _tool_stamp
 from streamlit_component_helpers import declare_component
 from sel_types import AngleSel, EdgeSel
 
@@ -150,11 +164,15 @@ QUESTION_HINT_TYPES = {
 }
 
 DEFINITIONS_TEXT = """
-**Vertex:** a location where two or more edges meet.
+**Vertex of a region:** a point on its boundary where the boundary changes direction.
 
 **Edge:** a line segment that forms part of a region boundary.
 
 **Region:** one enclosed area of the diagram.
+
+**Convex:** a region is convex if every straight line segment connecting two points in it stays entirely within the region.
+
+**Center:** the area centroid—the balance point of the region if it were a flat shape of uniform thickness and density.
 
 **Angle:** the angle inside a region at a vertex, formed by the two edges that meet there.
 
@@ -170,11 +188,15 @@ DEFINITIONS_TEXT = """
 """
 
 PRACTICE_CORE_DEFINITIONS_TEXT = """
-**Vertex:** a point where two or more edges meet.
+**Vertex of a region:** a point on its boundary where the boundary changes direction.
 
 **Edge:** a line segment that forms part of a region boundary.
 
 **Region:** one enclosed area of the diagram.
+
+**Convex:** a region is convex if every straight line segment connecting two points in it stays entirely within the region.
+
+**Center:** the area centroid—the balance point of the region if it were a flat shape of uniform thickness and density.
 
 **Angle:** the angle inside a region at a vertex, formed by the two edges that meet there.
 """
@@ -195,6 +217,8 @@ PRACTICE_FRAME_DEFINITIONS_TEXT = PRACTICE_CORE_DEFINITIONS_TEXT + """
 
 PRACTICE_TOOL_GUIDE_TEXT = """
 We’ll start with **Find**, using its **Vertex** mode. Some questions may ask for a vertex with a property, such as the **rightmost vertex of a region**.
+
+**Find Center** marks a region’s area centroid: its balance point if it were a flat shape of uniform thickness and density. It returns a point labeled c1, c2, and so on, which you can use with the other tools.
 
 **Try this:** Select **Region A**, choose **rightmost**, then click **RUN**. The tool will label the vertex it finds.
 """
@@ -1760,9 +1784,9 @@ def point_name(v, create=True):
         return st.session_state.point_names[key]
     if not create:
         return None
-    name = next_name("v")
+    name = next_name("c" if getattr(v, "point_kind", None) == "centroid" else "v")
     st.session_state.point_names[key] = name
-    st.session_state.annotations.append({"kind": "point", "p": v.p, "label": name})
+    st.session_state.annotations.append({"kind": "point", "p": v.p, "label": name, "obj": v})
     return name
 
 def point_name_with_meta(v):
@@ -1773,9 +1797,9 @@ def point_name_with_meta(v):
     key = id(v)
     if key in st.session_state.point_names:
         return st.session_state.point_names[key], None
-    name = next_name("v")
+    name = next_name("c" if getattr(v, "point_kind", None) == "centroid" else "v")
     st.session_state.point_names[key] = name
-    ann = {"kind": "point", "p": v.p, "label": name}
+    ann = {"kind": "point", "p": v.p, "label": name, "obj": v}
     st.session_state.annotations.append(ann)
     return name, {"kind": "point", "point_key": key, "annotation_ref": ann}
 
@@ -1832,6 +1856,8 @@ def _point_coordinates(point):
 
 def _vertex_geometry(vertex):
     return {
+        "point_kind": getattr(vertex, "point_kind", "vertex"),
+        "source_region": getattr(getattr(vertex, "source_region", None), "letter", None),
         "vertex_id": getattr(vertex, "num", None),
         "coordinates": _point_coordinates(getattr(vertex, "p", None)),
     }
@@ -2380,7 +2406,7 @@ def _selection_event_object(obj):
     elif is_region(obj):
         kind, label = "region", obj.letter
     elif is_vertex(obj):
-        kind, label = "vertex", point_name(obj, create=False) or "unlabeled vertex"
+        kind, label = ("centroid" if getattr(obj, "point_kind", None) == "centroid" else "vertex"), point_name(obj, create=False) or "unlabeled point"
     else:
         kind, label = "object", describe(obj)
     record = {
@@ -2623,6 +2649,7 @@ def highlight_edge_x(odraw, e, label=None):
                     candidates.append((score, (x,y)))
         label_xy = min(candidates, key=lambda item:item[0])[1]
         font = DrawGraph.GetSystemFont(display_pixels(15))
+        label_xy = edge_label_position(odraw, p1, p2, label, font, label_xy, display_pixels(2))
         odraw.text(label_xy, label, fill=(0, 65, 85, 255), font=font,
                    anchor="mm", stroke_width=display_pixels(2), stroke_fill=(255, 255, 255, 255))
 
@@ -3068,6 +3095,9 @@ def build_hover_shapes():
     vertices = [D(v.p) for v in res_map.vertices
                 if not _vertex_interior_to_union(v, cmap)]
 
+    vertices.extend(D(a["obj"].p) for a in st.session_state.annotations
+                    if getattr(a.get("obj"), "point_kind", None) == "centroid")
+
     c0, c1 = D(Graph.Vector(0, 0)), D(Graph.Vector(maxX, maxY))
     frame = {"x0": min(c0[0], c1[0]), "y0": min(c0[1], c1[1]),
              "x1": max(c0[0], c1[0]), "y1": max(c0[1], c1[1])}
@@ -3130,7 +3160,9 @@ def hit_test(px, py):
     cp = get_math_coords(px, py)
     cmap = _consumed_to_union_map()
     v_best, v_d = None, 25 / MATH_SCALE
-    for v in res_map.vertices:
+    points = list(res_map.vertices) + [a["obj"] for a in st.session_state.annotations
+             if getattr(a.get("obj"), "point_kind", None) == "centroid"]
+    for v in points:
         if _vertex_interior_to_union(v, cmap):   # corner now inside a merge
             continue
         d = Graph.vecDist(cp, v.p)
@@ -3278,7 +3310,8 @@ INSTRUCTIONS = {
         "- **Select ONE Region** → find all its vertices or choose leftmost / rightmost / topmost / bottommost / sharpest / widest.\n"
         "- **Select TWO OR MORE Regions** → find their meeting vertex or vertices. Choose Find Vertex and optionally filter by frame location.\n"
         "- **Select the FRAME** → find one corner or all corners.\n"
-        "- **Select TWO OR MORE Regions** → find the unique edge they identify. Choose Find Edge."
+        "- **Select TWO OR MORE Regions** → find the unique edge they identify. Choose Find Edge.\n"
+        "- **Select ONE OR MORE Regions** → find their centers, labeled c1, c2, … . Choose Find Center."
     ),
     "vertex": (
         "- **Select ONE Region** → find all its vertices or choose leftmost / rightmost / topmost / bottommost / sharpest / widest.\n"
@@ -3297,10 +3330,12 @@ INSTRUCTIONS = {
     "draw line": (
         "- **Select TWO Vertices** → draw a line segment between them. \n"
         "- **Select ONE Vertex** → draw a ray starting at that vertex that extends up / down / left / right.\n"
-        "- **Select ONE Edge** → extend the edge in both directions as a straight line.\n"
+        "- **Select ONE Edge** → extend the edge in both directions as a straight line, or choose one direction to extend it to the frame.\n"
     ),
     "intersect": (
         "- **Select ONE drawn Line in settings** → find the regions whose interiors it passes through.\n"
+        "- **Select ONE drawn Line in settings** → find and count distinct vertices on it; automatically exclude the source edge endpoints.\n"
+        "- **Select ONE drawn Ray in settings** → count crossed edges. Edges at the start and frame edges do not count.\n"
         "- **Select TWO drawn Lines in settings** → check whether they cross."
     ),
     "merge": (
@@ -3308,13 +3343,20 @@ INSTRUCTIONS = {
         "- **Select U and the Regions to add** → expand U. Only one union is allowed per diagram.\n"
     ),
     "measure": (
+        "- **Choose an extended edge in settings** → measure the original edge and its extension.\n"
         "- **Select TWO OR MORE Vertices or TWO OR MORE Regions** → measure the distance from the first-selected object to each other object. For regions, use their closest points.\n"
+        "- **Select ONE Vertex and ONE Edge** → measure the shortest distance from the point to the finite edge.\n"
         "- **Select ONE OR MORE Angles** → measure each angle in degrees.\n"
         "- **Select ONE OR MORE Regions** → measure each region's area or edge count.\n"
+        "- **Select ONE Region and ONE full Line in settings** → measure the areas on each side of the line.\n"
+        "- **Select TWO Edges** → check whether they are parallel.\n"
+        "- **Select ONE Region or union** → check whether it is convex.\n"
+        "- **Select ONE diagram Vertex** → count its incident edges, including the frame; each edge leaving the point counts once.\n"
         "- **Select the FRAME** → count the regions in the diagram.\n"
-        "- **Select exactly THREE Vertices** → determine whether the cycle is clockwise or counterclockwise in selection order.\n"
+        "- **Select THREE OR MORE Vertices** → determine whether the cycle is clockwise or counterclockwise in selection order.\n"
     ),
     "sort": (
+        "- **Select TWO OR MORE Edges** → order from shortest to longest.\n"
         "- **Select TWO OR MORE Angles** → order from smallest to largest.\n"
         "- **Select TWO OR MORE Regions** → order from smallest to largest by area.\n"
         "- **Select TWO OR MORE Vertices** → order from left to right or bottom to top.\n"
@@ -3324,6 +3366,10 @@ INSTRUCTIONS = {
 }
 
 TOOL_GUIDE_TEXT = """
+**Selecting objects**
+
+Choose a selection type, then click an object in the diagram to select it. You can select regions, angles, edges, vertices, and points marked by tools. Use Vertex selection for labeled center points. Objects that remain in the diagram can be selected again after a tool clears the selection.
+
 **Find**
 
 - **Vertex—position:** select one region to find all its vertices or its leftmost, rightmost, topmost, or bottommost vertex.
@@ -3331,6 +3377,7 @@ TOOL_GUIDE_TEXT = """
 - **Vertex—meeting point:** select two or more regions to find where they meet.
 - **Vertex—frame:** select the frame to find one or all frame corners.
 - **Edge:** select two or more regions that uniquely identify the edge.
+- **Center:** select one or more regions to mark their centers as c1, c2, … . These points can be used for distance, drawing, sorting or cycle orientation.
 
 **Neighbors**
 
@@ -3342,11 +3389,13 @@ TOOL_GUIDE_TEXT = """
 
 - Draw a segment between two vertices.
 - Draw a ray from one vertex in a chosen direction.
-- Extend a selected edge in both directions as a straight line.
+- Extend an edge in both directions, or choose one direction along the edge to the frame. L1 names the whole extended result. Measure edge extension reports the original edge and added portion separately.
 
 **Intersect**
 
 - Choose one drawn line in settings to find which regions' interiors it passes through.
+- Choose a drawn line and query the vertices it passes through. Each distinct point counts once; for an edge-derived line, automatically exclude the source edge endpoints.
+- Choose a drawn ray to count crossed edges. Edges at the start and frame edges do not count.
 - Choose two drawn lines in settings to check whether they cross.
 
 **Merge**
@@ -3356,15 +3405,19 @@ TOOL_GUIDE_TEXT = """
 
 **Measure**
 
-- **Distance:** select a reference first, then one or more targets (all vertices or all regions).
+- **Distance:** select one vertex and one edge for their shortest distance. Select two or more vertices to measure from the first-selected vertex to each of the others. Select two or more regions to measure the shortest distance from the first-selected region to each of the others. To compare an edge with its extension, choose Measure → edge extension and select its label in settings.
 - **Angle:** measure one or more selected angles in degrees in one call.
-- **Area:** measure the area of each selected region in one call.
+- **Area:** measure the area of each selected region in one call. To measure a cut, enable areas on each side of a line and select one region and a full line. Choose Above/Below or Left/Right. The output gives both areas, without comparing them.
 - **Edge count:** count boundary edges for each selected region in one call.
+- **Parallel:** select two straight edges and check whether their supporting lines are parallel. Edges on the same line are not counted as parallel.
+- **Convexity:** select one region or merged union to check whether it is convex (Yes/No).
+- **Incident edge count:** select one diagram vertex and count the edges leaving it, including frame edges. Each edge counts once; opposite directions along a straight boundary count separately. Center points are not diagram vertices.
 - **Region count:** count how many regions are in the entire diagram.
-- **Cycle orientation:** determine whether three selected vertices go clockwise or counterclockwise in the order clicked.
+- **Cycle orientation:** determine whether three or more selected vertices go clockwise or counterclockwise in the order clicked.
 
 **Sort**
 
+- **Select TWO OR MORE Edges:** shortest → longest.
 - **Select TWO OR MORE Angles:** smallest → largest.
 - **Select TWO OR MORE Regions:** smallest → largest by area.
 - **Select TWO OR MORE Vertices:** left → right or bottom → top.
@@ -3373,6 +3426,30 @@ TOOL_GUIDE_TEXT = """
 Equal values are shown with “=”.
 """
 
+def available_edge_extensions(lines, named_edges):
+    """Include edge extensions created before the new measurement UI existed."""
+    result=[]
+    for name,line in lines:
+        if line.get("type")=="extend" and not line.get("source_edge_endpoints"):
+            # Older full-line objects stored only the original edge endpoints.
+            for edge_name_,edge in named_edges:
+                a,b=edgesel_endpoints(edge)
+                matches=lambda x,y: math.hypot(x.x-y.x,x.y-y.y)<1e-9
+                if ((matches(a.p,line['a']) and matches(b.p,line['b'])) or
+                    (matches(b.p,line['a']) and matches(a.p,line['b']))):
+                    line['source_edge_endpoints']=(a.p,b.p)
+                    line['source_edge_label']=edge_name_
+                    break
+        if line.get('extension_direction') and line.get('source_edge_endpoints') and not line.get('extension_part'):
+            # Earlier one-sided L1 represented just the added segment.
+            line['extension_part']=(line['a'],line['b'])
+            a,b=line['source_edge_endpoints']
+            line['a']=b if math.hypot(line['a'].x-a.x,line['a'].y-a.y)<1e-9 else a
+        if line.get('source_edge_endpoints') and (line.get('extension_part') or line.get('type')=='extend'):
+            result.append((name,line))
+    return result
+
+
 def validate(tool, modes):
     s = sel_sig()
     nR, nV, nE, nA, nF = (len(s["regions"]), len(s["vertices"]),
@@ -3380,8 +3457,11 @@ def validate(tool, modes):
 
     if tool == "find":
         object_type = modes.get("object")
+        if object_type == "centroid":
+            return (nR >= 1 and nF == 0 and nE == 0 and nA == 0,
+                    "Select one or more regions to find their centers.")
         if object_type not in {"vertex", "edge"}:
-            return (False, "Choose whether to find a vertex or an edge.")
+            return (False, "Choose whether to find a vertex, edge, or center.")
         return validate(object_type, modes)
 
     if tool == "vertex":
@@ -3517,6 +3597,8 @@ def validate(tool, modes):
                 is not st.session_state.get("practice_draw_line_ref")
         ):
             return (False, "For this practice step, select the segment created in the previous step.")
+        if modes.get("target") == "edges" and modes.get("line",(None,{}))[1].get("type") != "ray":
+            return (False, "Select a ray.")
         return (True, "")
 
     if tool == "merge":
@@ -3538,10 +3620,24 @@ def validate(tool, modes):
     if tool == "measure":
         w = modes.get("what")
         if not w: return (False, "Pick what to measure.")
+        if w == "area" and modes.get("cut_area"):
+            if not modes.get("line"):return (False,"Draw a full line first.")
+            return (nR==1 and s["n"]==1,"Select one region and a full line.")
+        if w == "parallel":
+            return (nE == 2 and s["n"] == 2, "Select exactly two straight edges.")
+        if w == "convexity":
+            return (nR == 1 and s["n"] == 1, "Select exactly one region or union.")
+        if w == "incident_edge_count":
+            valid = (nV == 1 and s["n"] == 1
+                     and getattr(s["vertices"][0], "point_kind", None) != "centroid")
+            return (valid, "Select exactly one diagram vertex, not a center point. Frame edges are included.")
+        if w == "extension":
+            return (bool(modes.get("line")), "Choose an extended edge in settings.")
         if w == "distance":
+            if nV == 1 and nE == 1 and s["n"] == 2: return (True, "")
             if nV >= 2 and s["n"] == nV:        return (True, "")
             if nR >= 2 and s["n"] == nR:        return (True, "")
-            return (False, "Select a reference first, then one or more targets (all vertices or all regions).")
+            return (False, "Measure distance between vertices, between a vertex and an edge, or between regions. You can also measure the original edge and its extension using Measure → edge extension.")
         if w == "angle":
             return (nA >= 1 and s["n"] == nA, "Select one or more angles. Choose Angle under Selection, then click an angle arc.")
         if w in ("area", "sides"):
@@ -3549,8 +3645,8 @@ def validate(tool, modes):
         if w == "regions":
             return (nF == 1 and s["n"] == 1, "Select FRAME to count all regions in the diagram.")
         if w == "orientation":
-            if nV != 3 or s["n"] != 3:
-                return (False, "Select exactly three vertices in cycle order.")
+            if nV < 3 or s["n"] != nV:
+                return (False, "Select at least three vertices in cycle order; do not repeat the first point.")
             if (
                 IS_PRACTICE
                 and PRACTICE_STEP == "tools"
@@ -3559,7 +3655,7 @@ def validate(tool, modes):
             ):
                 ring = list(res_map.vertices[:8])
                 expected = [ring[3], ring[0], ring[5]]
-                if any(actual is not target for actual, target in zip(s["vertices"], expected)):
+                if nV != 3 or any(actual is not target for actual, target in zip(s["vertices"], expected)):
                     return (
                         False,
                         "For this practice step, select the three specified vertices in the listed order.",
@@ -3591,6 +3687,8 @@ def validate(tool, modes):
                     return (False, "For this practice step, select the three specified angles.")
             return (nA >= 2 and nA == s["n"],
                     "Select TWO OR MORE saved Angles.")
+        if by == "edge_length":
+            return (len(s["edges"]) >= 2 and len(s["edges"]) == s["n"], "Select TWO OR MORE Edges.")
         if by == "area":
             return (nR >= 2 and nR == s["n"], "Select TWO OR MORE Regions.")
         if by in ("left_right", "bottom_top"):
@@ -3621,6 +3719,8 @@ def natural_join(items):
 def participant_output_for_tool(tool, call_str, result, output_text=None):
     """Return a concise, natural-language result for the participant-facing Output."""
     shown = output_text if output_text is not None else answer_like_text(result)
+    if tool == "measure" and any(f'what="{mode}"' in call_str for mode in ("distance", "area", "angle")) and isinstance(result,(int,float)) and not isinstance(result,bool):
+        shown = f"{result:.4f}"
     no_result = result is None or (
         isinstance(result, (list, tuple, set)) and not result
     )
@@ -3631,6 +3731,12 @@ def participant_output_for_tool(tool, call_str, result, output_text=None):
     )
     emphasized = f"**{shown}**"
     emphasized_list = f"**{shown_as_list}**"
+
+    if 'object="centroid"' in call_str:
+        points = result if isinstance(result, list) else [result]
+        return "Found and labeled " + "; ".join(
+            f"{code_name(p)} as the center of Region {p.source_region.letter}"
+            for p in points) + "."
 
     if tool in ("find", "vertex") and 'object="edge"' not in call_str:
         property_match = re.search(r'which="([^"]+)"', call_str)
@@ -3719,6 +3825,15 @@ def participant_output_for_tool(tool, call_str, result, output_text=None):
             return "No neighboring regions were found."
         return f"Neighboring regions: {emphasized}."
 
+    if tool == "intersect" and '"edges"' in call_str:
+        line_name=call_str.split("(",1)[1].split(",",1)[0]
+        count=result if isinstance(result,int) else len(result)
+        return f"Number of edges {line_name} crosses: **{count}**."
+    if tool == "intersect" and '"vertices"' in call_str:
+        vertices=result if isinstance(result,list) else []
+        line_name = call_str.split("(", 1)[1].split(",", 1)[0]
+        return (f"Number of vertices {line_name} passes through: **{len(vertices)}**.\n\n"
+                f"Vertices: **{output_text if vertices else 'None'}**.")
     if tool == "intersect":
         line_match = re.match(r'intersect\(([^,]+),\s*"faces"\)', call_str)
         if line_match:
@@ -3737,6 +3852,24 @@ def participant_output_for_tool(tool, call_str, result, output_text=None):
         what_match = re.search(r'what="([^"]+)"', call_str)
         what = what_match.group(1) if what_match else "measurement"
         args = call_str[len("measure("):].split(", what=", 1)[0]
+        if what == "extension" and isinstance(result,dict):
+            original = result.get("original_edge",0)
+            source = re.search(r'source_edge="([^"]+)"',call_str)
+            source_name = " " + source.group(1) if source else ""
+            parts = [f"Original edge{source_name}: **{original:.4f}**."]
+            extensions = [(key,value) for key,value in result.items() if key != "original_edge"]
+            parts += [f"{key.capitalize()} extension: **{value:.4f}**." for key,value in extensions]
+            return " ".join(parts)
+        if what == "parallel":
+            return f"Are {args.replace(', ', ' and ')} parallel? **{'Yes' if result else 'No'}**."
+        if what == "convexity":
+            return f"Is Region {args} convex? **{'Yes' if result else 'No'}**."
+        if what == "incident_edge_count":
+            return f"The number of edges incident to {args}, including frame edges: {emphasized}."
+        if what == "area" and isinstance(result,dict) and ('above' in result or 'left' in result):
+            line_name=re.search(r'line=([^,)]+)',call_str).group(1)
+            labels=('above','below') if 'above' in result else ('left','right')
+            return " ".join(f"Area {label} of {line_name}: **{result[label]:.4f}**." if label in ('left','right') else f"Area {label} {line_name}: **{result[label]:.4f}**." for label in labels)
         if what == "area":
             return f"Area of Region {args}: {emphasized}."
         if what in ("sides", "edge_count"):
@@ -3761,6 +3894,7 @@ def participant_output_for_tool(tool, call_str, result, output_text=None):
             "area": "Regions from smallest to largest by area",
             "left_right": "Vertices from left to right",
             "bottom_top": "Vertices from bottom to top",
+            "edge_length": "Edges from shortest to longest",
             "distance": "Vertices from nearest to farthest",
         }.get(by, "Sorted objects")
         return f"{lead}: {emphasized}."
@@ -3768,6 +3902,8 @@ def participant_output_for_tool(tool, call_str, result, output_text=None):
     return f"Result: {emphasized}."
 
 def _tool_output(value):
+    if isinstance(value,dict) and ("original_edge" in value or set(value) in ({"above","below"},{"left","right"})):
+        return {"type":"measurements","values":value}
     if isinstance(value, (list, tuple, set)):
         return {"type": "list", "items": [_tool_output(v) for v in value]}
     if value is None:
@@ -4001,7 +4137,7 @@ def visualize_result(result):
         st.session_state.annotations.append(
             {"kind": "region", "obj": result, "color": GRAY_SOLID})
 
-def finish(tool, call_str, result, assign_prefix="r", visualize=True):
+def finish(tool, call_str, result, assign_prefix="r", visualize=True, trace_details=None):
     if visualize:
         visualize_result(result)
     if assign_prefix:
@@ -4011,7 +4147,10 @@ def finish(tool, call_str, result, assign_prefix="r", visualize=True):
         add_program(call_str)
     output_text = answer_like_text(result)
     add_log(participant_output_for_tool(tool, call_str, result, output_text))
-    record_tool_call(tool, call_str.split("(", 1)[0], call_str, _tool_output(result), output_text)
+    trace_output = _tool_output(result)
+    if trace_details:
+        trace_output.update(trace_details)
+    record_tool_call(tool, call_str.split("(", 1)[0], call_str, trace_output, output_text)
     if st.session_state.get("practice_step") == "tools":
         if tool == "measure" and 'measure("frame", what="regions")' in call_str:
             st.session_state.practice_frame_count_done = True
@@ -4098,7 +4237,7 @@ def finish_vertex(call_str, result, assign_prefix="v", trace_tool="vertex"):
         add_program(call_str)
     output_text = answer_like_text(result)
     add_log(participant_output_for_tool(trace_tool, call_str, result, output_text))
-    record_tool_call(trace_tool, "find" if trace_tool == "find" else "vertex",
+    record_tool_call(trace_tool, trace_tool if trace_tool in ("find", "intersect") else "vertex",
                      call_str, _tool_output(result), output_text)
     if st.session_state.get("practice_step") == "tools":
         if (
@@ -4149,6 +4288,7 @@ def _rank_value(it, by, ref):
     if by == "left_right": return map_helpers.x_of(it)
     if by == "bottom_top": return map_helpers.y_of(it)
     if by == "area":       return map_helpers.area(it)
+    if by == "edge_length": return T.edge_length(it)
     if by == "angle":
         if is_angle(it):
             return map_helpers.angle_at(it.vertex, it.face) * 180.0 / math.pi
@@ -4200,14 +4340,14 @@ def measurement_batch_finish(objects, what, reference=None):
         call_str += f", reference={reference_label}"
     call_str += ")"
     rows = [
-        {"label": label, "value": round(float(value), 2 if what == "angle" else 4),
+        {"label": label, "value": int(value) if what in ("edge_count", "sides", "frame_edge_count") else float(value),
          "object": _tool_output(obj)}
         for obj, label, value in zip(objects, labels, values)
     ]
     unit = "degrees" if what == "angle" else None
     output = {"type": "measurements", "what": what, "items": rows,
               "reference": reference_label, "unit": unit, "measurement_count": len(rows)}
-    shown = "; ".join(f"{row['label']}: {row['value']:g}{'°' if unit else ''}" for row in rows)
+    shown = "; ".join(f"{row['label']}: " + (str(row['value']) if what in ("edge_count", "sides", "frame_edge_count") else f"{row['value']:.4f}") + ('°' if unit else '') for row in rows)
     heading = f"Distances from {reference_label}" if reference is not None else what.replace("_", " ").capitalize()
     add_program(call_str)
     add_log(f"{heading}: **{shown}**.")
@@ -4220,8 +4360,19 @@ def run_tool(tool, modes):
     sel = st.session_state.selection
     s = sel_sig()
     try:
+        # ---- CENTROID ------------------------------------------------------
+        if tool == "find" and modes.get("object") == "centroid":
+            points = []
+            for region in s["regions"]:
+                existing = next((a.get("obj") for a in st.session_state.annotations
+                                 if getattr(a.get("obj"), "point_kind", None) == "centroid"
+                                 and a["obj"].source_region is region), None)
+                points.append(existing if existing is not None else T.find(region, object="centroid"))
+            call = f'find({", ".join(r.letter for r in s["regions"])}, object="centroid")'
+            finish_vertex(call, points[0] if len(points)==1 else points, trace_tool="find")
+
         # ---- VERTEX --------------------------------------------------------
-        if tool == "vertex" or (
+        elif tool == "vertex" or (
             tool == "find" and modes.get("object") == "vertex"
         ):
             trace_tool = "find" if tool == "find" else "vertex"
@@ -4364,12 +4515,17 @@ def run_tool(tool, modes):
             elif s["edges"]:
                 va, vb = edgesel_endpoints(s["edges"][0])
                 kind = "full" if style == "full line" else "segment"
-                line = T.draw(va, vb, kind=kind)
+                line = T.draw(va, vb, kind=kind, extension_direction=modes.get("extension_direction"))
                 call = f'draw({code_name(s["edges"][0])}, kind="{kind}")'
+                if modes.get("extension_direction"):
+                    call = call[:-1] + f', extension_direction="{modes["extension_direction"]}")' 
             else:
                 kind = "full" if style == "full line" else "segment"
                 line = T.draw(sel[0], sel[1], kind=kind)
                 call = f'draw({code_name(sel[0])}, {code_name(sel[1])}, kind="{kind}")'
+            if s["edges"]:
+                line['source_edge_endpoints'] = (va.p, vb.p)
+                line["source_edge_label"] = code_name(s["edges"][0])
             name = next_name("L")
             st.session_state.lines.append((name, line))
             st.session_state.annotations.append({"kind": "line", "line": line, "label": name})
@@ -4380,6 +4536,8 @@ def run_tool(tool, modes):
                     f"Drew **{name}**, {article} {d}ward ray "
                     f"from {code_name(sel[0])}."
                 )
+            elif modes.get("extension_direction"):
+                add_log(f'Extended **{code_name(s["edges"][0])}** {modes["extension_direction"]} to the frame. Extended edge: **{name}**.')
             elif style == "full line":
                 if s["edges"]:
                     add_log(
@@ -4417,7 +4575,16 @@ def run_tool(tool, modes):
         # ---- INTERSECT -----------------------------------------------------
         elif tool == "intersect":
             lname, line = modes["line"]
-            if modes["target"] == "faces":
+            if modes["target"] == "edges":
+                T.setup(st.session_state.res_map)
+                result=T.intersect(line,"edges")
+                finish(tool,f'intersect({lname}, "edges")',len(result),visualize=False,
+                       trace_details={'crossed_edges':T._crossed_edge_details(result)})
+            elif modes["target"] == "vertices":
+                T.setup(st.session_state.res_map)
+                result=T.intersect(line,"vertices")
+                finish_vertex(f'intersect({lname}, "vertices")',result,trace_tool="intersect")
+            elif modes["target"] == "faces":
                 result = T.intersect(line, "faces")
                 finish(tool, f'intersect({lname}, "faces")', result, visualize=False)
             else:
@@ -4478,20 +4645,55 @@ def run_tool(tool, modes):
                 return measurement_batch_finish(targets, "distance", reference)
             if w == "angle" and len(s["angles"]) > 1:
                 return measurement_batch_finish(s["angles"], "angle")
-            if w in ("area", "sides") and len(s["regions"]) > 1:
+            if w in ("area", "sides") and not modes.get("cut_area") and len(s["regions"]) > 1:
                 return measurement_batch_finish(s["regions"], "edge_count" if w == "sides" else w)
 
-            if w == "distance":
-                if len(s["regions"]) == 2 and s["n"] == 2:
+            if w == "area" and modes.get("cut_area"):
+                lname,line=modes["line"];region=s["regions"][0]
+                sides=modes.get("area_sides","above_below")
+                result=T.measure(region,what="area",line=line,area_sides=sides)
+                finish(tool,f'measure({region.letter}, what="area", line={lname}, area_sides="{sides}")',result,visualize=False)
+            elif w == "extension":
+                lname,line=modes["line"]
+                from extension_directions import question_extension_direction
+                points=line.get("source_edge_endpoints")
+                if points:
+                    line["question_extension_direction"]=question_extension_direction(*points,str(QUESTION.get("question_text","")),st.session_state.res_map)
+                finish(tool,f'measure({lname}, what="extension", source_edge="{line.get("source_edge_label","edge")}")',T.measure(line,what="extension"),visualize=False)
+
+            elif w == "distance":
+                if len(s["vertices"]) == 1 and len(s["edges"]) == 1 and s["n"] == 2:
+                    point, edge = s["vertices"][0], s["edges"][0]
+                    value = T.measure(point, edge, what="distance")
+                    finish(tool, f'measure({code_name(point)}, {code_name(edge)}, what="distance")',
+                           value, visualize=False)
+                elif len(s["regions"]) == 2 and s["n"] == 2:
                     fa, fb = s["regions"][0], s["regions"][1]
                     val = T.measure(fa, fb, what="distance")
                     finish(tool, f'measure({fa.letter}, {fb.letter}, what="distance")',
-                           round(val, 4))
+                           val)
                 elif s["vertices"] and len(s["vertices"]) >= 2:
                     p, q = s["vertices"][0], s["vertices"][1]
                     val = T.measure(p, q, what="distance")
                     finish(tool, f'measure({code_name(p)}, {code_name(q)}, what="distance")',
-                           round(val, 4))
+                           val)
+
+            elif w == "parallel":
+                a,b = s["edges"]
+                value = T.measure(a,b,what=w)
+                finish(tool, f'measure({code_name(a)}, {code_name(b)}, what="parallel")', value, visualize=False)
+
+            elif w == "convexity":
+                reg = s["regions"][0]
+                value = T.measure(reg, what=w)
+                finish(tool, f'measure({reg.letter}, what="convexity")', value, visualize=False)
+
+            elif w == "incident_edge_count":
+                vertex = s["vertices"][0]
+                value = T.measure(vertex, what=w,
+                                  merged_regions=[u["face"] for u in st.session_state.unions])
+                finish(tool, f'measure({code_name(vertex)}, what="incident_edge_count")',
+                       value, visualize=False)
 
             elif w == "angle":
                 a = s["angles"][0]
@@ -4500,13 +4702,13 @@ def run_tool(tool, modes):
                 call_str = f'measure({aname}, what="angle")'
                 var = next_name("r")
                 add_program(f"{var} = {call_str}")
-                output_text = f"{round(val, 2)}"
+                output_text = f"{val:.4f}"
                 add_log(participant_output_for_tool("measure", call_str, val, output_text))
                 record_tool_call(
                     tool,
                     "measure",
                     call_str,
-                    {"type": "number", "value": round(val, 2), "unit": "degrees"},
+                    {"type": "number", "value": val, "unit": "degrees"},
                     output_text,
                     "analysis",
                 )
@@ -4519,10 +4721,10 @@ def run_tool(tool, modes):
                        visualize=False)
 
             elif w == "orientation":
-                va, vb, vc = s["vertices"]
-                call_str = (f'measure({code_name(va)}, {code_name(vb)}, '
-                            f'{code_name(vc)}, what="orientation")')
-                val = T.measure(va, vb, vc, what="orientation")
+                points = s["vertices"]
+                names = ", ".join(code_name(v) for v in points)
+                call_str = f'measure({names}, what="orientation")'
+                val = T.measure(*points, what="orientation")
                 finish(tool, call_str, val, visualize=False)
 
             else:  # area, sides
@@ -4551,6 +4753,12 @@ def run_tool(tool, modes):
                 arg = ", ".join(o.letter for o in regs)
                 ranking_finish(f'sort([{arg}], by="area")', result, "area", None)
 
+            elif by == "edge_length":
+                edges = list(s["edges"])
+                result = T.sort(edges, by="edge_length")
+                arg = ", ".join(code_name(e) for e in edges)
+                ranking_finish(f'sort([{arg}], by="edge_length")', result, "edge_length", None)
+
             elif by in ("left_right", "bottom_top"):
                 pts = list(s["vertices"])
                 result = T.sort(pts, by=by)
@@ -4566,12 +4774,16 @@ def run_tool(tool, modes):
                     result, "distance", ref)
 
     except Exception as ex:
+        import logging
+        logging.getLogger(__name__).exception("Tool %s failed", tool)
         mark_tutorial_tool_error()
         tool_name = TOOL_LABELS.get(tool, tool).strip()
         participant_message = (
             f"❌ {tool_name} could not complete this operation. "
             "Check your selection and settings, then try again."
         )
+        if ((tool == "intersect" and modes.get("target") == "edges") or (tool == "measure" and modes.get("cut_area"))) and isinstance(ex, ValueError):
+            participant_message = f"❌ {tool_name}: {ex}"
         if tool == "merge" and isinstance(ex, ValueError):
             participant_message = f"❌ Merge: {ex}"
         add_log(participant_message)
@@ -5975,10 +6187,8 @@ with col_ctrl:
                 )
                 modes["object"] = st.radio(
                     "What do you want to find?",
-                    ["vertex", "edge"],
-                    format_func=lambda value: (
-                        "Find Vertex" if value == "vertex" else "Find Edge"
-                    ),
+                    ["vertex", "edge", "centroid"],
+                    format_func=lambda value: {"vertex": "Find Vertex", "edge": "Find Edge", "centroid": "Find Center"}[value],
                     index=find_default,
                     horizontal=True,
                     key="rad_find_object",
@@ -5986,7 +6196,9 @@ with col_ctrl:
             else:
                 modes["object"] = "vertex"
 
-            if modes["object"] == "edge":
+            if modes["object"] == "centroid":
+                settings_hints.append("Select one or more Regions. Their centers will be labeled c1, c2, … .")
+            elif modes["object"] == "edge":
                 if len(s["regions"]) >= 2 and len(s["regions"]) == s["n"]:
                     selected_labels = natural_join(
                         region.letter for region in s["regions"]
@@ -6071,6 +6283,15 @@ with col_ctrl:
                 horizontal=True,
                 key="rad_style",
             )
+            if modes["style"] == "full line" and len(s["edges"]) == 1:
+                va,vb=edgesel_endpoints(s["edges"][0])
+                directions=["both directions"]
+                if abs(va.p.x-vb.p.x)>1e-9:
+                    directions += ["left","right"]
+                if abs(va.p.y-vb.p.y)>1e-9:
+                    directions += ["up","down"]
+                direction=st.radio("Extension direction",directions,horizontal=True,key="extension_direction")
+                if direction != "both directions":modes["extension_direction"]=direction
             if modes["style"] == "ray":
                 modes["ray_direction"] = st.radio("Direction", ["up", "down", "left", "right"],
                                                   horizontal=True, key="rad_raydir")
@@ -6082,10 +6303,18 @@ with col_ctrl:
                                   key="sel_line")
                 modes["line"] = st.session_state.lines[li]
                 choice = st.radio("Question", ["Which regions does it pass through?",
+                                               "Which vertices does it pass through?",
+                                               "Which edges does the ray cross?",
                                                "Does it cross another line?"],
                                   index=None if IS_PRACTICE and PRACTICE_STEP == "tools" else 0,
                                   key="rad_intersect")
-                if choice and choice.startswith("Which"):
+                if choice == "Which edges does the ray cross?":
+                    modes["target"] = "edges"
+                    if modes["line"][1].get("type") != "ray":
+                        st.caption("Select a ray drawn with Draw Line → ray.")
+                elif choice == "Which vertices does it pass through?":
+                    modes["target"] = "vertices"
+                elif choice == "Which regions does it pass through?":
                     modes["target"] = "faces"
                 elif choice:
                     others = [j for j in range(len(st.session_state.lines)) if j != li]
@@ -6102,20 +6331,31 @@ with col_ctrl:
 
         elif tool == "measure":
             modes["what"] = st.radio("Measure what?",
-                                     ["distance", "angle", "area", "sides", "regions",
+                                     ["distance", "extension", "angle", "area", "sides", "incident_edge_count", "convexity", "parallel", "regions",
                                       "orientation"],
                                      format_func=lambda value: {
                                          "sides": "edge count",
+                                         "extension": "edge extension",
+                                         "incident_edge_count": "incident edge count",
                                          "regions": "region count",
                                          "orientation": "cycle orientation",
                                      }.get(value, value),
                                      index=None, horizontal=True, key="rad_measure")
             if modes["what"] == "distance":
                 objects = s["regions"] or s["vertices"]
-                if len(objects) >= 2 and len(objects) == s["n"]:
-                    settings_hints.append(f"Reference: {code_name(objects[0])}. Will measure distance to each of the {len(objects) - 1} other selected objects.")
+                if len(s["vertices"]) == 1 and len(s["edges"]) == 1 and s["n"] == 2:
+                    settings_hints.append("Shortest distance from the point to the selected finite edge, including its endpoints.")
+                elif len(objects) >= 2 and len(objects) == s["n"]:
+                    settings_hints.append(f"Measure from {code_name(objects[0])} (selected first) to each of the other selected {'vertices' if s["vertices"] else 'regions'}.")
                 else:
-                    settings_hints.append("Select the reference FIRST, then one or more targets. Use all vertices or all regions.")
+                    settings_hints.append("Measure distance between vertices, between a vertex and an edge, or between regions. You can also measure the original edge and its extension using Measure → edge extension.")
+            elif modes["what"] == "extension":
+                extensions=available_edge_extensions(st.session_state.lines,st.session_state.named_edges)
+                if extensions:
+                    idx=st.selectbox("Extended edge",range(len(extensions)),format_func=lambda i:extensions[i][0],key="extension_line")
+                    modes["line"]=extensions[idx]
+                else:
+                    settings_hints.append("Use Draw Line → extend edge first. Then choose its label here.")
             elif modes["what"] == "angle":
                 if s["angles"]:
                     n = len(s["angles"])
@@ -6123,18 +6363,36 @@ with col_ctrl:
                 else:
                     settings_hints.append("Use Select: Angle above the map, then click an angle arc.")
             elif modes["what"] == "area":
-                settings_hints.append("Select one or more regions to measure each area in one call.")
+                modes["cut_area"]=st.checkbox("Measure areas on each side of a line",key="measure_cut_area")
+                if modes["cut_area"]:
+                    side_label=st.radio("Sides",["Above / Below","Left / Right"],horizontal=True,key="cut_area_sides")
+                    modes["area_sides"]="above_below" if side_label=="Above / Below" else "left_right"
+                    available=[i for i,entry in enumerate(st.session_state.lines) if entry[1].get("type")=="extend"]
+                    if available:
+                        idx=st.selectbox("Line",available,format_func=lambda i:st.session_state.lines[i][0],key="cut_area_line")
+                        modes["line"]=st.session_state.lines[idx]
+                    settings_hints.append("Select one region and a full line that cuts it into two pieces.")
+                else:
+                    settings_hints.append("Select one or more regions to measure each area in one call.")
             elif modes["what"] == "sides":
                 settings_hints.append("Select one or more regions to count each region's edges in one call.")
+            elif modes["what"] == "parallel":
+                settings_hints.append("Select two straight edges. Edges on the same straight line are not counted as parallel.")
+            elif modes["what"] == "convexity":
+                settings_hints.append("Select one region or merged union to check whether it is convex.")
+            elif modes["what"] == "incident_edge_count":
+                settings_hints.append("Select one diagram vertex. Count each edge leaving it once, including frame edges.")
             elif modes["what"] == "regions":
                 settings_hints.append("Select FRAME to count all regions in the diagram.")
             elif modes["what"] == "orientation":
-                settings_hints.append("Click exactly three vertices in sequence: first v₁, then v₂, then v₃.")
+                settings_hints.append("Select three or more vertices in cycle order. The last connects back to the first; do not repeat the first point. The cycle must not cross itself.")
 
         elif tool == "sort":
             opts = []   # (label, internal_value)
             if len(s["angles"]) >= 2 and len(s["angles"]) == s["n"]:
                 opts = [("By angle size", "angle")]
+            elif len(s["edges"]) >= 2 and len(s["edges"]) == s["n"]:
+                opts = [("By edge length", "edge_length")]
             elif len(s["regions"]) >= 2 and len(s["regions"]) == s["n"]:
                 opts = [("By area", "area")]
             elif len(s["vertices"]) >= 2 and len(s["vertices"]) == s["n"]:
@@ -6151,7 +6409,7 @@ with col_ctrl:
                 )
                 modes["by"] = label2val.get(choice)
             else:
-                settings_hints.append("Select TWO OR MORE Angles, TWO OR MORE Vertices, or TWO OR MORE Regions.")
+                settings_hints.append("Select TWO OR MORE Angles, TWO OR MORE Vertices, TWO OR MORE Edges, or TWO OR MORE Regions.")
 
         elif tool == "merge" and st.session_state.unions:
             for remove_union_index, union in enumerate(st.session_state.unions):

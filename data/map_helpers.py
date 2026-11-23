@@ -60,6 +60,78 @@ def use_map(map):
     _MAP = map
 
 
+class CentroidPoint:
+    """A derived point, never inserted into the map's vertex/edge topology.
+
+    Empty adjacency lists retain compatibility with the existing point-selection
+    protocol. This point is not a boundary vertex and cannot define an angle.
+    """
+    def __init__(self, x, y, region):
+        self.p = Graph.Vector(float(x), float(y))
+        self.source_region = region
+        self.point_kind = "centroid"
+        self.outarcs = []
+        self.faces = []
+        self.num = None
+
+
+def centroid(region):
+    """Area centroid of a simple polygon (including a supported merged region).
+
+    The shoelace formula is orientation-independent. Translate to a local origin
+    before summation to reduce cancellation; boundary segmentation does not
+    affect the result. A concave polygon's centroid may lie outside it.
+    """
+    import math
+    if not getattr(region, "bounded", False):
+        raise ValueError("Select a bounded region to find its centroid.")
+    points = [v.p for v in region.vertices]
+    if len(points) > 1 and points[0].x == points[-1].x and points[0].y == points[-1].y:
+        points.pop()
+    if len(points) < 3:
+        raise ValueError("A centroid requires a nondegenerate polygon.")
+    ox, oy = float(points[0].x), float(points[0].y)
+    xy = [(float(p.x)-ox, float(p.y)-oy) for p in points]
+    if not all(math.isfinite(v) for point in xy for v in point):
+        raise ValueError("Polygon coordinates must be finite.")
+    pairs = list(zip(xy, xy[1:] + xy[:1]))
+    cross = [x*v-u*y for (x,y),(u,v) in pairs]
+    area2 = math.fsum(cross)
+    scale = max(max(abs(x), abs(y)) for x,y in xy)
+    if scale == 0 or abs(area2) <= 1e-14*scale*scale:
+        raise ValueError("The region has zero or numerically degenerate area.")
+    cx = ox + math.fsum((a[0]+b[0])*c for (a,b),c in zip(pairs,cross))/(3*area2)
+    cy = oy + math.fsum((a[1]+b[1])*c for (a,b),c in zip(pairs,cross))/(3*area2)
+    return CentroidPoint(cx, cy, region)
+
+
+def incident_edge_count(vertex, merged_regions=()):
+    """Count distinct visible edge segments leaving a diagram vertex.
+
+    Includes frame edges. Reverse half-edges represent the same edge and are
+    counted once. Two collinear edges leaving in opposite directions count as
+    two (e.g. a T-junction has three incident edges). Workspace unions hide
+    internal edges, without mutating the original map topology.
+    """
+    if getattr(vertex, "point_kind", None) == "centroid" or not hasattr(vertex, "outarcs"):
+        raise ValueError("Select a diagram vertex, not a center point, for incident edge count.")
+    merged_sources = [set(getattr(region, "source_faces", (region,)))
+                      for region in merged_regions]
+    seen = set()
+    for edge in vertex.outarcs:
+        a, b = edge.tail, edge.head
+        if a is not vertex and b is not vertex:
+            continue
+        if a is b:
+            continue
+        reverse = getattr(edge, "reverse", None)
+        left, right = getattr(edge, "leftFace", None), getattr(reverse, "leftFace", None)
+        if any(left in sources and right in sources for sources in merged_sources):
+            continue
+        seen.add(tuple(sorted((id(a), id(b)))))
+    return len(seen)
+
+
 def region_count():
     """Return the number of bounded regions in the current diagram."""
     if _MAP is None:
@@ -67,16 +139,288 @@ def region_count():
     return sum(1 for face in _MAP.faces if face.bounded)
 
 
-def orientation(a, b, c):
-    """Return the direction of the ordered cycle a -> b -> c -> a."""
-    pa = getattr(a, "p", a)
-    pb = getattr(b, "p", b)
-    pc = getattr(c, "p", c)
-    signed_area_twice = ((pb.x - pa.x) * (pc.y - pa.y) -
-                         (pb.y - pa.y) * (pc.x - pa.x))
-    if abs(signed_area_twice) < epsilon:
-        raise ValueError("The three vertices are collinear; orientation is undefined.")
-    return "Counterclockwise" if signed_area_twice > 0 else "Clockwise"
+def _cut_polygon_triangles(points):
+    """Ear clipping of a simple polygon, used to validate connected cut pieces."""
+    def cross(a,b,c):return (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])
+    points=list(points)
+    while len(points)>3:
+        remove=next((i for i in range(len(points)) if abs(cross(points[i-1],points[i],points[(i+1)%len(points)]))<1e-12),None)
+        if remove is None:break
+        points.pop(remove)
+    area2=sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(points,points[1:]+points[:1]))
+    if area2<0:points.reverse()
+    remaining=list(range(len(points)));triangles=[]
+    while len(remaining)>3:
+        for pos,i in enumerate(remaining):
+            j,k=remaining[pos-1],remaining[(pos+1)%len(remaining)]
+            if cross(points[j],points[i],points[k])<=1e-12:continue
+            if any(all(cross(points[u],points[v],points[q])>=-1e-12 for u,v in [(j,i),(i,k),(k,j)]) for q in remaining if q not in (j,i,k)):continue
+            triangles.append((j,i,k));remaining.pop(pos);break
+        else:raise ValueError("Could not validate the region boundary.")
+    triangles.append(tuple(remaining))
+    return points,triangles
+
+
+def cut_region_areas(region, line, sides="above_below"):
+    """Return two side areas, permitting overlap with part of the boundary.
+
+    A valid cut has one connected positive-area piece on each side. Boundary
+    contact alone does not cut a region; multi-piece cuts remain unsupported.
+    """
+    import math
+    if line.get('type')!='extend':raise ValueError("Select a full line drawn with extend edge.")
+    if not getattr(region,'bounded',False):raise ValueError("Select one region or union.")
+    if sides not in ('above_below','left_right'):raise ValueError("Choose Above/Below or Left/Right.")
+    a,b=line['a'],line['b']
+    if not all(math.isfinite(float(c)) for p in (a,b) for c in (p.x,p.y)):
+        raise ValueError("Line coordinates must be finite.")
+    if sides=='above_below':
+        if abs(b.x-a.x)<=1e-9:raise ValueError("For a vertical line, choose Left/Right.")
+        if b.x<a.x:a,b=b,a
+        labels=('above','below')
+    else:
+        if abs(b.y-a.y)<=1e-9:raise ValueError("For a horizontal line, choose Above/Below.")
+        if b.y<a.y:a,b=b,a
+        labels=('left','right')
+    raw=[(float(v.p.x),float(v.p.y)) for v in region.vertices]
+    points=[]
+    for pt in raw:
+        if not points or pt!=points[-1]:points.append(pt)
+    if points and points[0]==points[-1]:points.pop()
+    if len(points)<3:raise ValueError("Select a nonempty region.")
+    points,triangles=_cut_polygon_triangles(points)
+    from taxonomy_geometry_20261112 import clip,poly_area
+    aa,bb=(float(a.x),float(a.y)),(float(b.x),float(b.y))
+    dx,dy=b.x-a.x,b.y-a.y;length=math.hypot(dx,dy)
+    signed=[(dx*(y-a.y)-dy*(x-a.x))/length for x,y in points]
+    areas=[]
+    for positive in (True,False):
+        values=[v if positive else -v for v in signed]
+        active={i:poly_area(clip([points[v] for v in tri],aa,bb,positive)) for i,tri in enumerate(triangles)}
+        active={i:area for i,area in active.items() if area>1e-12}
+        if not active:raise ValueError("The line must cut the region into two parts with area.")
+        links={i:set() for i in active};owners={}
+        for i in active:
+            tri=triangles[i]
+            for u,v in zip(tri,tri[1:]+tri[:1]):owners.setdefault(tuple(sorted((u,v))),[]).append(i)
+        for (u,v),adjacent in owners.items():
+            if len(adjacent)!=2:continue
+            x,y=values[u],values[v]
+            # Nonzero interior portion of the shared diagonal connects pieces.
+            if max(x,y)<=1e-10:continue
+            fraction=1. if min(x,y)>=0 else max(x,y)/abs(x-y)
+            if math.dist(points[u],points[v])*fraction<=1e-10:continue
+            i,j=adjacent;links[i].add(j);links[j].add(i)
+        todo=set(active);components=0
+        while todo:
+            components+=1;stack=[todo.pop()]
+            while stack:
+                for j in links[stack.pop()] & todo:todo.remove(j);stack.append(j)
+        if components!=1:raise ValueError("The line cuts the region into more than two parts.")
+        areas.append(math.fsum(active.values()))
+    total=poly_area(points)
+    if not math.isclose(sum(areas),total,rel_tol=1e-7,abs_tol=1e-10):raise ValueError("Could not validate the cut areas.")
+    return dict(zip(labels,map(float,areas)))
+
+
+def crossed_edges(line):
+    """Proper interior-edge crossings for a ray only.
+
+    Ignore frame edges, defining/source endpoints, and boundary-only overlap.
+    Other vertex hits are ambiguous and should be avoided by generation.
+    """
+    if _MAP is None:raise RuntimeError("Call use_map(map) first.")
+    import math
+    kind=line.get('type')
+    if kind != 'ray':raise ValueError("Select a ray.")
+    if kind not in ('ray','segment','extend'):raise ValueError("Choose a drawn line.")
+    a=line['a'];eps=1e-9
+    if kind=='ray':dx,dy=[(1,0),(0,1),(-1,0),(0,-1)][line['direction']];length=1.
+    else:
+        b=line['b'];dx,dy=b.x-a.x,b.y-a.y;length=math.hypot(dx,dy)
+        if not length:raise ValueError("A line needs two distinct points.")
+        dx,dy=dx/length,dy/length
+    lo,hi=(0.,float('inf')) if kind=='ray' else (0.,length) if kind=='segment' else (-float('inf'),float('inf'))
+    for origin,direction,bound in [(a.x,dx,_MAP.bounds[0]),(a.y,dy,_MAP.bounds[1])]:
+        if abs(direction)<=eps:
+            if origin < -eps or origin>bound+eps:return []
+        else:
+            x,y=sorted((-origin/direction,(bound-origin)/direction));lo=max(lo,x);hi=min(hi,y)
+    if hi-lo<=eps:return []
+    excluded=list(line.get('source_edge_endpoints',())) or [line['a']]+([line['b']] if kind!='ray' else [])
+    def excluded_point(p):return any(math.hypot(p.x-q.x,p.y-q.y)<=eps for q in excluded)
+    hits=[];overlaps=[];seen=set()
+    for e in _MAP.edges:
+        key=tuple(sorted((id(e.tail),id(e.head))))
+        if key in seen:continue
+        seen.add(key)
+        left,right=getattr(e,'leftFace',None),getattr(e.reverse,'leftFace',None)
+        if bool(getattr(left,'bounded',False))!=bool(getattr(right,'bounded',False)):continue
+        b,c=e.tail.p,e.head.p;ex,ey=c.x-b.x,c.y-b.y
+        qx,qy=b.x-a.x,b.y-a.y;den=dx*ey-dy*ex
+        if abs(den)<=eps:
+            if abs(dx*qy-dy*qx)<=eps:
+                overlaps.append(sorted((qx*dx+qy*dy,(c.x-a.x)*dx+(c.y-a.y)*dy)))
+            continue
+        t=(qx*ey-qy*ex)/den;u=(qx*dy-qy*dx)/den
+        if not lo+eps<t<hi-eps or not eps<u<1-eps:continue
+        point=Graph.Vector(a.x+t*dx,a.y+t*dy)
+        if not excluded_point(point):hits.append((t,e))
+    for v in _MAP.vertices:
+        p=v.p;t=(p.x-a.x)*dx+(p.y-a.y)*dy
+        if (lo+eps<t<hi-eps and abs(dx*(p.y-a.y)-dy*(p.x-a.x))<=eps
+            and not excluded_point(p) and not any(start-eps<=t<=end+eps for start,end in overlaps)):
+            raise ValueError("The line passes through a vertex. Choose a path that crosses edges clearly.")
+    return [e for _,e in sorted(hits,key=lambda pair:pair[0])]
+
+
+def ray_crossed_edges(line):
+    """Compatibility alias; use crossed_edges for every supported line type."""
+    return crossed_edges(line)
+
+
+def line_vertices(line, exclude_source_endpoints=False):
+    """Distinct native map vertices exactly on segment/ray/full line (tol 1e-9).
+
+    Exclusion is valid only when draw stored the original edge endpoints.
+    It removes those two points, not other collinear vertices along the edge.
+    """
+    import math
+    if _MAP is None:
+        raise RuntimeError("Call use_map(map) before querying vertices.")
+    if not isinstance(exclude_source_endpoints, bool):
+        raise ValueError("exclude_source_endpoints must be True or False.")
+    source=line.get("source_edge_endpoints")
+    if exclude_source_endpoints and not source:
+        raise ValueError("Endpoint exclusion requires a line drawn from a selected edge.")
+    if line.get("type") not in ("segment","ray","extend"):
+        raise ValueError("Select a drawn line.")
+    a=line['a']
+    b=line.get('b')
+    if line['type']=='ray':
+        dx,dy=[(1,0),(0,1),(-1,0),(0,-1)][line['direction']]
+    else:
+        dx,dy=b.x-a.x,b.y-a.y
+    length=math.hypot(dx,dy)
+    if not length:raise ValueError("A line needs two distinct points.")
+    seen=[];found=[]
+    for vertex in _MAP.vertices:
+        p=vertex.p
+        if abs(dx*(p.y-a.y)-dy*(p.x-a.x))/length>1e-9:continue
+        t=((p.x-a.x)*dx+(p.y-a.y)*dy)/(length*length)
+        if line['type']=='segment' and not -1e-9<=t<=1+1e-9:continue
+        if line['type']=='ray' and t < -1e-9:continue
+        if exclude_source_endpoints and any(math.hypot(p.x-q.x,p.y-q.y)<=1e-9 for q in source):continue
+        if any(math.hypot(p.x-q.x,p.y-q.y)<=1e-9 for q in seen):continue
+        seen.append(p);found.append((t,vertex))
+    return [v for _,v in sorted(found,key=lambda item:item[0])]
+
+
+def edges_parallel(first, second):
+    """True for edges on distinct parallel supporting lines; collinear is False.
+
+    Compare normalized directions with a numerical tolerance (1e-9), not a
+    perceptual angle threshold. Selection direction does not affect the result.
+    """
+    import math
+    def direction(edge):
+        segments = tuple(getattr(edge, "segments", (edge,)))
+        if not segments:
+            raise ValueError("Select a nonempty straight edge.")
+        base = None
+        for seg in segments:
+            a,b = seg.tail.p,seg.head.p
+            if not all(math.isfinite(float(c)) for p in (a,b) for c in (p.x,p.y)):
+                raise ValueError("Edge coordinates must be finite.")
+            dx,dy = b.x-a.x,b.y-a.y
+            length = math.hypot(dx,dy)
+            if length == 0:
+                raise ValueError("An edge must have nonzero length.")
+            u = (dx/length,dy/length)
+            if base is None:
+                base=(a,u)
+            else:
+                origin,v = base
+                if abs(v[0]*u[1]-v[1]*u[0]) > 1e-9 or abs(v[0]*(a.y-origin.y)-v[1]*(a.x-origin.x)) > 1e-9:
+                    raise ValueError("Select a straight edge, not a bent chain.")
+        return base
+    a,u = direction(first)
+    b,v = direction(second)
+    aligned = abs(u[0]*v[1]-u[1]*v[0]) <= 1e-9
+    separation = abs(u[0]*(b.y-a.y)-u[1]*(b.x-a.x))
+    return bool(aligned and separation > 1e-9)
+
+
+def point_edge_distance(point, edge):
+    """Shortest distance to a finite selected edge, clamping to its endpoints.
+
+    EdgeSel may contain multiple underlying segments of one visible edge.
+    Return the minimum over those segments, never the supporting infinite line.
+    """
+    import math
+    p = getattr(point, "p", point)
+    segments = getattr(edge, "segments", (edge,))
+    if not segments:
+        raise ValueError("Select a nonempty edge.")
+    distances = []
+    for segment in segments:
+        a, b = segment.tail.p, segment.head.p
+        if not all(math.isfinite(float(c)) for q in (p,a,b) for c in (q.x,q.y)):
+            raise ValueError("Point and edge coordinates must be finite.")
+        dx, dy = b.x-a.x, b.y-a.y
+        squared = dx*dx+dy*dy
+        t = max(0., min(1., ((p.x-a.x)*dx+(p.y-a.y)*dy)/squared)) if squared else 0.
+        distances.append(math.hypot(p.x-(a.x+t*dx), p.y-(a.y+t*dy)))
+    return min(distances)
+
+
+def orientation(*vertices):
+    """Direction of a simple closed cycle through 3+ points in supplied order.
+
+    The last point connects back to the first; do not repeat the first point.
+    Concave cycles are allowed. Repeated points, self-intersections and zero
+    area are rejected because they do not define one unambiguous cycle.
+    """
+    import math
+    if len(vertices) < 3:
+        raise ValueError("Cycle orientation requires at least three points.")
+    points = [getattr(v, "p", v) for v in vertices]
+    if not all(hasattr(p, "x") and hasattr(p, "y") for p in points):
+        raise ValueError("Cycle orientation requires points.")
+    if not all(math.isfinite(float(c)) for p in points for c in (p.x, p.y)):
+        raise ValueError("Cycle coordinates must be finite.")
+    origin = points[0]
+    xy = [(float(p.x-origin.x), float(p.y-origin.y)) for p in points]
+    if len(set(xy)) != len(xy):
+        raise ValueError("Use distinct points; do not repeat the first point at the end.")
+    scale = max(abs(c) for p in xy for c in p)
+    tol = max(1e-15, 1e-12 * scale * scale)
+    def cross(a, b, c):
+        return (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])
+    def on(a, b, c):
+        return (abs(cross(a,b,c)) <= tol and
+                min(a[0],b[0]) <= c[0] <= max(a[0],b[0]) and
+                min(a[1],b[1]) <= c[1] <= max(a[1],b[1]))
+    n = len(xy)
+    for i in range(n):
+        a,b,c = xy[i-1],xy[i],xy[(i+1)%n]
+        if abs(cross(a,b,c)) <= tol and (on(a,b,c) or on(b,c,a)):
+            raise ValueError("Cycle edges overlap or reverse direction.")
+    for i in range(n):
+        a,b = xy[i],xy[(i+1)%n]
+        for j in range(i+1,n):
+            if j == i+1 or (i == 0 and j == n-1):
+                continue
+            c,d = xy[j],xy[(j+1)%n]
+            ab_c,ab_d,cd_a,cd_b = cross(a,b,c),cross(a,b,d),cross(c,d,a),cross(c,d,b)
+            proper = ((ab_c > tol and ab_d < -tol or ab_c < -tol and ab_d > tol) and
+                      (cd_a > tol and cd_b < -tol or cd_a < -tol and cd_b > tol))
+            if proper or on(a,b,c) or on(a,b,d) or on(c,d,a) or on(c,d,b):
+                raise ValueError("Cycle must not self-intersect or touch itself.")
+    area2 = math.fsum(a[0]*b[1]-b[0]*a[1] for a,b in zip(xy,xy[1:]+xy[:1]))
+    if abs(area2) <= tol:
+        raise ValueError("Cycle has zero area; orientation is undefined.")
+    return "Counterclockwise" if area2 > 0 else "Clockwise"
 
 
 # ==============================================================================
@@ -750,6 +1094,8 @@ def angle_at(vertex, region):
     Example:
         sort(vertices(A), key=lambda v: angle_at(v, A))
     """
+    if getattr(vertex, "point_kind", None) == "centroid":
+        raise ValueError("A centroid is a point, not a boundary vertex with an interior angle.")
     return Graph.angleAtFace(vertex, region)
 
 
@@ -897,6 +1243,8 @@ def regions_at(point):
     Example:
         regions_at(p)
     """
+    if getattr(point, "point_kind", None) == "centroid":
+        raise ValueError("A centroid is not a contact vertex; select a region for neighbor queries.")
     return [f for f in point.faces if f.bounded]
 
 
@@ -1083,3 +1431,54 @@ def regions_along_edge(edge):
         if f is not None and getattr(f, "bounded", False) and f not in out:
             out.append(f)
     return out
+
+
+def extend_piece(a, b, direction):
+    """Only the added segment beyond the chosen endpoint, up to the frame."""
+    import math
+    if _MAP is None:raise RuntimeError("Call use_map first.")
+    if direction not in ('left','right','up','down'):raise ValueError("Choose an extension direction.")
+    axis='x' if direction in ('left','right') else 'y'
+    delta=getattr(b.p,axis)-getattr(a.p,axis)
+    if abs(delta)<1e-9:raise ValueError("Choose a direction along the edge.")
+    positive=direction in ('right','up')
+    start,other=(b,a) if (delta>0)==positive else (a,b)
+    dx,dy=start.p.x-other.p.x,start.p.y-other.p.y
+    candidates=[]
+    for origin,d,limit in ((start.p.x,dx,_MAP.bounds[0]),(start.p.y,dy,_MAP.bounds[1])):
+        if abs(d)>1e-12:candidates.append(((limit if d>0 else 0)-origin)/d)
+    distance=min(candidates)
+    if distance<=1e-9:raise ValueError("This endpoint is already on the frame.")
+    end=Graph.Vector(start.p.x+distance*dx,start.p.y+distance*dy)
+    return {'type':'segment','a':other.p,'b':end,'extension_direction':direction,
+            'extension_part':(start.p,end),
+            'source_edge_endpoints':(a.p,b.p)}
+
+
+def edge_extension_lengths(line):
+    """Original edge plus added portions; preserve unrounded geometry values."""
+    import math
+    points=line.get('source_edge_endpoints')
+    if not points:raise ValueError("Choose an edge extension.")
+    a,b=points
+    result={'original_edge':math.hypot(b.x-a.x,b.y-a.y)}
+    if line.get('extension_part'):
+        start,end=line['extension_part']
+        result[line['extension_direction']]=math.hypot(end.x-start.x,end.y-start.y)
+    elif line.get('type')=='extend':
+        from extension_directions import preferred_extension_axis
+        axis=preferred_extension_axis(a,b,line.get('question_extension_direction'))
+        lo,hi=sorted((a,b),key=lambda p:getattr(p,axis))
+        labels=('left','right') if axis=='x' else ('down','up')
+        from types import SimpleNamespace
+        for label,point in zip(labels,(lo,hi)):
+            coordinate=getattr(point,axis)
+            limit=_MAP.bounds[0 if axis=='x' else 1]
+            if abs(coordinate)<1e-9 or abs(coordinate-limit)<1e-9:
+                result[label]=0.0
+            else:
+                piece=extend_piece(SimpleNamespace(p=a),SimpleNamespace(p=b),label)
+                start,end=piece['extension_part']
+                result[label]=math.hypot(end.x-start.x,end.y-start.y)
+    else:raise ValueError("Choose an edge extension.")
+    return result

@@ -1,4 +1,5 @@
 import Graph
+from line_crossing_quality import assess_line_polygon, DEFAULT_MIN_SMALLER_AREA_FRACTION
 import Split
 import FinalizeFaces
 import numpy as np
@@ -609,6 +610,11 @@ def Question12(va, vb, code, map):
     # The line has no intrinsic direction, so Q12 uses an unordered set rather
     # than a path sequence for both its machine-readable and text answers.
     unique_faces = set(true_path)
+    if any(not assess_line_polygon(
+            [(v.p.x, v.p.y) for v in face.vertices],
+            (va.p.x, va.p.y), (vb.p.x, vb.p.y))['acceptable']
+           for face in unique_faces):
+        return failureOutput
     unique_letters = sorted(f.letter for f in unique_faces)
 
     # 6. Formulate the final question text
@@ -1363,6 +1369,11 @@ def Question31(va, vb, code, map):
     if not true_faces or true_faces != set(robust_path):
         return failureOutput
     if len(true_faces) < 3:
+        return failureOutput
+    if any(not assess_line_polygon(
+            [(v.p.x, v.p.y) for v in face.vertices],
+            (va.p.x, va.p.y), (vb.p.x, vb.p.y))['acceptable']
+           for face in true_faces):
         return failureOutput
     max_sides = max(face.numSides for face in true_faces)
     winners = [face for face in true_faces if face.numSides == max_sides]
@@ -2342,3 +2353,297 @@ def SharesVertex(f,faces):
             if ff in v.faces:
                 return True
     return False
+
+
+# Vertex-property taxonomy preview additions (legacy Question1..34 unchanged).
+import math as _vp_math
+import random as _vp_random
+from itertools import combinations as _vp_combinations
+import map_helpers as _vp_helpers
+from vertex_semantics import VERTEX_DEFINITION as _vp_definition, VERTEX_ONLY_CONTACT_DEFINITION as _vp_contact_definition, VERTEX_COUNT_TYPES as _vp_count_types, POINT_CONTACT_TYPES as _vp_contact_types
+
+VERTEX_PROPERTY_CONDITION_IDS = ("C-009", "C-031", "C-032", "C-090", "C-091", "C-093", "C-094", "C-095", "C-097", "C-098", "C-099", "C-100", "C-101", "C-102")
+
+def _vp_vertices(f): return list(dict.fromkeys(f.vertices))
+def _vp_corners(f):
+    """Region vertices are boundary turns; boundary incidence stays separate."""
+    return list(dict.fromkeys(f.trueVertices))
+def _vp_position(v): return (float(v.p.x),float(v.p.y))
+def _vp_on_frame(v): return min(abs(v.p.x),abs(v.p.y),abs(v.p.x-1),abs(v.p.y-1)) < 1e-8
+def _vp_labels(fs): return sorted(f.letter for f in fs)
+def _vp_names(fs): return ', '.join(_vp_labels(fs)) or 'None'
+def _vp_neighbors(f,fs):
+    # Oracle 1: half-edge adjacency and vertex incidence.
+    result = set(_vp_helpers.vertex_only_neighbors(f))
+    # Oracle 2: common points, excluding any positive-length common boundary.
+    geometric = {g for g in fs if g is not f and set(_vp_vertices(f)) & set(_vp_vertices(g))
+                 and not any(e.reverse.leftFace is g for e in f.edges)}
+    assert result == geometric
+    return result
+
+
+def _vp_describe(v):
+    # Native descriptions are generated only when unambiguous under existing guards.
+    text = identifyVertex(v,0)
+    return text if text else ''
+
+
+def _vp_crossing_independent(f,a,b):
+    """Cut a line into boundary-intersection intervals and test interval midpoints."""
+    ax,ay=_vp_position(a); bx,by=_vp_position(b); dx,dy=bx-ax,by-ay
+    ts=[]
+    for e in f.edges:
+        x,y=_vp_position(e.tail); u,v=_vp_position(e.head); ex,ey=u-x,v-y
+        den=dx*ey-dy*ex
+        if abs(den)<1e-10: continue
+        t=((x-ax)*ey-(y-ay)*ex)/den
+        s=((x-ax)*dy-(y-ay)*dx)/den
+        if -1e-9 <= s <= 1+1e-9: ts.append(t)
+    def inside(x,y):
+        hit=False
+        for e in f.edges:
+            x1,y1=_vp_position(e.tail);x2,y2=_vp_position(e.head)
+            if abs((x-x1)*(y2-y1)-(y-y1)*(x2-x1))<1e-9 and min(x1,x2)-1e-9<=x<=max(x1,x2)+1e-9 and min(y1,y2)-1e-9<=y<=max(y1,y2)+1e-9:
+                return False
+            if (y1>y)!=(y2>y) and x < (x2-x1)*(y-y1)/(y2-y1)+x1: hit=not hit
+        return hit
+    ts=sorted(set(round(t,10) for t in ts))
+    return any(v-u>1e-7 and inside(ax+(u+v)/2*dx,ay+(u+v)/2*dy) for u,v in zip(ts,ts[1:]))
+
+
+def VertexOnlyBoundaryOrder(face, start, go_counterclockwise=True):
+    """Order vertex-only neighbors by boundary position AND exterior fan.
+
+    Native face boundaries are counterclockwise. At a contact vertex, sweep
+    the exterior sectors from the incoming edge's reverse ray to the outgoing
+    ray, counterclockwise for a CCW walk (and in reverse for a CW walk).
+    Candidates at the starting vertex are processed first, treating the closing
+    edge as the incoming edge. Prefer a non-contact start in generated questions.
+
+    Returns region objects, contact records, and ordered per-vertex groups.
+    Outside and all edge-sharing neighbors are excluded. Region names never
+    determine the order.
+    """
+    boundary=_vp_vertices(face)
+    if start not in boundary:
+        raise ValueError('Start must be a boundary vertex of the target region.')
+    signed=sum(e.tail.p.x*e.head.p.y-e.head.p.x*e.tail.p.y for e in face.edges)
+    if signed<=0:
+        raise ValueError('Expected the native counterclockwise face boundary.')
+    candidates=set(_vp_helpers.vertex_only_neighbors(face))
+    contacts={g:set(boundary)&set(_vp_vertices(g)) for g in candidates}
+    if any(len(points)!=1 for points in contacts.values()):
+        raise ValueError('Each candidate must have exactly one contact point.')
+    index=boundary.index(start)
+    step=1 if go_counterclockwise else -1
+    walk=[boundary[(index+step*i)%len(boundary)] for i in range(len(boundary))]
+    ordered,records,groups=[],[],[]
+    for boundary_index,vertex in enumerate(walk):
+        local={g for g,points in contacts.items() if vertex in points}
+        if not local:
+            continue
+        incoming=[e for e in face.edges if e.head is vertex]
+        outgoing=[e for e in face.edges if e.tail is vertex]
+        if len(incoming)!=1 or len(outgoing)!=1:
+            raise ValueError('Target boundary must be simple at every vertex.')
+        arcs=sorted(vertex.outarcs,key=lambda e:_vp_math.atan2(e.head.p.y-vertex.p.y,e.head.p.x-vertex.p.x))
+        cursor=arcs.index(incoming[0].reverse)
+        stop=arcs.index(outgoing[0])
+        exterior=[]
+        for _ in range(len(arcs)):
+            if cursor==stop:
+                break
+            sector=arcs[cursor].leftFace
+            if sector is face:
+                raise ValueError('Exterior sweep unexpectedly entered the target region.')
+            exterior.append(sector)
+            cursor=(cursor+1)%len(arcs)
+        else:
+            raise ValueError('Exterior sweep did not reach the outgoing edge.')
+        if not go_counterclockwise:
+            exterior.reverse()
+        local_order=[g for g in exterior if g in local]
+        if len(local_order)!=len(local) or set(local_order)!=local:
+            raise ValueError('Contact sectors do not give a unique candidate order.')
+        ordered.extend(local_order)
+        for g in local_order:
+            records.append({'region':g.letter,'point':_vp_position(vertex),
+                            'boundary_index':boundary_index,'exterior_fan_index':exterior.index(g)})
+        groups.append({'point':_vp_position(vertex),'boundary_index':boundary_index,
+                       'regions':[g.letter for g in local_order],
+                       'exterior_sector_order':[g.letter for g in exterior]})
+    if len(ordered)!=len(candidates) or set(ordered)!=candidates:
+        raise ValueError('Boundary walk did not visit every candidate exactly once.')
+    return ordered,records,groups
+
+
+def _vp_distance_comparison_ratios(distance_pairs, minimum_ratio=1.3):
+    """Farther/nearer distance ratio per vertex; reject zeros and near-ties.
+
+    There is deliberately no upper ratio bound or absolute-distance margin.
+    """
+    ratios=[]
+    for first,second in distance_pairs:
+        nearer,farther=sorted((first,second))
+        if nearer<=0:return None
+        ratio=farther/nearer
+        if ratio<minimum_ratio:return None
+        ratios.append(ratio)
+    return ratios
+
+
+def VertexPropertyCandidates(m, provenance, condition_ids=None, union_sizes=(2,3)):
+    """Yield bounded candidates for new taxonomy C IDs on an EXISTING native map.
+
+    Does not generate or alter maps. Returns dictionaries containing question,
+    answer, local complexity, provenance and independently checkable evidence.
+    Legacy Q10/Q20 remain in RandomQuestions; the baseline Q-ID registry is unchanged.
+    """
+    requested=set(VERTEX_PROPERTY_CONDITION_IDS if condition_ids is None else condition_ids)
+    fs=[f for f in m.faces if f.bounded];_vp_helpers.use_map(m)
+    ns={f:_vp_neighbors(f,fs) for f in fs}
+    desc={v:_vp_describe(v) for v in m.vertices}
+    def emit(cid,n,q,a,evidence,**extra):
+        if cid in _vp_count_types:q+=' '+_vp_definition
+        if cid in _vp_contact_types:q+=' '+_vp_contact_definition
+        return dict(condition_id=cid,complexity=int(n),question=q,answer=a,
+                    evidence=evidence,provenance=provenance,**extra)
+    for f in fs:
+        nv=len(ns[f])
+        if "C-009" in requested and 3<=nv<=6:
+            yield emit('C-009',nv,f'Which regions touch region {f.letter} only at a vertex? A region that shares an edge with {f.letter} does not count. Enter “None” if there are none.',_vp_names(ns[f]),{'target_region':f.letter,'vertex_only_neighbors':_vp_labels(ns[f])})
+        # Frame counts: independent coordinates versus outside adjacency.
+        frame={v for v in _vp_corners(f) if _vp_on_frame(v)}
+        via_edges={v for v in _vp_corners(f) if any(not g.bounded for g in v.faces)}
+        assert frame==via_edges
+        starts=[v for v in _vp_vertices(f) if desc[v]]
+        contacts={g:set(_vp_vertices(f))&set(_vp_vertices(g)) for g in ns[f]}
+        if "C-098" in requested and 1<=nv<=6 and starts and all(len(vs)==1 for vs in contacts.values()):
+            # A non-contact start avoids cutting an angular encounter group
+            # at the cycle origin. If unavailable, the explicit start-first rule applies.
+            non_contact=[v for v in starts if not any(v in points for points in contacts.values())]
+            start=(non_contact or starts)[0]
+            try:ordered,records,groups=VertexOnlyBoundaryOrder(f,start,True)
+            except ValueError:continue
+            angular_rule=f' At a shared contact vertex, follow the exterior regions counterclockwise from the arrival side of {f.letter}’s boundary to the departure side.'
+            if any(start in points for points in contacts.values()):
+                angular_rule+=' List candidates at v₁ first, using the closing boundary edge as the arrival side.'
+            yield emit('C-098',nv,f'Let v₁ be {desc[start]}. Starting at v₁, trace the boundary of region {f.letter} counterclockwise until you return to v₁. List, in order, the regions that touch {f.letter} only at a single vertex, sharing no edge with it.'+angular_rule+' Only include labeled regions inside the frame. Do not include Outside. Enter “None” if there are none.',', '.join(g.letter for g in ordered),{'target_region':f.letter,'ordered_contacts':records,'ordered_vertex_groups':groups,'direction':'counterclockwise','start_vertex':_vp_position(start),'same_vertex_order':'exterior angular sweep from arrival side to departure side; no ties','start_vertex_handling':'starting-vertex candidates first, using the closing edge as the arrival side'})
+        for e in (f.edges if "C-099" in requested else ()):
+            if not ns[f]:continue
+            g=e.reverse.leftFace
+            if not g.bounded:continue
+            # The shared geometric edge must be uniquely identifiable by its regions.
+            if sum(x.reverse.leftFace is g for x in f.edges)!=1:continue
+            crossed={h for h in fs if _vp_crossing_independent(h,e.tail,e.head)}
+            if len(crossed)<2:continue
+            tool_crossed=set(_vp_helpers.regions_crossed(_vp_helpers.extend(e.tail,e.head)))
+            if crossed!=tool_crossed:continue
+            # Generation constraints, not a change to the definition of crossing.
+            # The defining edge necessarily lies on L1: only candidate neighbors
+            # and genuinely crossed regions are screened for ambiguous contacts.
+            assessed = crossed | ns[f]
+            crossing_quality = {
+                h.letter: assess_line_polygon(
+                    [_vp_position(v) for v in _vp_vertices(h)],
+                    _vp_position(e.tail), _vp_position(e.head))
+                for h in assessed
+            }
+            if any(not q['acceptable'] for q in crossing_quality.values()):
+                continue
+            hits=crossed & ns[f]
+            if len(hits)<=4:
+                yield emit('C-099',len(hits),f'Let e₁ be the edge of {f.letter} that meets region {g.letter}. Extend e₁ in both directions to form straight line L1. Which of the regions that touch region {f.letter} only at a vertex does L1 pass through? Do not include a region if the line only coincides with its boundary without entering its interior. Enter “None” if there are none.',_vp_names(hits),{'target_region':f.letter,'all_line_crossed_regions':_vp_labels(crossed),'all_vertex_only_neighbors':_vp_labels(ns[f]),'intersection':_vp_labels(hits),'line_endpoints':[_vp_position(e.tail),_vp_position(e.head)],'minimum_line_crossed_regions':2,'minimum_vertex_only_neighbors':1,'empty_intersection_allowed':True,'line_crossing_constraints':{'minimum_smaller_area_fraction':DEFAULT_MIN_SMALLER_AREA_FRACTION,'reject_candidate_boundary_overlap':True,'reject_candidate_point_only_touch':True,'checked_regions':crossing_quality}})
+        for n in ((3,4,5,6,7) if "C-091" in requested else ()):
+            if len(_vp_corners(f))!=n+2:continue
+            vs=_vp_corners(f); top=max(vs,key=lambda v:v.p.y);bottom=min(vs,key=lambda v:v.p.y)
+            if sum(abs(v.p.y-top.p.y)<.02 for v in vs)!=1 or sum(abs(v.p.y-bottom.p.y)<.02 for v in vs)!=1:continue
+            i,j=vs.index(top),vs.index(bottom);ccw=(j-i)%len(vs)-1;cw=n-ccw
+            if min(ccw,cw)<1 or ccw==cw:continue
+            assert cw+ccw==len(vs)-2
+            yield emit('C-091',n,f'Let v₁ be the topmost vertex of region {f.letter} and v₂ its bottommost vertex. Do you pass through more vertices of {f.letter} when traveling clockwise or counterclockwise along its boundary from v₁ to v₂? Do not count v₁ or v₂.', 'Clockwise' if cw>ccw else 'Counterclockwise',{'clockwise_intermediate':cw,'counterclockwise_intermediate':ccw,'region_vertex_count':len(vs)})
+    # Bound the combinations; examples are previews rather than exhaustive data generation.
+    available=[v for v in m.vertices if desc[v]]
+    rng=_vp_random.Random(provenance['seed']);rng.shuffle(available)
+    for vs in (list(_vp_combinations(available[:12],3))[:80] if requested & {"C-032","C-090"} else ()):
+        for a,b in _vp_combinations(vs,2):
+            # Top/bottom frame points make a height comparison decidable from
+            # frame-position descriptions alone. Side-frame points remain valid.
+            height=m.bounds[1]
+            on_horizontal_frame=any(min(abs(v.p.y),abs(v.p.y-height))<epsilon for v in (a,b))
+            if "C-032" in requested and not on_horizontal_frame and abs(a.p.y-b.p.y)>=.08*height:
+                yield emit('C-032',2,f'Let v₁ be {desc[a]}. Let v₂ be {desc[b]}. Is v₁ higher than v₂?', 'Yes' if a.p.y>b.p.y else 'No',{'y_v1':a.p.y,'y_v2':b.p.y,'minimum_vertical_gap_fraction':0.08,'actual_vertical_gap_fraction':float(abs(a.p.y-b.p.y)/height),'frame_position_shortcut_excluded':True})
+        a,b=vs[:2]
+        for f in (fs if "C-090" in requested else ()):
+            nv=len(_vp_corners(f))
+            if not 3<=nv<=6:continue
+            distances=[(_vp_math.dist(_vp_position(v),_vp_position(a)),_vp_math.dist(_vp_position(v),_vp_position(b))) for v in _vp_corners(f)]
+            ratios=_vp_distance_comparison_ratios(distances)
+            if ratios is None:continue
+            delta=[first-second for first,second in distances]
+            count=sum(x<0 for x in delta)
+            # Independent algebraic squared-distance difference has the same sign.
+            assert count==sum((v.p.x-a.p.x)**2+(v.p.y-a.p.y)**2 < (v.p.x-b.p.x)**2+(v.p.y-b.p.y)**2 for v in _vp_corners(f))
+            yield emit('C-090',nv,f'Let v₁ be {desc[a]} and v₂ be {desc[b]}. How many vertices of region {f.letter} are closer to v₁ than to v₂?',str(count),{'region':f.letter,'reference_vertices':[_vp_position(a),_vp_position(b)],'target_vertices':[_vp_position(v) for v in _vp_corners(f)],'distance_pairs':distances,'farther_nearer_ratios':ratios,'minimum_distance_ratio':1.3,'maximum_distance_ratio':None,'distance_differences':delta,'input_vertex_count':nv})
+    for a,b in (_vp_combinations(fs,2) if requested & {"C-095","C-102"} else ()):
+        fa=sum(_vp_on_frame(v) for v in _vp_corners(a));fb=sum(_vp_on_frame(v) for v in _vp_corners(b))
+        if "C-095" in requested and 2<=fa+fb<=8:
+            yield emit('C-095',fa+fb,f'Do region {a.letter} and region {b.letter} have the same number of vertices on the frame?', 'Yes' if fa==fb else 'No',{'frame_vertex_counts':{a.letter:fa,b.letter:fb}})
+        na,nb=ns[a]-{b},ns[b]-{a}
+        common_neighbors={g for g in fs if g not in (a,b) and set(_vp_vertices(g)) & set(_vp_vertices(a)) and set(_vp_vertices(g)) & set(_vp_vertices(b))} if "C-102" in requested else set()
+        if "C-102" in requested and common_neighbors and na and nb and 2<=len(na)+len(nb)<=6 and all(len(set(_vp_vertices(f)) & set(_vp_vertices(g)))==1 for f,others in [(a,na),(b,nb)] for g in others):
+            yield emit('C-102',len(na)+len(nb),f'Ignoring regions {a.letter} and {b.letter} themselves, do regions {a.letter} and {b.letter} touch exactly the same set of regions only at a single point, sharing no edge?', 'Yes' if na==nb else 'No',{'neighbor_sets':{a.letter:_vp_labels(na),b.letter:_vp_labels(nb)},'common_general_neighbors':_vp_labels(common_neighbors),'minimum_common_general_neighbors':1,'common_neighbor_contact_rule':'shared edge or vertex; labeled regions only, excluding the two compared regions'})
+    for group in (_vp_combinations(fs,3) if "C-093" in requested else ()):
+        counts=[sum(_vp_on_frame(v) for v in _vp_corners(f)) for f in group];n=sum(counts)
+        if len(set(counts))==3 and 3<=n<=9:
+            yield emit('C-093',n,'Order regions '+', '.join(f.letter for f in group)+' from fewest to most vertices lying on the frame.',', '.join(group[i].letter for i in sorted(range(3),key=lambda i:counts[i])),{'frame_vertex_counts':{f.letter:c for f,c in zip(group,counts)}})
+    for f in (fs if "C-097" in requested else ()):
+        contacts={g:set(_vp_vertices(f))&set(_vp_vertices(g)) for g in ns[f]}
+        if 2<=len(contacts)<=6 and all(len(vs)==1 for vs in contacts.values()):
+            for ref in available:
+                values={g:_vp_math.dist(_vp_position(ref),_vp_position(next(iter(vs)))) for g,vs in contacts.items()}
+                ordered=sorted(values,key=values.get)
+                ratios=_vp_distance_comparison_ratios([(values[ordered[0]],values[ordered[1]])])
+                if ratios is None:continue
+                yield emit('C-097',len(contacts),f'Let v₁ be {desc[ref]}. Among the regions that touch region {f.letter} only at a vertex, which one touches {f.letter} at the point closest to v₁?',ordered[0].letter,{'target_region':f.letter,'reference_vertex':_vp_position(ref),'contact_points':{g.letter:_vp_position(next(iter(vs))) for g,vs in contacts.items()},'contact_distances':{g.letter:d for g,d in values.items()},'second_nearest_over_nearest_ratio':ratios[0],'minimum_distance_ratio':1.3,'maximum_distance_ratio':None})
+    pairs=[]
+    for a,b in (_vp_combinations(fs,2) if "C-100" in requested else ()):
+        common=set(_vp_vertices(a))&set(_vp_vertices(b))
+        if b in ns[a]:
+            if len(common)!=1:break
+            pairs.append((a,b,next(iter(common))))
+    else:
+        if 3<=len(pairs)<=6:
+            pairs.sort(key=lambda x:(-x[2].p.y,x[0].letter,x[1].letter))
+            height=max(v.p.y for h in fs for v in _vp_vertices(h))-min(v.p.y for h in fs for v in _vp_vertices(h))
+            gaps=[pairs[i][2].p.y-pairs[i+1][2].p.y for i in range(len(pairs)-1)]
+            if height>0 and all(gap>=0.08*height for gap in gaps):
+                records=[{'pair':[a.letter,b.letter],'contact_vertex':_vp_position(v),'y':v.p.y} for a,b,v in pairs]
+                yield emit('C-100',len(pairs),'List every pair of regions that touch only at a single vertex, sharing no edge, ordered from the highest such vertex to the lowest.', '; '.join(f'({a.letter}, {b.letter})' for a,b,v in pairs),{'ordered_pairs':records,'consecutive_vertical_gaps':gaps,'diagram_height':height,'minimum_vertical_gap_fraction':0.08,'ties_allowed':False})
+    # Connected unions: sample deterministically, never enumerate a complete factorial batch.
+    groups=[]
+    for f in (fs if requested & {"C-031","C-094","C-101"} else ()):
+        for k in union_sizes:
+            group=[f]
+            while len(group)<k:
+                frontier=sorted({e.reverse.leftFace for h in group for e in h.edges if e.reverse.leftFace.bounded and e.reverse.leftFace not in group},key=lambda x:x.letter)
+                if not frontier:break
+                group.append(frontier[0])
+            if len(group)==k:groups.append(group)
+    for group in groups:
+        try:u=_vp_helpers.merge(group)
+        except ValueError:continue
+        original=set(v for f in group for v in _vp_corners(f))
+        union_vertices=set(_vp_corners(u))
+        title=', '.join(f.letter for f in group);n=len(group)
+        lost=original-union_vertices
+        yield emit('C-094',n,f'Let U be the union of regions {title}. How many vertices of these regions are not vertices of U? Count each distinct point once.',str(len(lost)),{'source_regions':_vp_labels(group),'source_distinct_vertex_count':len(original),'union_vertex_count':len(union_vertices),'lost_vertices':[_vp_position(v) for v in sorted(lost,key=lambda x:x.num)]})
+        shared=set(_vp_vertices(group[0]))&set(_vp_vertices(group[1]))
+        if shared:
+            v=max(shared,key=lambda v:v.p.y)
+            if desc[v] and sum(abs(x.p.y-v.p.y)<.02 for x in shared)==1:
+                yield emit('C-031',n,f'Let U be the union of regions {title}. Let v₁ be the topmost point where the boundaries of regions {group[0].letter} and {group[1].letter} meet. Is v₁ a vertex of U?', 'Yes' if v in union_vertices else 'No',{'source_regions':_vp_labels(group),'selected_vertex':_vp_position(v),'is_union_vertex':v in union_vertices})
+        external=[f for f in fs if f not in group]
+        un=_vp_neighbors(u,external)
+        yield emit('C-101',n,f'Let U be the union of regions {title}. Which regions touch U only at a vertex, without sharing an edge with U? Enter “None” if there are none.',_vp_names(un),{'source_regions':_vp_labels(group),'vertex_only_neighbors':_vp_labels(un)})
+

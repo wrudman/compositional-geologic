@@ -16,7 +16,7 @@ def FinalizeFaces(v,e,f):
         fa.numSides = len(fa.trueVertices)-1
     AssignColors()
     AssignLetters()
-    return faces
+    return faces    
 
 
 def RebuildActiveTopology():
@@ -58,7 +58,7 @@ def RebuildActiveTopology():
             if face_id in active_face_ids and face_id not in seen_faces:
                 seen_faces.add(face_id)
                 vertex.faces.append(face)
-
+   
 def SetTrueVertices(fa):
     ee = fa.edges
     n = len(ee)
@@ -71,24 +71,24 @@ def SetTrueVertices(fa):
         if abs(ee[i].direction - ee[i-1].direction) > Graph.angleeps:
             trueVertices += [ee[i].tail]
     return trueVertices + [trueVertices[0]]
-
+        
 def AssignColors():
     global faces, edges, borders, commonVertex
     ff = len(faces)
-
+    
     # 1. Properly initialize a 2D matrix (Independent lists)
     borders = [[0 for _ in range(ff)] for _ in range(ff)]
-
+    
     # 2. Create a lookup map: face_object_id -> index_in_list
     # This solves the "Face.num is too high" problem
     face_to_idx = {id(f): idx for idx, f in enumerate(faces)}
-
+    
     # 3. Fill the adjacency matrix
     for e in edges:
         # Get the unique IDs for the faces on both sides of the edge
         id_left = id(e.leftFace)
         id_right = id(e.reverse.leftFace)
-
+        
         # Check if both faces actually exist in our current face list
         if id_left in face_to_idx and id_right in face_to_idx:
             i = face_to_idx[id_left]
@@ -102,24 +102,24 @@ def AssignColors():
     numBorders = [0] * ff
     for i in range(ff):
         numBorders[i] = sum(borders[i])
-
+    
     # We ignore the outer frame (usually index 0) for ordering
     numBorders[0] = ff + 100
-
+    
     # 5. Greedy Ordering (Smallest Last)
     face_order = []
     temp_numBorders = list(numBorders)
     for _ in range(ff):
         j = np.argmin(temp_numBorders)
-        face_order = [j] + face_order
+        face_order = [j] + face_order       
         for k in range(ff):
             if borders[j][k]:
                 temp_numBorders[k] -= 1
-        temp_numBorders[j] = 10000 + ff
-
+        temp_numBorders[j] = 10000 + ff   
+    
     # 6. Find common vertices (for vertex-coloring constraints)
     commonVertex = FindCommonVertices(vertices, faces)
-
+    
     # 7. Assign and apply colors
     color_assignments = AssignColors1(face_order, borders)
     for i in range(ff):
@@ -127,21 +127,21 @@ def AssignColors():
 
 def AssignColors1(face_order, borders):
     ff = len(face_order)
-    aa = [0] * ff
+    aa = [0] * ff   
     for i in range(1, ff):
         # Index 0 is background, indices 1-6 are available colors
         # 2 = available, 1 = shares vertex, 0 = shares edge (illegal)
         possColors = [0] + [2] * 6
         li = face_order[i]
-
+        
         for j in range(i):
             lj = face_order[j]
             if borders[li][lj]:
                 possColors[aa[j]] = 0
             elif commonVertex[li][lj]:
                 if possColors[aa[j]] > 1: # Only downgrade if it wasn't already 0
-                    possColors[aa[j]] = 1
-
+                    possColors[aa[j]] = 1 
+        
         if 2 in possColors:
             aa[i] = possColors.index(2)
         else:
@@ -151,40 +151,40 @@ def AssignColors1(face_order, borders):
 
 def FindCommonVertices(vertices, faces):
     ff = len(faces)
-
+    
     # 1. Properly initialize a 2D matrix (Independent lists)
     # Using [[False]*ff]*ff creates pointers to the same list; this way is safer:
     commonVertex = [[False for _ in range(ff)] for _ in range(ff)]
-
+    
     # 2. Create a lookup map: face_object_id -> index_in_the_current_list
     # This ensures that even if a face's .num is 50, if it's the 3rd item, it uses index 2.
     face_to_idx = {id(f): idx for idx, f in enumerate(faces)}
-
+    
     for v in vertices:
         # v.faces contains the face objects meeting at this vertex
         v_faces = v.faces
         num_v_faces = len(v_faces)
-
+        
         for i in range(num_v_faces - 1):
             face_i = v_faces[i]
             for j in range(i + 1, num_v_faces):
                 face_j = v_faces[j]
-
+                
                 # 3. Use the mapping to get safe indices (0 to ff-1)
                 try:
                     idx_i = face_to_idx[id(face_i)]
                     idx_j = face_to_idx[id(face_j)]
-
+                    
                     commonVertex[idx_i][idx_j] = True
                     commonVertex[idx_j][idx_i] = True
                 except KeyError:
                     # This happens if a vertex still references a deleted face
                     continue
-
+                    
     return commonVertex
 
-
-
+   
+    
 def AssignLetters():
     global faces
     a = np.array(range(1,len(faces)))
