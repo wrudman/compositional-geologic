@@ -1,0 +1,106 @@
+Geometric Reasoning — Tool Updates
+November 22, 2026
+
+This update adds or extends the tools available in the human survey and model
+interface. Both interfaces use the shared tool functions in data/.
+
+NEW AND UPDATED TOOLS
+
+1. Find Center
+   Find a region's area centroid. The survey calls it Center; centers are
+   labeled c1, c2, etc., and can be selected using Vertex selection.
+
+2. Incident edge count
+   Count the distinct edges leaving a vertex, including frame edges.
+   A T-junction counts as three incident edges.
+
+3. Convexity
+   Check whether a selected region or merged union is convex.
+
+4. Vertex-to-edge distance
+   Measure the shortest distance from a vertex or center to a finite edge.
+   This includes the edge's endpoints when the perpendicular foot lies outside it.
+
+5. Parallel edges
+   Check whether two edges lie on distinct parallel lines. Collinear edges are
+   not treated as parallel under the current convention.
+
+6. Cycle orientation
+   Accept three or more ordered vertices or centers, rather than only three.
+   Simple concave cycles are supported; repeated points, self-intersections
+   and zero-area cycles are rejected.
+
+7. Count vertices a line passes through
+   Find and count distinct vertices on an edge's extended line, automatically
+   excluding the source edge's two endpoints.
+
+8. Count edges a ray crosses
+   Return the number of edges crossed by an up/down/left/right ray. Exclude
+   edges at the starting vertex and frame edges. Boundary overlap does not
+   count as a crossing. Ambiguous hits at other vertices return an error.
+   The output shows the count; the crossed edges are retained in the trace.
+
+9. Areas on each side of a line
+   Measure both side areas of a selected region or union using Above/Below
+   or Left/Right. Return the areas without deciding which is larger.
+   The resulting areas are not clickable in the diagram.
+
+10. Sort by edge length
+    Accept two or more selected edges and order them from shortest to longest.
+    Equal lengths are displayed with =.
+
+11. Edge extension length
+    Extend an edge along its own direction to the frame, in one or both
+    directions. L1 names the whole extended result. Measure -> edge extension
+    returns the original edge length and the added length(s) separately.
+    The extended edge is selected in settings, rather than by clicking the line.
+    Single-direction output follows the selected direction. For both directions,
+    side names follow the target edge's question wording when identified;
+    otherwise use Left/Right for more horizontal edges and Up/Down for more
+    vertical edges. A 45-degree tie uses Left/Right.
+
+OTHER CHANGES
+
+- Measurements display four decimal places. Internal calculations and recorded
+  raw measurement values retain full precision; counts remain integers.
+- Edge labels avoid overlap with other edge labels.
+- Survey instructions, settings and output wording were updated for these tools.
+- Older extension objects can be recognized by the new measurement menu.
+- The survey reloads changed shared tool modules while preserving the active
+  diagram, preventing updated controls from calling cached older tool code.
+
+FILES
+
+Human interface:
+  data/compositional_survey.py
+
+Model interface:
+  data/geo_agent/geo_agent.py
+  data/geo_agent/geo_env.py
+  data/geo_agent/README.txt
+
+Shared tools and geometry:
+  data/tools_human.py
+  data/map_helpers.py
+  data/extension_directions.py
+  data/edge_label_layout.py
+  data/taxonomy_geometry_20261112.py
+  data/vertex_semantics.py
+  data/line_crossing_quality.py
+  data/Questions.py
+  data/FinalizeFaces.py
+
+Tests:
+  The accompanying test_*.py files cover geometry, human handlers, model
+  dispatch, formatting, traces, and selected boundary cases.
+
+VALIDATION AND SCOPE
+
+65 related automated tests passed before upload. Selected operations were also
+checked in the survey page. This does not mean every tool and edge case has
+been exhaustively tested in the browser.
+
+This upload updates tool code and tests. It does not regenerate the dataset,
+change historical pilot responses, or finalize question bounds and survey
+specifications. The full draft dataset-generation entry point was not included
+in this upload. The HTML tool-review report is shared separately.
