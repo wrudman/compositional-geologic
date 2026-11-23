@@ -1,0 +1,1 @@
+Model interfaces for updated geometric reasoning tools. Uses shared modules in data/. From data/, set PYTHONPATH=. when running scripts in this folder. Install openai, numpy, Pillow and matplotlib. Historical pilot packages are unchanged.
